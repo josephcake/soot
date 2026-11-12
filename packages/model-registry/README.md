@@ -54,7 +54,8 @@
   not list are excluded; listed models that are not configured are added as unselectable with
   unknown metadata.
 - `ProviderHealth` tracks unavailable providers with cooldowns (outage, rate limit, timeout,
-  auth). Selection skips them.
+  auth). Selection skips them. With a `ProviderHealthStore` (e.g. `ExecutionStore`), timed
+  cooldowns survive restarts; auth marks last for the process (ADR-030).
 - `estimateCost` (planned tokens) and `actualCostFromUsage` (reported usage) return
   `EstimatedUsd` / `ActualUsd` from `@soot/observability` with the price's provenance.
 

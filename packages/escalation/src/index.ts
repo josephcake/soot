@@ -36,4 +36,6 @@ export {
   type AdaptiveEvent,
   type AdaptiveEventType,
   type AdaptiveSupervisorOptions,
+  type AttemptSpendEntry,
+  type SpendLedger,
 } from './supervisor.js';

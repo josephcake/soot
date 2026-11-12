@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AttemptRecord, AttemptSupervisor, PlanContext, ReviewDecision } from './attempts.js';
 import { MockAgentRunner, type MockScript } from './mock-agent.js';
-import { Scheduler, runTaskGraph, type ExecutionJournal } from './scheduler.js';
+import {
+  DEFAULT_ATTEMPT_TIMEOUT_MS,
+  Scheduler,
+  runTaskGraph,
+  type ExecutionJournal,
+} from './scheduler.js';
 import { graphOf, task } from './test-fixtures.js';
 
 /** Supervisor scripted by test: model per attempt, and a review function. */
@@ -116,6 +121,47 @@ describe('Scheduler with an AttemptSupervisor (Milestone 4)', () => {
     ]);
     expect(runner.calls[0]?.settledAs).toBe('aborted');
     expect(report.outcomes.get('a')?.attempts[0]?.failure?.message).toMatch(/25 ?ms/);
+  });
+
+  describe('default attempt timeout (no attemptTimeoutMs set)', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('is 30 minutes', () => {
+      expect(DEFAULT_ATTEMPT_TIMEOUT_MS).toBe(1_800_000);
+    });
+
+    it('ends an attempt whose runner hangs forever and ignores abort', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const runner = new MockAgentRunner({ scripts: { a: { outcome: 'hang' } } });
+      const done = runTaskGraph(graphOf(task('a'), task('b')), { runner });
+      await vi.advanceTimersByTimeAsync(DEFAULT_ATTEMPT_TIMEOUT_MS - 1);
+      expect(runner.calls).toHaveLength(2);
+      let settled = false;
+      void done.then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false); // still inside the 30 minutes
+      await vi.advanceTimersByTimeAsync(1);
+      const report = await done;
+      expect(report.outcomes.get('a')).toMatchObject({ state: 'failed' });
+      expect(report.outcomes.get('a')?.attempts[0]?.failure).toMatchObject({
+        kind: 'timeout',
+        message: `attempt timed out after ${String(DEFAULT_ATTEMPT_TIMEOUT_MS)} ms`,
+      });
+      expect(report.outcomes.get('b')?.state).toBe('succeeded');
+    });
+
+    it('an explicit attemptTimeoutMs still wins over the default', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const runner = new MockAgentRunner({ scripts: { a: { outcome: 'hang' } } });
+      const done = runTaskGraph(graphOf(task('a')), { runner, attemptTimeoutMs: 5_000 });
+      await vi.advanceTimersByTimeAsync(5_000);
+      const report = await done;
+      expect(report.outcomes.get('a')?.attempts[0]?.failure?.message).toBe(
+        'attempt timed out after 5000 ms',
+      );
+    });
   });
 
   it('a supervisor stop fails the task before any call and skips its dependents', async () => {

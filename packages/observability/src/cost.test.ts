@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { AgentResult, Task } from '@soot/task-graph';
 import {
   actualUsd,
+  costRecordsFromAttempts,
   createCostRecord,
   estimatedUsd,
   recordAttempt,
+  recordRoutedEstimate,
   summarizeCosts,
   taskActualTotals,
   type ActualUsd,
@@ -51,6 +53,7 @@ describe('task cost records (M1-09)', () => {
     expect(record).toEqual({
       taskId: 'a',
       estimate: { source: 'planner', inputTokens: 1000, outputTokens: 100, costUsd: 0.01 },
+      routed: [],
       attempts: [],
     });
   });
@@ -119,5 +122,77 @@ describe('task cost records (M1-09)', () => {
     // @ts-expect-error a plain number is neither
     const plain: ActualUsd = 1;
     expect([wrongActual, wrongEstimate, plain]).toEqual([1, 1, 1]);
+  });
+});
+
+describe('routed estimates on cost records (ADR-030)', () => {
+  const assigned = (model: string, usd: number | null) => ({ model, estimatedCostUsd: usd });
+  const withModel = (r: AgentResult, model: string | null): AgentResult => ({
+    ...r,
+    usage: { ...r.usage, model },
+  });
+
+  it('adds the router estimate per attempt and never an actual for attempts without a result', () => {
+    const [record] = costRecordsFromAttempts(
+      [task('a', null)],
+      [
+        // #1 returned nothing (crash / timeout / cancelled): estimate only, no actual.
+        { taskId: 'a', attempt: 1, assignment: assigned('p/small', 0.001), result: null },
+        // #2 reported tokens but no price: actual tokens, actual cost unknown (null), not 0.
+        {
+          taskId: 'a',
+          attempt: 2,
+          assignment: assigned('p/mid', 0.004),
+          result: withModel(result('a', 2, null), 'p/mid'),
+        },
+      ],
+    );
+    expect(record?.routed).toEqual([
+      { source: 'router', attempt: 1, model: 'p/small', costUsd: 0.001, routeApplied: null },
+      { source: 'router', attempt: 2, model: 'p/mid', costUsd: 0.004, routeApplied: true },
+    ]);
+    expect(record?.attempts.map((a) => [a.attempt, a.costUsd])).toEqual([[2, null]]);
+    // The planner estimate is not overwritten by routing.
+    expect(record?.estimate.costUsd).toBeNull();
+    const summary = summarizeCosts(record === undefined ? [] : [record]);
+    expect(summary.routed).toEqual({
+      attempts: 2,
+      costUsd: 0.005,
+      unpricedAttempts: 0,
+      routeNotApplied: 0,
+    });
+    expect(summary.actual.costUsd).toBeNull();
+    expect(summary.actual.unpricedAttempts).toBe(1);
+  });
+
+  it('marks a route as not applied when the runner reports another model or none (ACP)', () => {
+    const [record] = costRecordsFromAttempts(
+      [task('a', null)],
+      [
+        {
+          taskId: 'a',
+          attempt: 1,
+          assignment: assigned('p/small', 0.001),
+          result: withModel(result('a', 1, null), null),
+        },
+      ],
+    );
+    expect(record?.routed[0]?.routeApplied).toBe(false);
+    expect(summarizeCosts(record === undefined ? [] : [record]).routed.routeNotApplied).toBe(1);
+  });
+
+  it('keeps unpriced routed estimates unknown and refuses duplicates', () => {
+    const base = createCostRecord(task('a', null));
+    const r = recordRoutedEstimate(base, {
+      attempt: 1,
+      model: 'p/x',
+      costUsd: null,
+      routeApplied: null,
+    });
+    expect(summarizeCosts([r]).routed).toMatchObject({ costUsd: null, unpricedAttempts: 1 });
+    expect(() =>
+      recordRoutedEstimate(r, { attempt: 1, model: 'p/x', costUsd: 1, routeApplied: null }),
+    ).toThrow(/exists/);
+    expect(base.routed).toEqual([]);
   });
 });

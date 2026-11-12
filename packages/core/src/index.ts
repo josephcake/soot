@@ -1,8 +1,8 @@
 /**
  * @soot/core
  *
- * Milestone 0 foundation only: package metadata and environment parsing.
- * No orchestration, routing, or provider code exists yet (see ROADMAP.md).
+ * Package metadata, `SOOT_*` environment parsing, and the leveled logger that applies
+ * `SOOT_LOG_LEVEL`. No orchestration code lives here.
  */
 
 export { PACKAGE_NAME, PACKAGE_VERSION } from './package-info.js';
@@ -14,3 +14,4 @@ export {
   type LogLevel,
   type ParseEnvOptions,
 } from './env.js';
+export { SILENT_LOGGER, createLogger, type LineLevel, type Logger } from './log.js';

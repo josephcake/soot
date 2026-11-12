@@ -66,9 +66,11 @@ Bring your own keys, read only by the provider adapters from environment variabl
 ## Audit and state
 
 - `SOOT_DATA_DIR/audit/<run>.jsonl` (mode 0600): worktrees, leases, attempts, scope violations,
-  commands run or refused, approvals, verdicts, merges and working-tree updates.
-- `soot.sqlite` stores the prompt, tasks, results and outcomes in plain text (no encryption at
-  rest); the state directory is created with mode 0700.
+  commands run or refused, approvals, verdicts, merges and working-tree updates, plus every
+  routing decision and ACP model-route outcome (ADR-030).
+- `soot.sqlite` stores the prompt, tasks, results, outcomes, provider cooldowns (provider id,
+  reason, until, error detail) and per-attempt spend in plain text (no encryption at rest); the
+  state directory is created with mode 0700. No credential is stored.
 
 ## Known limits
 

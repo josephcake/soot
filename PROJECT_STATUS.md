@@ -4,11 +4,11 @@ Last Updated: 2026-11-12
 
 ## Current Phase
 
-Milestone 6 — Universal Skill and CLI (in progress, partial: CLI, MCP server, skill and docs against fixtures and a scripted mock agent; exit criteria not met); Milestone 2 In Progress (partial; M2-07 Blocked)
+Milestone 6 — Universal Skill and CLI (in progress, partial: CLI, MCP server, skill and docs against fixtures and a scripted mock agent; exit criteria not met); Milestone 7 — IDE Extensions (started, partial: a thin VS Code extension tested with a fake editor API and the mock agent, not run in a real editor); Milestone 2 In Progress (partial; M2-07 Blocked)
 
 ## Overall Progress
 
-5 / 8 milestones completed (M0, M1, M3, M4, M5 verified locally; M2 and M6 in progress, partial; M7 not started)
+5 / 8 milestones completed (M0, M1, M3, M4, M5 verified locally; M2, M6 and M7 in progress, partial)
 
 ## Current Status
 
@@ -27,6 +27,22 @@ ACP agent. Not done: no vendor harness has been run (Claude Code
 M6-04, Codex M6-05: not claimed), no real provider (M2-07 Blocked), so M6-07 (real recorded acceptance runs) is Blocked and M6-08 not started. M5
 gained protected paths: a task that edits a protected file (such as its acceptance test) fails
 even inside its lease.
+
+Milestone 7 is In Progress (partial, ADR-029). `apps/vscode-extension` is a thin VS Code /
+Cursor extension with no runtime dependencies that runs the soot CLI and shows the run as text
+blocks: orchestration on/off, task graph by layer, active agents, per-attempt models, escalation
+and retry events, failures, estimate vs actual cost, cancel task and stop run. The engine gained
+`soot stop <run> --task <id>` (also MCP), a live events file and per-attempt status. Tested only
+with a fake `vscode` module and the real CLI with `--agent mock`; a `.vsix` builds locally and is
+not published. It has **not been run in VS Code or Cursor**, so the M7 exit criteria are not met,
+and no other editor (Windsurf, Kilo Code, Copilot) is claimed.
+
+Engine hardening (ADR-030, mocks only, no milestone status change): `SOOT_DATA_DIR` and
+`SOOT_LOG_LEVEL` are honoured by the real CLI and `soot mcp`; provider cooldowns and
+per-attempt run-budget spend persist in `soot.sqlite`, so a restarted process keeps skipping a
+provider that was down and rebuilds its budget; routed estimates go into cost records
+automatically and every routing decision is in the run's audit log; attempts default to a
+30-minute timeout. The unpublished `.vsix` has an unverified sideload note.
 
 Milestone 5 is Completed and verified locally on real temporary git repositories, with real
 `node --test`, `tsc` and lint commands run by soot itself and mock agents that write files (no
@@ -103,14 +119,17 @@ local only.
 - [ ] M0-11 (first hosted CI run) is blocked on publish approval.
 - [ ] Milestone 6. M6-01, M6-03 and M6-09 (generic ACP driver, mock ACP agent only) Completed; M6-02 and M6-06 Implemented; M6-04, M6-05, M6-08 Not Started; M6-07 Blocked on M2-07. Exit criteria not met.
 
+- [ ] Milestone 7. M7-01 (VS Code extension) Implemented, not run in a real editor; M7-05…M7-08 (graph, models, cost, cancellation) Implemented with local tests; M7-02…M7-04 (Cursor, Windsurf, Kilo Code) Not Started. Exit criteria not met.
+
 ## Not Started
 
-- [ ] Milestone 7 — IDE Extensions
+- (none; M7-02…M7-04 have not started)
 
 ## Blockers
 
 - Hosted GitHub Actions CI cannot run until the repository is published (ADR-006; Mochi decides). Not a milestone blocker: the same checks are verified locally.
 - **Milestone 6 exit criteria** need a supported harness: running the generic ACP driver against a real harness the user already installed and signed in to (M6-04/05), which this box must not do, plus real providers (M2-07). Mochi decides next steps.
+- **Milestone 7 exit criteria** need the extension loaded and used in a real VS Code (and, separately, each other editor). This box has no editor; Mochi decides where and when.
 - **M2-07 Blocked:** Milestone 2's real-provider exit criterion needs user-supplied (BYOK) keys for at least two providers (ADR-011, ADR-017). soot will not mint, request, or spend.
 
 ## Known Issues
@@ -119,14 +138,15 @@ local only.
 - Agents are mocks. Since M5, "complete" means soot ran the checks on the task's real diff, but no real model has produced a diff yet.
 - No OS sandbox: worktrees isolate git state, not processes (TECHNICAL_DEBT.md).
 - Provider adapters are verified against mocked HTTP only. Real wire behaviour is unverified until M2-07.
-- Escalation triggers still use agent signals, plus soot's own verification since M5. Provider health and run spend are in memory; model outcomes are persisted.
+- Escalation triggers still use agent signals, plus soot's own verification since M5. Provider cooldowns, run spend and model outcomes are persisted (ADR-030); the CLI has no resume command yet.
 - See `TECHNICAL_DEBT.md`.
 
 ## Next Actions
 
-1. Mochi: review the generic ACP driver (ADR-027). Verifying it with a real harness (M6-04/05) needs a machine where the user has installed and signed in to that harness and agrees to a run; Mochi decides when and where. Milestone 7 not started.
-2. Mochi: decide when and whether to run M2-07 with user-supplied keys. Real routing outcomes, model-backed evaluation and calibrated thresholds depend on it.
-3. Optional: run `pnpm vitest run packages/provider-adapters/src/local-endpoint.test.ts` with Ollama or LM Studio running to verify M2-03 live.
+1. Mochi: review the generic ACP driver (ADR-027). Verifying it with a real harness (M6-04/05) needs a machine where the user has installed and signed in to that harness and agrees to a run; Mochi decides when and where.
+2. Mochi: arrange a run of the unpublished `.vsix` in a real VS Code (then Cursor) to verify M7-01/M7-02.
+3. Mochi: decide when and whether to run M2-07 with user-supplied keys. Real routing outcomes, model-backed evaluation and calibrated thresholds depend on it.
+4. Optional: run `pnpm vitest run packages/provider-adapters/src/local-endpoint.test.ts` with Ollama or LM Studio running to verify M2-03 live.
 
 ## MVP Readiness
 
@@ -134,10 +154,10 @@ Not Ready (MVP-01, MVP-02, MVP-05 core in place with fixtures/mocks; MVP-03 part
 
 ## Latest Validation
 
-Recorded 2026-11-12 ~03:22 PST from a real run of `bash scripts/ci.sh` in `/workspace/soot`, Node 24.22.1, git 2.47.3. The run covers install --frozen-lockfile, typecheck, lint, format:check, test and a clean build.
+Recorded 2026-11-12 ~04:04 PST from a real run of `bash scripts/ci.sh` in `/workspace/soot`, Node 24.22.1, git 2.47.3. The run covers install --frozen-lockfile, typecheck, lint, format:check, test and a clean build.
 
-- **Build:** pass. `tsc -b` built all 13 packages.
-- **Tests:** pass. 58 test files (57 passed, 1 skipped) and 423 tests (422 passed, 1 skipped, 0 failures), Vitest 5.1.0. The skipped test is the live local-endpoint test: no runtime was listening on 127.0.0.1:11434 or :1234.
+- **Build:** pass. `tsc -b` built all 14 workspace packages (13 + `apps/vscode-extension`).
+- **Tests:** pass. 64 test files (63 passed, 1 skipped) and 459 tests (458 passed, 1 skipped, 0 failures), Vitest 5.1.0. The skipped test is the live local-endpoint test: no runtime was listening on 127.0.0.1:11434 or :1234.
 - **Typecheck / lint / format:** pass.
-- **Network audit:** the in-process suite was re-run with a global `fetch` guard; the only real requests were the two localhost probes. Subprocess tests (`soot stop`, `soot mcp`, and the mock ACP agent processes spawned by `soot run --agent acp`) run built soot code that does not depend on the provider adapters. The only ACP agent ever spawned is soot's own mock (`node .../mock-agent-bin.js`); no vendor binary was run. No key-like environment variables were set.
+- **Network audit:** the in-process suite was re-run with a global `fetch` guard; the only real requests were the two localhost probes. Subprocess tests (`soot stop`, `soot mcp`, the env/log-level/health/audit/cost CLI tests in `tests/hardening-cli.test.ts`, and the mock ACP agent processes spawned by `soot run --agent acp`) run built soot code that does not depend on the provider adapters. The only ACP agent ever spawned is soot's own mock (`node .../mock-agent-bin.js`); no vendor binary was run. No key-like environment variables were set.
 - **Quick start:** `docs/installation.md` reproduced step by step from a fresh `git clone` of this repo in `/tmp` (demo runs: unattended INCOMPLETE exit 2, interactive `y` COMPLETE exit 0 with fast-forward, Test 4 shape INCOMPLETE with the review unverified, skill installed into a temp dir).

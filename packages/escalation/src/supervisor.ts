@@ -60,6 +60,26 @@ export interface AdaptiveSupervisorOptions {
   readonly routingLog?: RoutingLog;
   readonly runId?: string;
   readonly onEvent?: (event: AdaptiveEvent) => void;
+  /**
+   * Persisted per-attempt spend for this run (e.g. `ExecutionStore.spendLedger(runId)`). Spend
+   * is loaded from it on construction, so a restarted run's budget includes every attempt of
+   * the run, also finished tasks that are not planned again; each new estimate or reported
+   * actual is saved to it (ADR-030).
+   */
+  readonly spend?: SpendLedger;
+}
+
+/** Spend attributed to one attempt: a reported actual, or the routed estimate. Never invented. */
+export interface AttemptSpendEntry {
+  readonly taskId: string;
+  readonly attempt: number;
+  readonly usd: number;
+  readonly source: 'actual' | 'estimate';
+}
+
+export interface SpendLedger {
+  attemptSpend(): readonly AttemptSpendEntry[];
+  saveAttemptSpend(spend: AttemptSpendEntry): void;
 }
 
 const rank = (c: Complexity) => COMPLEXITY_LEVELS.indexOf(c);
@@ -70,19 +90,46 @@ const pct = (x: number) => `${Math.round(x * 100)}%`;
 const usd = (x: number | null) => (x === null ? 'unknown' : `$${x.toFixed(6)}`);
 
 /** Spend attributed to an attempt: reported actual if any, else its routed estimate. */
-const spendOf = (r: AttemptRecord) =>
-  r.result?.usage.costUsd ?? r.assignment?.estimatedCostUsd ?? 0;
+function spendOf(r: AttemptRecord): Omit<AttemptSpendEntry, 'taskId' | 'attempt'> | null {
+  const actual = r.result?.usage.costUsd ?? null;
+  if (actual !== null) return { usd: actual, source: 'actual' };
+  const estimate = r.assignment?.estimatedCostUsd ?? null;
+  return estimate === null ? null : { usd: estimate, source: 'estimate' };
+}
 
 export class AdaptiveSupervisor implements AttemptSupervisor {
   readonly config: EscalationConfig;
   readonly events: AdaptiveEvent[] = [];
   readonly #options: AdaptiveSupervisorOptions;
-  /** Spend per task, for the run budget (refreshed from each task's history). */
-  readonly #spent = new Map<string, number>();
+  /** Spend per task and attempt, for the task and run budgets. */
+  readonly #spent = new Map<string, Map<number, number>>();
 
   constructor(options: AdaptiveSupervisorOptions) {
     this.#options = options;
     this.config = escalationConfig(options.config);
+    for (const s of options.spend?.attemptSpend() ?? []) this.#setSpend(s.taskId, s.attempt, s.usd);
+  }
+
+  #setSpend(taskId: string, attempt: number, usd: number): void {
+    const byAttempt = this.#spent.get(taskId) ?? new Map<number, number>();
+    byAttempt.set(attempt, usd);
+    this.#spent.set(taskId, byAttempt);
+  }
+
+  /** Record an attempt's spend (in memory and in the ledger, if any). */
+  #recordSpend(taskId: string, attempt: number, spend: ReturnType<typeof spendOf>): void {
+    if (spend === null) return;
+    this.#setSpend(taskId, attempt, spend.usd);
+    this.#options.spend?.saveAttemptSpend({ taskId, attempt, ...spend });
+  }
+
+  #taskSpent(taskId: string): number {
+    return [...(this.#spent.get(taskId)?.values() ?? [])].reduce((a, b) => a + b, 0);
+  }
+
+  /** Total spend of the run so far (actuals where reported, else routed estimates). */
+  runSpent(): number {
+    return [...this.#spent.keys()].reduce((n, id) => n + this.#taskSpent(id), 0);
   }
 
   #emit(event: AdaptiveEvent): void {
@@ -119,10 +166,10 @@ export class AdaptiveSupervisor implements AttemptSupervisor {
 
   plan(ctx: PlanContext): PlanDecision {
     const { task, attempt, history } = ctx;
-    this.#spent.set(
-      task.id,
-      history.reduce((n, r) => n + spendOf(r), 0),
-    );
+    for (const r of history) {
+      const spend = spendOf(r);
+      if (spend !== null) this.#setSpend(task.id, r.attempt, spend.usd);
+    }
     const last = history.at(-1);
     let decision: PlanDecision;
     if (last === undefined) {
@@ -133,9 +180,11 @@ export class AdaptiveSupervisor implements AttemptSupervisor {
     }
     if (decision.action === 'run') decision = this.#checkBudget(task, decision.assignment);
     if (decision.action === 'run') {
-      // Reserve the in-flight attempt's estimate so concurrent tasks see it against the run budget.
-      const reserved = decision.assignment.estimatedCostUsd ?? 0;
-      this.#spent.set(task.id, (this.#spent.get(task.id) ?? 0) + reserved);
+      // Reserve the in-flight attempt's estimate so concurrent tasks (and a restarted run, via the
+      // ledger) see it against the run budget until the attempt's actual replaces it.
+      const reserved = decision.assignment.estimatedCostUsd;
+      if (reserved !== null)
+        this.#recordSpend(task.id, attempt, { usd: reserved, source: 'estimate' });
     }
     if (decision.action === 'stop') {
       this.#emit({
@@ -160,14 +209,14 @@ export class AdaptiveSupervisor implements AttemptSupervisor {
         reason: `budget cannot be checked: ${assignment.model ?? 'the model'} has no price`,
       };
     }
-    const taskSpent = this.#spent.get(task.id) ?? 0;
+    const taskSpent = this.#taskSpent(task.id);
     if (taskBudgetUsd !== null && taskSpent + next > taskBudgetUsd) {
       return {
         action: 'stop',
         reason: `task budget exhausted: spent ${usd(taskSpent)} + next attempt ${usd(next)} > ${usd(taskBudgetUsd)}`,
       };
     }
-    const runSpent = [...this.#spent.values()].reduce((a, b) => a + b, 0);
+    const runSpent = this.runSpent();
     if (runBudgetUsd !== null && runSpent + next > runBudgetUsd) {
       return {
         action: 'stop',
@@ -363,10 +412,11 @@ export class AdaptiveSupervisor implements AttemptSupervisor {
 
   review(ctx: ReviewContext): ReviewDecision {
     const { task, record, history } = ctx;
-    this.#spent.set(
-      task.id,
-      [...history, record].reduce((n, r) => n + spendOf(r), 0),
-    );
+    for (const r of history) {
+      const spend = spendOf(r);
+      if (spend !== null) this.#setSpend(task.id, r.attempt, spend.usd);
+    }
+    this.#recordSpend(task.id, record.attempt, spendOf(record));
     const step = nextStep(task, record, history, this.config);
     const model = record.assignment?.model ?? null;
     const health = this.#options.health;

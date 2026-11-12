@@ -14,6 +14,9 @@
     },
     {
       "path": "../agent-runtime"
+    },
+    {
+      "path": "../model-registry"
     }
   ]
 }

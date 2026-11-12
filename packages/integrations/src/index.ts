@@ -76,6 +76,7 @@ export {
   type WorkingTreeUpdate,
 } from './report.js';
 export {
+  auditLogPath,
   runCodebaseWorkflow,
   type CodebaseRunResult,
   type CodebaseWorkflowOptions,

@@ -382,3 +382,34 @@ the old one.
 - **Alternatives:** an alias map from soot refs to agent values (more config, deferred until a real agent needs it); choosing the closest-sounding value (guessing); `session/set_model` from unstable ACP (not in the stable entry point).
 - **Consequences:** Routing works end to end for agents that offer the option. Tested only with soot's mock ACP agent; no vendor agent's option names are known or claimed.
 - **Reversible:** Yes.
+
+## ADR-029: Thin VS Code / Cursor extension over the soot CLI
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Mochi authorised starting M7 locally; Sweed chose the details under ADR-012).
+- **Context:** Milestone 7 asks for IDE visibility and control while core orchestration stays independent of any IDE. Spec §8.B lists what the extension should show: orchestration on/off, task graph, active agents, assigned models, execution status, escalation events, estimated and actual cost, retries and failures, task cancellation. ADR-009 keeps UI simple and block-shaped.
+- **Decision:**
+  - `apps/vscode-extension` (`soot-vscode`, private, version 0.0.0) is an ESM extension (`"type": "module"`, VS Code `^1.100`). It has **no runtime dependencies** and imports no `@soot/*` package. It runs `node <soot.cliPath> <command> --json` in the workspace folder (no shell) and reads the JSON. Orchestration stays in the engine; a test asserts the extension imports nothing from it.
+  - Runs started from the editor are **unattended** (no terminal on stdin): soot refuses approval-needing work and leaves results on the integration branch. The extension never approves, has no approve-all, and does not change host approval settings.
+  - View: one tree (`soot.runs`) and one plain-text board (`soot: Show board`), built from stacked text blocks (`[■ task · demo-small→demo-mid · 2x]`, graph by dependency layer). No webview, no dashboard. Status is polled from `soot status <run>`, one call at a time.
+  - Engine additions the extension needs, usable from the CLI and MCP too: `soot stop <run> --task <id>` / `soot_stop {runId, taskId}` cancels one task through `Scheduler.cancel(taskId)` (dependents skipped, other tasks continue), signalled by a `<run>.stop-task.<id>` control file; the run's routing events are appended live to `reports/<run>.events.jsonl`; `soot status <run>` adds per-attempt details, `running`, and the events.
+  - Orchestration on/off is a workspace setting (`soot.enabled`, default off); runs are refused while off.
+  - A `.vsix` can be built locally with `pnpm dlx @vscode/vsce@4.1.0 package` (not a devDependency, so no publishing tool sits in the lockfile). Nothing is published.
+- **Alternatives:** importing the engine into the extension host (couples the IDE to the engine, and native SQLite in Electron); talking to `soot mcp` over stdio (needs an MCP client dependency in the extension; the CLI JSON is simpler); a webview dashboard (against ADR-009); file watching instead of polling (deferred).
+- **Consequences:** The same extension should load in VS Code-compatible editors, but each editor counts only after its own verified run. It needs a local soot checkout and Node 24 on the machine. Tested only with a fake `vscode` module; not yet run in any real editor.
+- **Reversible:** Yes.
+
+## ADR-030: Engine hardening: env-driven runtime, persisted health and spend, audited routing, default timeout
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Mochi authorised the hardening; Sweed chose the details under ADR-012).
+- **Context:** Before real keys or a real harness, four gaps would hurt: `SOOT_LOG_LEVEL` was parsed but ignored; provider health and run-budget spend lived in memory and were lost on restart; routed estimates and routing decisions were not recorded with the run; an attempt without `attemptTimeoutMs` could hang forever.
+- **Decision:**
+  - **Runtime from env.** `runtimeFromEnv` (apps/cli) uses `parseEnv` for the state directory (`--data-dir` > `SOOT_DATA_DIR` > `~/.soot`) and the log level, for every command including `soot mcp`. `createLogger` (`@soot/core`) filters stderr log lines by level; command results are never filtered, and `--json` turns log lines off. No `.env` file is read.
+  - **Persisted health.** `ProviderHealth` takes an optional `ProviderHealthStore`; `ExecutionStore` implements it with a `provider_cooldowns` table (schema v4). Only timed cooldowns persist; auth and not-configured marks last for the process.
+  - **Persisted spend.** `AdaptiveSupervisor` takes an optional `SpendLedger` and keeps spend per attempt: the in-flight routed estimate when an attempt starts, replaced by the reported actual (or kept as the estimate when none was reported) when it is reviewed. `ExecutionStore.spendLedger(runId)` stores it in `attempt_spend`; a new supervisor loads it, so a restarted run's budget includes every earlier attempt. Unpriced attempts have no row; nothing is invented.
+  - **Cost records and audit.** `costRecordsFromAttempts` builds `TaskCostRecord`s with a separate `routed` list (`RoutedEstimate`, branded `EstimatedUsd`, plus `routeApplied` from the runner's reported model) next to reported actuals; `soot run` saves them and `soot cost` returns them. Every supervisor decision is an audit `routing-decision`; every ACP route outcome is a `model-route`. Routing history stays credited only where the route was applied (ADR-028).
+  - **Default timeout.** `DEFAULT_ATTEMPT_TIMEOUT_MS` = 30 minutes in the scheduler when `attemptTimeoutMs` is unset; an explicit value wins. The ACP 2 s cancel cutoff is unchanged.
+- **Alternatives:** a separate spend total per run (loses which attempt it came from and double-counts on resume); persisting auth failures (would lock a provider out after the key is fixed); writing the full `RoutingLog` candidate table into the audit log (large; decisions with reasons are enough for review); no default timeout (a hung runner blocks forever); a shorter default (real agent attempts can take many minutes).
+- **Consequences:** Restarted runs keep skipping down providers and respect budgets across restarts. Schema v4 migrates older databases in place. Only mock agents exercise any of it so far; values (30 min, cooldowns) are untuned.
+- **Reversible:** Yes.

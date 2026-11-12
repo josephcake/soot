@@ -62,6 +62,16 @@ export interface CodebaseWorkflowOptions {
   readonly gitEnv?: NodeJS.ProcessEnv;
   /** Called with the scheduler as soon as it exists (to cancel single tasks). */
   readonly onScheduler?: (scheduler: Scheduler) => void;
+  /**
+   * The run's audit log, when the caller also writes to it (e.g. routing decisions). Default: a
+   * new log at `<dataDir>/audit/<runId>.jsonl`.
+   */
+  readonly audit?: AuditLog;
+}
+
+/** The audit log file of a run. */
+export function auditLogPath(dataDir: string, runId: string): string {
+  return join(dataDir, 'audit', `${runId}.jsonl`);
 }
 
 export interface CodebaseRunResult {
@@ -124,10 +134,7 @@ export async function runCodebaseWorkflow(o: CodebaseWorkflowOptions): Promise<C
     ...(o.identity === undefined ? {} : { identity: o.identity }),
     ...(o.gitEnv === undefined ? {} : { gitEnv: o.gitEnv }),
   });
-  const audit = new AuditLog({
-    runId: o.runId,
-    file: join(o.dataDir, 'audit', `${o.runId}.jsonl`),
-  });
+  const audit = o.audit ?? new AuditLog({ runId: o.runId, file: auditLogPath(o.dataDir, o.runId) });
   audit.record('run-started', null, {
     repository: repo.root,
     branch: repo.branch,

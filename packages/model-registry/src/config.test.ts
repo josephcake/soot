@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -22,6 +22,7 @@ describe('registry config (M2-04, M2-06)', () => {
     const file = join(dir, 'models.json');
     writeFileSync(file, JSON.stringify(TEST_CONFIG));
     const config = loadRegistryConfigFile(file);
+    rmSync(dir, { recursive: true, force: true });
     expect(config.providers.map((p) => p.id)).toEqual([
       'anthropic',
       'openai',

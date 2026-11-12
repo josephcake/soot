@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@soot/agent-runtime": "workspace:*",
+    "@soot/model-registry": "workspace:*",
     "@soot/task-graph": "workspace:*"
   }
 }

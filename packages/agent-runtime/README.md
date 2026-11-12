@@ -1,8 +1,9 @@
 # @soot/agent-runtime
 
-> **Status: partial (Milestone 1, 4 and 5 scope implemented).** There is **no real
-> agent runner** (no model or harness calls). The only runner is `MockAgentRunner`, a test
-> double.
+> **Status: partial (Milestone 1, 4 and 5 scope implemented).** This package has
+> **no real agent runner** (no model or harness calls); its runner is `MockAgentRunner`, a test
+> double. The generic ACP runner lives in `@soot/harness-adapters` and has only driven soot's
+> own mock ACP agent.
 
 ## Scheduler
 
@@ -34,7 +35,8 @@ With a `supervisor` (`AttemptSupervisor`; `@soot/escalation` provides `AdaptiveS
   rate-limited, unavailable, timeout, auth, invalid-output, crash);
 - `review` returns accept, retry after `delayMs`, or fail. Retry timers hold no concurrency
   slot and are cleared on cancellation;
-- `attemptTimeoutMs` aborts a hung attempt and records a timeout;
+- `attemptTimeoutMs` (default `DEFAULT_ATTEMPT_TIMEOUT_MS`, 30 minutes) aborts a hung attempt
+  and records a timeout;
 - `previousAttemptRecords` continues persisted history after a restart.
 
 Without a supervisor the default `SINGLE_ATTEMPT` keeps the Milestone 1 behaviour.

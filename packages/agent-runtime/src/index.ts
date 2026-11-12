@@ -56,6 +56,7 @@ export {
   type MockScript,
 } from './mock-agent.js';
 export {
+  DEFAULT_ATTEMPT_TIMEOUT_MS,
   Scheduler,
   runTaskGraph,
   type ExecutionJournal,

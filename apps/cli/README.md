@@ -7,7 +7,7 @@
 ```
 soot run "<prompt>" --agent mock --mock-script <file> [--interactive] [--json]
 soot run "<prompt>" --agent acp [--interactive]     # spawns acpAgent from soot.config.json
-soot status [run-id] | cost [run-id] | models | config | stop <run-id>
+soot status [run-id] | cost [run-id] | models | config | stop <run-id> [--task <task-id>]
 soot install-skill --target <dir> [--harness agents|claude|grok] [--force]
 soot mcp --agent mock --mock-script <file>
 ```

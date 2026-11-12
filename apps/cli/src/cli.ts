@@ -1,10 +1,10 @@
 import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 import { parseArgs } from 'node:util';
-import { parseEnv } from '@soot/core';
+import { createLogger } from '@soot/core';
 import type { CommandOutput } from '@soot/harness-adapters';
 import { interactiveApprovals, unattendedApprovals } from './approvals.js';
-import { SootEngine, type AgentMode } from './engine.js';
+import { SootEngine, runtimeFromEnv, type AgentMode } from './engine.js';
 import { SKILL_TARGETS, installSkill, type SkillTarget } from './install-skill.js';
 import { VERSION } from './version.js';
 
@@ -28,14 +28,17 @@ Usage:
   soot cost [<run-id>]
   soot models
   soot config [--repo <dir>]
-  soot stop <run-id>
+  soot stop <run-id> [--task <task-id>]
   soot mcp [--agent mock --mock-script <file> | --agent acp]   MCP server on stdio (unattended)
   soot install-skill [--target <dir>] [--harness agents,claude,grok] [--force]
 
 Global options:
   --config <file>   project config (default <repo>/soot.config.json)
   --data-dir <dir>  state directory (default $SOOT_DATA_DIR or ~/.soot)
-  --json            print JSON instead of text
+  --json            print JSON instead of text (no log lines on stderr)
+
+Environment: SOOT_DATA_DIR (state directory), SOOT_LOG_LEVEL (silent|error|warn|info|debug,
+default info; log lines go to stderr). No .env file is read.
 
 Agents: --agent mock runs a scripted test double (no model is called). --agent acp runs each
 task through the ACP agent command configured as "acpAgent" in soot.config.json (generic ACP
@@ -52,6 +55,7 @@ const OPTIONS = {
   agent: { type: 'string' },
   'mock-script': { type: 'string' },
   'run-id': { type: 'string' },
+  task: { type: 'string' },
   interactive: { type: 'boolean' },
   target: { type: 'string' },
   harness: { type: 'string' },
@@ -108,9 +112,16 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
   }
   const asJson = values.json === true;
   try {
-    const env = parseEnv(io.env, { cwd: io.cwd });
-    const dataDir =
-      values['data-dir'] === undefined ? env.dataDir : resolve(io.cwd, values['data-dir']);
+    // SOOT_DATA_DIR / SOOT_LOG_LEVEL (parseEnv). With --json, log lines are off so stdout and
+    // stderr stay machine-readable; otherwise they go to stderr at SOOT_LOG_LEVEL.
+    const runtime = runtimeFromEnv(io.env, io.cwd, values['data-dir']);
+    const dataDir = runtime.dataDir;
+    const log = createLogger(asJson ? 'silent' : runtime.logLevel, (line) => {
+      io.stderr(`${line}\n`);
+    });
+    log.debug(
+      `soot: debug: state dir ${dataDir} (from ${runtime.dataDirSource}); log level ${runtime.logLevel}; command ${command}`,
+    );
     const agent = agentMode(values.agent, values['mock-script']);
     const interactive = command === 'run' && (values.interactive === true || io.stdinIsTTY);
     const approvals = interactive
@@ -124,11 +135,7 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
       approvals: approvals.gate,
       gitEnv: { ...io.env },
       agentEnv: { ...io.env },
-      progress: asJson
-        ? () => undefined
-        : (line) => {
-            io.stderr(`${line}\n`);
-          },
+      log,
     });
     try {
       switch (command) {
@@ -166,7 +173,7 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
         }
         case 'stop': {
           if (rest[0] === undefined) throw new UsageError('stop needs a run id');
-          const out = await engine.stop(rest[0]);
+          const out = await engine.stop(rest[0], values.task);
           print(io, out, asJson);
           return out.ok ? 0 : 1;
         }

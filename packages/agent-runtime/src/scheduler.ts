@@ -70,6 +70,13 @@ export interface ExecutionJournal {
   taskFinished(outcome: TaskOutcome): void;
 }
 
+/**
+ * Attempt timeout used when `attemptTimeoutMs` is not set: 30 minutes. Long enough for real
+ * agent work, short enough that a hung runner (one that never settles and ignores abort) ends
+ * as a `timeout` failure instead of blocking the run. Documented in docs/configuration.md.
+ */
+export const DEFAULT_ATTEMPT_TIMEOUT_MS = 30 * 60_000;
+
 export interface SchedulerOptions {
   readonly runner: AgentRunner;
   /** Maximum tasks running at once. Default 4. */
@@ -88,7 +95,11 @@ export interface SchedulerOptions {
    * (Milestone 4, e.g. @soot/escalation). Default: one attempt per task.
    */
   readonly supervisor?: AttemptSupervisor;
-  /** Abort an attempt that runs longer than this and record it as a `timeout` failure. */
+  /**
+   * Abort an attempt that runs longer than this and record it as a `timeout` failure.
+   * Default: `DEFAULT_ATTEMPT_TIMEOUT_MS` (30 minutes), so a hung runner never blocks a run
+   * forever. An explicit value always wins.
+   */
   readonly attemptTimeoutMs?: number;
   /** Reviewed attempts from earlier runs (e.g. loaded from the state store), per task. */
   readonly previousAttemptRecords?: ReadonlyMap<string, readonly AttemptRecord[]>;
@@ -370,19 +381,17 @@ export class Scheduler {
       assignment: plan.assignment,
       at: startedAt,
     });
-    const timeoutMs = this.#options.attemptTimeoutMs;
-    if (timeoutMs !== undefined) {
-      running.timer = setTimeout(() => {
-        running.timedOut = true;
-        this.#endAttempt(task, controller, null, {
-          kind: 'timeout',
-          message: `attempt timed out after ${timeoutMs} ms`,
-          provider: null,
-          retryAfterMs: null,
-        });
-        controller.abort();
-      }, timeoutMs);
-    }
+    const timeoutMs = this.#options.attemptTimeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS;
+    running.timer = setTimeout(() => {
+      running.timedOut = true;
+      this.#endAttempt(task, controller, null, {
+        kind: 'timeout',
+        message: `attempt timed out after ${timeoutMs} ms`,
+        provider: null,
+        retryAfterMs: null,
+      });
+      controller.abort();
+    }, timeoutMs);
 
     let promise: Promise<unknown>;
     try {

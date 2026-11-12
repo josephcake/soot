@@ -24,12 +24,15 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Intentional] Decomposition is fixture-only.** `FixtureDecomposer` matches recorded
   prompts and refuses others; there is no prompt analysis. Model-backed decomposition comes
   after Milestone 2. Fixture token estimates are placeholders, not measurements.
-- **[Intentional] Agents are mocks.** `MockAgentRunner` is the only runner; in Milestone 5 it
-  writes scripted files into the worktree it is given. Since M5, "complete" means soot ran the
+- **[Intentional] Agents are mocks.** `MockAgentRunner` and the generic ACP runner
+  (`AcpAgentRunner`, ADR-027) are the only runners, and the ACP runner has only driven soot's own
+  mock ACP agent. In Milestone 5 the mock writes scripted files into the worktree it is given. Since M5, "complete" means soot ran the
   configured checks on the task's real diff (ADR-025), but no real model has produced a diff.
   Harness runners are Milestone 6; real providers depend on M2-07.
-- **[Intentional] Timeouts are opt-in.** Without `attemptTimeoutMs` a hung runner blocks its
-  task until cancelled. Without a supervisor the scheduler runs one attempt per task.
+- **[Intentional] Attempt timeouts default to 30 minutes** (`DEFAULT_ATTEMPT_TIMEOUT_MS`,
+  ADR-030); an explicit `attemptTimeoutMs` wins. A hung runner ends as `timeout` instead of
+  blocking its task; a runner that ignores the abort is abandoned, not killed. The default is
+  untuned. Without a supervisor the scheduler runs one attempt per task.
 - **[Resolved in M6] Orchestrator wiring.** `SootEngine` (`apps/cli`) is the reusable entry
   point used by the CLI and the MCP server (ADR-026).
 - **[Intentional] Write conflicts are still planned from declared file sets.** Since M5 actual
@@ -43,11 +46,11 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Intentional] Subprocess tests build all packages** (`tsc -b`) in `beforeAll` because the
   child process runs the built output (kill/restart, `soot stop`, `soot mcp`). The build is
   serialised by a lock directory under `node_modules/.cache` so parallel test files do not race.
-- **[Intentional] SQLite migrations are hand-written** (v1→v2 in place; unknown versions are
-  refused). There is no migration framework. Scheduler timestamps in `RunReport` are process-monotonic; persisted times are
+- **[Intentional] SQLite migrations are hand-written** (v1, v2 or v3 → v4 in place; unknown
+  versions are refused). There is no migration framework. Scheduler timestamps in `RunReport` are process-monotonic; persisted times are
   wall-clock ISO strings.
-- **[Intentional] `parseEnv` is not called by any runtime yet** and nothing loads `.env`
-  files; it exists to fix the config contract for local-first state (`SOOT_DATA_DIR`).
+- **[Intentional] Nothing loads `.env` files.** `parseEnv` is called by the `soot` CLI and
+  `soot mcp` (ADR-030), so `SOOT_DATA_DIR` and `SOOT_LOG_LEVEL` must be exported in the shell.
 - **[Intentional] Vitest projects are discovered by directory scan** in `vitest.config.ts`,
   and workspace packages are aliased to `src/` for tests. Packages under `apps/` other than
   `cli` need an alias entry when added.
@@ -57,9 +60,12 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Blocked] No real provider has been called (M2-07).** All adapter behaviour is verified
   against mocked HTTP shaped from SDK and provider documentation. Wire-format drift will only
   show up with user-supplied keys (ADR-011).
-- **[Intentional] Provider health is in memory.** Cooldowns reset when the process restarts.
-  Milestone 4 marks health from attempt failures, but still in memory: a restarted run can
-  retry a provider that was down. Persist health in `soot.sqlite` when runs get long.
+- **[Resolved, ADR-030] Provider health persists.** Timed cooldowns (outage, rate limit,
+  timeout) are stored in `soot.sqlite` (`provider_cooldowns`) through `ProviderHealthStore`;
+  `soot run` loads them, so a restarted process skips a provider that was down until its
+  cooldown ends. **[Intentional]** Auth and "not configured" marks stay per process (a fixed key
+  works on the next run). Cooldowns are global to the state directory, not per project. Only
+  mock agents have produced cooldowns so far (M2-07).
 - **[Intentional] OpenAI uses Chat Completions, not the Responses API** (ADR-022). Responses-only
   features (built-in tools, reasoning summaries) are unavailable until an adapter is added.
 - **[Intentional] Pricing is flat per million tokens.** There are no long-context tiers,
@@ -86,14 +92,18 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Intentional] Outcome history is wired in `soot run`.** Soot-verified outcomes in
   `soot.sqlite` (`model_outcomes`) are loaded before routing (ADR-026). Only mock agents have
   produced outcomes so far, so no history reflects a real model.
-- **[Intentional] The routing log is in memory** (text and JSON Lines export). It is not yet
-  written into the M5 audit log.
+- **[Partly resolved, ADR-030] Routing decisions are in the audit log.** Every supervisor
+  decision (assign, retry, fallback, escalate, downgrade, accept, fail, stop) with its model and
+  reason is a `routing-decision` entry in `audit/<run>.jsonl`; ACP route outcomes are
+  `model-route` entries. **[Intentional]** The full candidate table (`RoutingLog`) is still in
+  memory only.
 - **[Intentional] Latency is not part of routing** (spec §5 step 6). Availability is, through
   `ProviderHealth`.
 - **[Intentional] Routing is re-done per attempt** (Milestone 4), but never inside an attempt.
-- **[Intentional] Routed estimates are not yet written back automatically** into cost records.
-  `tests/m3-routing-end-to-end.test.ts` shows the wiring by hand. The runtime will do it when
-  real execution lands.
+- **[Resolved, ADR-030] Routed estimates are written into cost records automatically.**
+  `soot run` and `soot cost` build `TaskCostRecord`s from the persisted attempts: a `routed`
+  estimate per attempt (with `routeApplied` from what the runner reported), actuals only from
+  results the runner returned. Estimates never fill in actuals.
 - **[Intentional] The router tests use a fictional registry.** Its prices and reliability priors
   describe no real model.
 
@@ -108,10 +118,14 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   them from real runs after M2-07.
 - **[Intentional] Spend uses routed estimates** when the runner reports no actual cost (mocks
   always do). Real costs depend on M2-07.
-- **[Intentional] Run-budget spend lives in the supervisor's memory**; on resume it is rebuilt
-  per task from persisted attempt history only as each task is planned again.
+- **[Resolved, ADR-030] Run-budget spend persists per attempt** (`attempt_spend`: reported
+  actual, else routed estimate) and is reloaded when a supervisor is created, so a restarted run
+  counts every earlier attempt, also of finished tasks. **[Intentional]** An attempt that was
+  interrupted keeps its routed estimate as its spend (no actual was reported; none is
+  invented), which errs on the side of stopping early. The CLI still has no resume command.
 - **[Intentional] Latency is not a trigger.** Slow attempts are handled only by
-  `attemptTimeoutMs`.
+  `attemptTimeoutMs`, which defaults to 30 minutes (`DEFAULT_ATTEMPT_TIMEOUT_MS`, ADR-030). The
+  default is a safety net, not a tuned value; calibrate it once real agents run (M2-07, M6-04/05).
 - **[Intentional] Backoff timing tests use real timers** with short delays (tens of ms) and
   lower-bound assertions.
 
@@ -130,9 +144,13 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   branch; soot does not attempt automatic conflict resolution or rebase-and-retry.
 - **[Intentional] The fixture-repo tests use real git, `node --test` and `tsc`** with real
   timers; they take ~25 s and need git ≥ 2.38 (`merge-tree --write-tree`).
-- **[Intentional] Provider health and run spend remain in memory** (unchanged from M4).
+- **[Resolved, ADR-030] Provider health and run spend persist** in `soot.sqlite` (see above).
 
 ## Skill, CLI and MCP (Milestone 6)
+
+- **[Intentional] Few log lines exist per level** (ADR-030). `SOOT_LOG_LEVEL` filters what the
+  CLI and `soot mcp` print on stderr (progress at `info`, a handful of `warn` lines, `debug`
+  context). There is no structured log file beyond the audit log and the events file.
 
 - **[Blocked] No vendor harness has been run (M6-04, M6-05).** The generic ACP driver is tested
   only with soot's own mock ACP agent. Claude Code and Codex stay `not-implemented`. Real model
@@ -175,9 +193,10 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Intentional] No dedicated security or conduct contact address yet.** `SECURITY.md` and
   `CODE_OF_CONDUCT.md` point to private maintainer contact / GitHub private reporting after
   publish. Must be set before the first public release.
-- **[Intentional] Spec-listed docs not yet written** (`installation`, `providers`,
-  `model-routing`, `task-decomposition`, `harness-integrations`, `security`, `examples`).
-  They will be written with the features they describe, to avoid documenting fiction.
+- **[Intentional] Some spec-listed docs are not written yet:** `task-decomposition`,
+  `harness-integrations` and `examples`. `installation`, `providers`, `model-routing` and
+  `security` exist in `docs/`. The rest will be written with the features they describe, to
+  avoid documenting fiction.
 
 ## Security
 
@@ -188,7 +207,25 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   text (no encryption at rest). Security requirements from
   spec §13 are tracked as tasks in `TASKS.md`.
 
+## IDE extension (Milestone 7)
+
+- **[Blocked] The VS Code extension has not been run in a real editor** (M7-01). It is tested
+  with a fake `vscode` module and the real CLI with `--agent mock`. Cursor, Windsurf, Kilo Code
+  and GitHub Copilot are unverified and not claimed. Running it needs an editor on a machine
+  where Mochi agrees to it.
+- **[Intentional] IDE runs are unattended.** Approval-needing work is refused and results wait
+  on `soot/<run>/integration`; approving needs `soot run` in a terminal. No in-editor approval
+  UI yet.
+- **[Intentional] The extension polls** `soot status <run>` (500 ms, one call at a time) while a
+  run is going, spawning a Node process per poll. No file watching or long-lived connection.
+- **[Intentional] The extension needs a local soot checkout** (`soot.cliPath`) and Node 24+.
+  The `.vsix` is built locally and not published.
+- **[Intentional] Task cancellation is cooperative.** `soot stop --task` writes a control file
+  that the run polls every 200 ms; a runner that ignores the abort is abandoned, not killed.
+- **[Intentional] No OS process sandbox** (unchanged): see Codebase integration and
+  docs/security.md.
+
 ## UI
 
-- **[Intentional] No UI exists.** Future UI follows ADR-009 (simple, pixelated, Lego-block
-  modules); polish is not debt.
+- **[Intentional] The only UI is the extension's text blocks** (ADR-009, ADR-029): a tree and a
+  plain-text board. No webview or dashboard; polish is not debt.

@@ -113,11 +113,11 @@ export function createSootMcpServer(
     {
       title: 'Stop a soot run',
       description:
-        'Ask a running soot run to cancel. Running agents are aborted; nothing is merged.',
-      inputSchema: z.object({ runId }),
+        'Ask a running soot run to cancel. Running agents are aborted; nothing is merged. With taskId, cancel only that task (its dependents are skipped; other tasks continue).',
+      inputSchema: z.object({ runId, taskId: runId.optional() }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    async (args) => result(await service.stop(args.runId)),
+    async (args) => result(await service.stop(args.runId, args.taskId)),
   );
   return server;
 }

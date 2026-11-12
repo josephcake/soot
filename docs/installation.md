@@ -174,6 +174,27 @@ soot run "<recorded prompt>" --agent acp --interactive
   (`packages/harness-adapters/dist/acp/mock-agent-bin.js <script.json>`). Whether any vendor
   harness works this way is untested.
 
+## VS Code / Cursor extension (local build, not run in an editor yet)
+
+> Sideloading steps for VS Code and Cursor are in
+> [`apps/vscode-extension/README.md`](../apps/vscode-extension/README.md#sideloading-the-local-build-unverified).
+> They are **unverified**: the `.vsix` has not been run in a real editor.
+
+`apps/vscode-extension` is a thin view onto the CLI (ADR-029). It is unpublished and has only
+been tested with a fake editor API, so treat it as experimental.
+
+```sh
+pnpm build
+pnpm --filter soot-vscode package:vsix    # vsce package via pnpm dlx; nothing is published
+code --install-extension apps/vscode-extension/dist/soot-vscode-0.0.0.vsix
+```
+
+Then set `soot.cliPath` to `<checkout>/apps/cli/dist/bin.js`, run **soot: Enable
+orchestration**, and **soot: Run a prompt**. Runs from the editor are unattended: anything that
+needs approval is refused and left on `soot/<run>/integration`. Right-click a running task to
+cancel it (`soot stop <run> --task <id>` does the same from a terminal). Settings are listed in
+[`apps/vscode-extension/README.md`](../apps/vscode-extension/README.md).
+
 ## Verify the checkout
 
 ```sh

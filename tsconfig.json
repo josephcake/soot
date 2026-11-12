@@ -39,6 +39,9 @@
     },
     {
       "path": "./apps/cli"
+    },
+    {
+      "path": "./apps/vscode-extension"
     }
   ]
 }

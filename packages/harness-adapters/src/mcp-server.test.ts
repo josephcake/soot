@@ -39,8 +39,8 @@ class FakeService implements OrchestrationService {
     this.calls.push('models');
     return Promise.resolve({ ok: true, text: 'alpha/test-small', data: { models: [] } });
   }
-  stop(runId: string): Promise<CommandOutput> {
-    this.calls.push(`stop:${runId}`);
+  stop(runId: string, taskId?: string): Promise<CommandOutput> {
+    this.calls.push(taskId === undefined ? `stop:${runId}` : `stop:${runId}:${taskId}`);
     return Promise.resolve({ ok: true, text: `stop requested for ${runId}`, data: { runId } });
   }
 }
@@ -97,6 +97,7 @@ describe('soot MCP server (official SDK client, in-process transport)', () => {
     await client.callTool({ name: 'soot_cost', arguments: {} });
     await client.callTool({ name: 'soot_models', arguments: {} });
     await client.callTool({ name: 'soot_stop', arguments: { runId: 'r1' } });
+    await client.callTool({ name: 'soot_stop', arguments: { runId: 'r1', taskId: 'build-ui' } });
     expect(missing.isError).toBe(true);
     expect(service.calls).toEqual([
       'status:*',
@@ -104,6 +105,7 @@ describe('soot MCP server (official SDK client, in-process transport)', () => {
       'cost:latest',
       'models',
       'stop:r1',
+      'stop:r1:build-ui',
     ]);
   });
 
@@ -112,6 +114,11 @@ describe('soot MCP server (official SDK client, in-process transport)', () => {
     const client = await connect(service);
     const bad = await client.callTool({ name: 'soot_stop', arguments: { runId: '../../etc' } });
     expect(bad.isError).toBe(true);
+    const badTask = await client.callTool({
+      name: 'soot_stop',
+      arguments: { runId: 'r1', taskId: '../x' },
+    });
+    expect(badTask.isError).toBe(true);
     const empty = await client.callTool({ name: 'soot_run', arguments: { prompt: '' } });
     expect(empty.isError).toBe(true);
     expect(service.calls).toEqual([]);

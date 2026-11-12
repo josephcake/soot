@@ -12,7 +12,11 @@ every exit criterion is verified from real runs. Dates are recorded only when ve
 | M4        | Adaptive Execution                | Completed (verified locally with mock agents)       | 2026-11-12      |
 | M5        | Codebase Integration and Safety   | Completed (verified locally; fixture repos, mocks)  | 2026-11-12      |
 | M6        | Universal Skill and CLI           | In Progress (partial)                               | —               |
-| M7        | IDE Extensions                    | Not Started                                         | —               |
+| M7        | IDE Extensions                    | In Progress (partial; not run in a real editor)     | —               |
+
+Engine hardening (ADR-030: env-driven runtime, persisted provider health and spend, audited
+routing, default attempt timeout) is tracked in TASKS.md (H-01…H-05) and changes no milestone
+status.
 
 The MVP (MVP-01…MVP-08) is reached at the end of M5 for the engine and M6 for the first
 harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-009.
@@ -95,5 +99,5 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Deliverables:** VS Code extension; Cursor, Windsurf, Kilo Code compatibility; task visualization; model assignment visibility; cost reporting.
 - **Dependencies:** M6.
 - **Acceptance / exit criteria:** at least one functional IDE extension; additional integrations verified individually; core orchestration remains independent of IDE implementation.
-- **Status:** Not Started
+- **Status:** In Progress (partial, ADR-029). A thin VS Code extension (`apps/vscode-extension`) exists and is tested against a fake `vscode` module and the real CLI with `--agent mock`; a `.vsix` builds locally and is not published. Exit criteria not met: it has not been run in VS Code or Cursor, and no other editor is verified. Core independence holds by construction (the extension only runs the CLI) and is checked by a test.
 - **Completion date:** —

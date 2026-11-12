@@ -25,6 +25,11 @@ export default defineConfig({
   resolve: {
     // Resolve workspace packages to source so tests never depend on a stale dist/.
     alias: [
+      // The VS Code API exists only inside the editor; extension tests use a small fake.
+      {
+        find: /^vscode$/,
+        replacement: `${repoRoot}apps/vscode-extension/src/test-support/fake-vscode.ts`,
+      },
       {
         find: /^@soot\/(cli)$/,
         replacement: `${repoRoot}apps/$1/src/index.ts`,

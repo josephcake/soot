@@ -1,20 +1,29 @@
 # Configuration
 
-Configuration is read from environment variables. `.env.example` lists every variable; copy it
-to `.env` for local overrides. `.env` is git-ignored and must never be committed.
+Configuration is read from environment variables. `.env.example` lists every variable. A local
+`.env` is git-ignored and must never be committed; soot does not read it, so load it into your
+shell yourself (for example `set -a; . ./.env; set +a`).
 
-> Nothing loads `.env` automatically yet. Variables are read only by
-> `parseEnv(process.env)` from `@soot/core`; the `soot` CLI uses it for the state directory
-> (override with `--data-dir`).
+> Nothing loads `.env` automatically. Variables are read only by `parseEnv(process.env)` from
+> `@soot/core`. The `soot` CLI and `soot mcp` use it for the state directory (override with
+> `--data-dir`) and the log level (ADR-030). Export the variables in your shell.
 
 ## Orchestrator variables (read today by `parseEnv`)
 
 | Variable         | Default   | Values                                                        | Purpose                                                                                               |
 | ---------------- | --------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `SOOT_LOG_LEVEL` | `info`    | `silent`, `error`, `warn`, `info`, `debug` (case-insensitive) | Engine log verbosity. Invalid values throw `EnvConfigError`.                                          |
+| `SOOT_LOG_LEVEL` | `info`    | `silent`, `error`, `warn`, `info`, `debug` (case-insensitive) | Log lines on stderr (see below). Invalid values fail the command with `SOOT_LOG_LEVEL: expected …`.   |
 | `SOOT_DATA_DIR`  | `~/.soot` | absolute or relative path (relative resolves against cwd)     | Local-first state: `soot.sqlite` (execution state, M1); `worktrees/<run>/`, `audit/<run>.jsonl` (M5). |
 
 Empty values are treated as unset.
+
+Log levels: `info` prints progress (task assignments, escalations, provider cooldowns carried
+over from earlier runs); `warn` only warnings (for example "ACP model NOT applied", a task that
+could not be cancelled); `error` only errors; `silent` nothing; `debug` adds the state directory
+and where it came from, the config and models files, the effective attempt timeout and the audit
+log path. Log lines go to stderr. Command results (stdout, and the final error message) are
+always printed. `--json` turns log lines off so the output stays machine-readable. `soot mcp`
+logs to stderr only; stdout carries the MCP protocol.
 
 The state directory is created with mode `0700` if missing. `soot.sqlite` holds runs (the
 exact original prompt, the task graph) and per-task attempts with their validated structured
@@ -123,7 +132,7 @@ task edits. Unknown keys are rejected.
 | `protectedPaths`     | `[]`       | Paths no task may change, even inside its lease. The config, registry, fixtures and mock script are added automatically. |
 | `allowedExecutables` | `[]`       | Exact `argv[0]` values allowed to run. Destructive programs are refused regardless.                                      |
 | `concurrency`        | `4`        | Tasks running at once (1–16).                                                                                            |
-| `attemptTimeoutMs`   | none       | Abort an attempt after this long.                                                                                        |
+| `attemptTimeoutMs`   | `1800000`  | Abort an attempt after this many ms (default 30 minutes, `DEFAULT_ATTEMPT_TIMEOUT_MS`); a hung runner ends as `timeout`. |
 | `escalation`         | defaults   | Escalation limits and budgets (`@soot/escalation`, e.g. `{ "sameModelRetries": 0 }`).                                    |
 | `fixtures`           | none       | JSON array of extra recorded decompositions `{ id, prompt, tasks }`.                                                     |
 | `acpAgent`           | none       | ACP agent for `--agent acp`: `command`, `args`, `passEnv` (variable names; credential-like names are rejected).          |
@@ -133,6 +142,28 @@ Check entries: `name`, `kind` (`test`, `typecheck`, `lint`, `acceptance`), `argv
 
 ## CLI state files
 
-Under the state directory: `soot.sqlite` (runs, attempts, model outcomes), `reports/<run>.json`
-(the consolidated report), `audit/<run>.jsonl`, `worktrees/<run>/` (removed after the run) and
-`control/<run>.lock|.stop` (used by `soot stop`).
+Under the state directory: `soot.sqlite` (runs, attempts, model outcomes, provider cooldowns,
+per-attempt spend), `reports/<run>.json` (the consolidated report and cost records),
+`reports/<run>.events.jsonl` (live routing events), `audit/<run>.jsonl` (security-relevant
+actions and every routing decision), `worktrees/<run>/` (removed after the run) and
+`control/<run>.lock|.stop|.stop-task.<id>` (used by `soot stop`).
+
+### Attempt timeout
+
+Every attempt has a timeout. When `attemptTimeoutMs` is not set, it is
+`DEFAULT_ATTEMPT_TIMEOUT_MS` = 1,800,000 ms (30 minutes), so a runner that hangs and ignores
+abort cannot block a run forever: the attempt ends as a `timeout` failure and the escalation
+rules decide what happens next. An explicit `attemptTimeoutMs` always wins. `soot config` shows
+the effective value. Separately, the ACP driver waits 2 s for an agent to stop after
+`session/cancel` before it gives up on it (unchanged).
+
+### What persists across restarts (ADR-030)
+
+- **Provider cooldowns** (`provider_cooldowns`): a provider marked unavailable for an outage,
+  rate limit or timeout stays skipped by later runs and restarted processes until its cooldown
+  ends. Auth and "not configured" marks last for the process only, so fixing a key and running
+  again is enough.
+- **Run-budget spend** (`attempt_spend`): one row per attempt, the reported actual cost when the
+  runner sent one, otherwise the routed estimate. A restarted run rebuilds its budget from these
+  rows, including tasks that already finished. Nothing is filled in: an attempt without a price
+  has no row.

@@ -19,6 +19,8 @@ export {
   ExecutionStore,
   STATE_DB_FILE,
   openExecutionStore,
+  type AttemptSpend,
+  type AttemptSpendLedger,
   type CreateRunInput,
   type ModelOutcome,
   type OpenExecutionStoreOptions,

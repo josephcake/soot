@@ -42,6 +42,9 @@ export { isCallable, providerRestriction, type ProviderRestriction } from './pol
 export {
   DEFAULT_COOLDOWN_MS,
   ProviderHealth,
+  type PersistedProviderCooldown,
+  type ProviderHealthOptions,
+  type ProviderHealthStore,
   type ProviderStatus,
   type UnavailableReason,
 } from './health.js';

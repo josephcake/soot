@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 /*
  * Audit log (Milestone 5, spec §13). Append-only JSON Lines: one entry per security-relevant
  * action (worktrees, attempts, diffs, scope violations, commands run or refused, approvals,
- * integration, working-tree updates). Each line is written synchronously so the log survives
+ * integration, working-tree updates, routing decisions). Each line is written synchronously so the log survives
  * a crash. Values are redacted for key-like strings before they are stored.
  */
 
@@ -32,6 +32,10 @@ export const AUDIT_EVENT_TYPES = [
   'working-tree-updated',
   'working-tree-not-updated',
   'untrusted-content-flagged',
+  // Routing (ADR-030): every supervisor decision (assign, retry, fallback, escalate, downgrade,
+  // accept, fail, stop), and for ACP whether the agent applied the routed model (ADR-028).
+  'routing-decision',
+  'model-route',
 ] as const;
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
 

@@ -1,0 +1,125 @@
+{
+  "name": "soot-vscode",
+  "displayName": "soot (local build, unpublished)",
+  "description": "Thin VS Code / Cursor view onto a local soot engine: task graph, models, escalations, cost, cancellation. Talks to the soot CLI; contains no orchestration.",
+  "version": "0.0.0",
+  "private": true,
+  "publisher": "soot-local",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/extension.js",
+  "files": [
+    "dist/**/*.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "vscode": "^1.100.0",
+    "node": ">=24.11.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "soot.enable",
+        "title": "soot: Enable orchestration"
+      },
+      {
+        "command": "soot.disable",
+        "title": "soot: Disable orchestration"
+      },
+      {
+        "command": "soot.run",
+        "title": "soot: Run a prompt"
+      },
+      {
+        "command": "soot.refresh",
+        "title": "soot: Refresh"
+      },
+      {
+        "command": "soot.showBoard",
+        "title": "soot: Show task board"
+      },
+      {
+        "command": "soot.stopRun",
+        "title": "soot: Stop run"
+      },
+      {
+        "command": "soot.cancelTask",
+        "title": "soot: Cancel task"
+      }
+    ],
+    "configuration": {
+      "title": "soot",
+      "properties": {
+        "soot.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Orchestration on/off for this workspace. Off by default."
+        },
+        "soot.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the soot CLI entry (apps/cli/dist/bin.js in your soot checkout)."
+        },
+        "soot.nodePath": {
+          "type": "string",
+          "default": "node",
+          "description": "Node.js executable used to run the soot CLI."
+        },
+        "soot.agent": {
+          "type": "string",
+          "enum": [
+            "none",
+            "mock",
+            "acp"
+          ],
+          "default": "none",
+          "description": "Agent for runs: none (soot refuses), mock (scripted test double), acp (the acpAgent command in soot.config.json)."
+        },
+        "soot.mockScript": {
+          "type": "string",
+          "default": "mock-agent.json",
+          "description": "Mock agent script for soot.agent = mock (relative to the workspace folder)."
+        },
+        "soot.dataDir": {
+          "type": "string",
+          "default": "",
+          "description": "soot state directory (SOOT_DATA_DIR). Empty: soot's default."
+        }
+      }
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "soot.runs",
+          "name": "soot"
+        }
+      ]
+    },
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "soot.cancelTask",
+          "when": "view == soot.runs && viewItem == soot.task.active"
+        },
+        {
+          "command": "soot.stopRun",
+          "when": "view == soot.runs && viewItem == soot.run.running"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run --config ../../vitest.config.ts --project @soot/vscode-extension",
+    "package:vsix": "pnpm dlx @vscode/vsce@4.1.0 package --no-dependencies --allow-missing-repository --out dist/soot-vscode-0.0.0.vsix"
+  },
+  "devDependencies": {
+    "@types/vscode": "1.100.0"
+  }
+}

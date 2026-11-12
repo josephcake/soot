@@ -7,10 +7,10 @@ export type LogLevel = (typeof LOG_LEVELS)[number];
 
 /** Validated runtime configuration derived from `SOOT_*` environment variables. */
 export interface EnvConfig {
-  /** Verbosity for future engine logging. Default: `info`. */
+  /** Verbosity of soot's stderr log lines (see `createLogger`). Default: `info`. */
   readonly logLevel: LogLevel;
   /**
-   * Absolute directory for local-first state (future SQLite DB, worktrees, audit logs).
+   * Absolute directory for local-first state (`soot.sqlite`, worktrees, reports, audit logs).
    * Default: `~/.soot`.
    */
   readonly dataDir: string;

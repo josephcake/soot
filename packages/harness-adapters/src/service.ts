@@ -32,6 +32,6 @@ export interface OrchestrationService {
   cost(runId?: string): Promise<CommandOutput>;
   /** Configured models, their eligibility and exclusions. */
   models(): Promise<CommandOutput>;
-  /** Ask a running run to stop. */
-  stop(runId: string): Promise<CommandOutput>;
+  /** Ask a running run to stop, or to cancel one task (dependents skipped, others continue). */
+  stop(runId: string, taskId?: string): Promise<CommandOutput>;
 }

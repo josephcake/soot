@@ -5,6 +5,14 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Fixed (docs)
+
+- Stale tracking claims after ADR-030: attempt timeouts are no longer described as opt-in,
+  `parseEnv` as unused, schema v4 is documented, the ACP runner is listed next to the mock, and
+  the already-written docs (`installation`, `providers`, `model-routing`, `security`) and the
+  existing `skills/` and `examples/demo-app/` are no longer listed as missing. The vsix sideload
+  note now says plainly that the build has not been run in a real editor.
+
 ### Added
 
 - `@soot/cli` (was a stub): the `soot` binary with `run`, `models`, `status`, `config`, `cost`,
@@ -23,6 +31,21 @@ All notable changes are recorded here by milestone. Format loosely follows
   command. New approval action `harness-permission`. Tested only with the mock ACP agent.
 - ACP routed model (ADR-028): soot sets the agent's `model` session option to the routed model
   when offered; otherwise every attempt reports "route not applied". `acpRoutes` in run reports.
+- Milestone 7 (partial, ADR-029): `apps/vscode-extension` (`soot-vscode`, private, unpublished),
+  a thin VS Code / Cursor extension over the soot CLI: orchestration on/off, task graph by
+  layer, active agents, per-attempt models, escalation and retry events, failures, estimate vs
+  actual cost, cancel task, stop run. Tested with a fake `vscode` module and the real CLI with
+  `--agent mock`; not run in a real editor.
+- Engine hardening (ADR-030): `SOOT_LOG_LEVEL` and `SOOT_DATA_DIR` honoured by the CLI and
+  `soot mcp` (`runtimeFromEnv`, `createLogger`); provider cooldowns and per-attempt run-budget
+  spend persisted in `soot.sqlite` (schema v4) and reloaded on restart; routed estimates written
+  into cost records automatically (`costRecordsFromAttempts`, `soot cost` / run report
+  `costRecords`); routing decisions in the audit log (`routing-decision`, `model-route`); a
+  default 30-minute attempt timeout (`DEFAULT_ATTEMPT_TIMEOUT_MS`); `soot config` shows it.
+- Unverified sideload note for the unpublished `.vsix` (VS Code, Cursor).
+- `soot stop <run> --task <id>` and MCP `soot_stop` `taskId`: cancel one task (dependents
+  skipped, other tasks continue). Live routing events in `reports/<run>.events.jsonl`;
+  `soot status <run>` adds per-attempt details, `running` and events.
 
 ### Changed
 

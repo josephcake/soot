@@ -80,8 +80,15 @@ endpoints are refused by policy (ADR-016). See
 **None yet.** `soot mcp` serves soot over MCP (tested with the official MCP SDK client, not
 inside any product) and `soot install-skill` installs the universal skill into `.agents`,
 `.claude` and `.grok` skill folders. `soot run --agent acp` runs tasks through an ACP agent
-command you configure (one generic driver, tested only with soot's own mock ACP agent). Claude Code and Codex integration (M6-04/05) and IDE
-extensions (M7) are not built. No compatibility is claimed until tested.
+command you configure (one generic driver, tested only with soot's own mock ACP agent). Claude Code and Codex integration (M6-04/05) are not built.
+
+### IDE extension (Milestone 7, partial)
+
+`apps/vscode-extension` is a thin, unpublished VS Code / Cursor extension that runs the soot CLI
+and shows the task graph, active agents, models, escalations, failures and cost as text blocks,
+with cancel-task and stop-run. It is tested with a fake editor API and the mock agent only and
+**has not been run in VS Code or Cursor**. Windsurf, Kilo Code and Copilot are not claimed. No
+compatibility is claimed until tested.
 
 ## Try it (no keys)
 
@@ -104,8 +111,8 @@ Individual steps: `pnpm run typecheck | lint | format:check | test | build`.
 
 ## Configuration
 
-Copy `.env.example` to `.env` if you need to override defaults. `SOOT_LOG_LEVEL` and
-`SOOT_DATA_DIR` configure soot. Provider keys are read only by the provider adapters, from
+`SOOT_LOG_LEVEL` and `SOOT_DATA_DIR` configure soot (listed in `.env.example`); export them
+in your shell. Provider keys are read only by the provider adapters, from
 the variable your model config names (`apiKeyEnv`), and nothing loads `.env` files yet. Details: [`docs/configuration.md`](docs/configuration.md). Never commit real keys.
 
 ## Example execution and cost optimization

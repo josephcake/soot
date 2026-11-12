@@ -1,8 +1,10 @@
 /*
  * Provider availability with cooldowns. A provider that fails with an outage, a rate limit
  * after retries, or an auth error is marked unavailable until its cooldown passes, so
- * selection and fallback skip it. In-memory for Milestone 2 (persisting cooldowns in SQLite is
- * tracked in TECHNICAL_DEBT.md).
+ * selection and fallback skip it. With a `ProviderHealthStore` (e.g. `soot.sqlite`, ADR-030),
+ * timed cooldowns survive a restart: a restarted run still skips a provider that was down
+ * until its cooldown ends. Session-long marks (auth, not configured) are not persisted: they
+ * end with the process, so fixing a key and restarting is enough.
  */
 
 export type UnavailableReason = 'outage' | 'rate-limited' | 'auth' | 'not-configured' | 'timeout';
@@ -25,15 +27,43 @@ export const DEFAULT_COOLDOWN_MS: Readonly<Record<UnavailableReason, number>> = 
   'not-configured': Number.POSITIVE_INFINITY,
 };
 
+/** A persisted timed cooldown. `until` is epoch ms. */
+export interface PersistedProviderCooldown {
+  readonly provider: string;
+  readonly reason: UnavailableReason;
+  readonly until: number;
+  readonly detail: string | null;
+}
+
+/** Where timed cooldowns are kept across restarts. */
+export interface ProviderHealthStore {
+  /** Cooldowns still in force at `now` (epoch ms). */
+  providerCooldowns(now: number): PersistedProviderCooldown[];
+  saveProviderCooldown(cooldown: PersistedProviderCooldown): void;
+  clearProviderCooldown(provider: string): void;
+}
+
+export interface ProviderHealthOptions {
+  readonly now?: () => number;
+  readonly store?: ProviderHealthStore;
+}
+
 export class ProviderHealth {
   readonly #now: () => number;
+  readonly #store: ProviderHealthStore | null;
   readonly #state = new Map<
     string,
     { reason: UnavailableReason; until: number; detail: string | null }
   >();
 
-  constructor(now: () => number = Date.now) {
-    this.#now = now;
+  /** `new ProviderHealth()`, `new ProviderHealth(clock)` or `new ProviderHealth({ now, store })`. */
+  constructor(options: (() => number) | ProviderHealthOptions = {}) {
+    const o = typeof options === 'function' ? { now: options } : options;
+    this.#now = o.now ?? Date.now;
+    this.#store = o.store ?? null;
+    for (const c of this.#store?.providerCooldowns(this.#now()) ?? []) {
+      this.#state.set(c.provider, { reason: c.reason, until: c.until, detail: c.detail });
+    }
   }
 
   markUnavailable(
@@ -42,15 +72,15 @@ export class ProviderHealth {
     options: { cooldownMs?: number; detail?: string } = {},
   ): void {
     const cooldown = options.cooldownMs ?? DEFAULT_COOLDOWN_MS[reason];
-    this.#state.set(provider, {
-      reason,
-      until: this.#now() + cooldown,
-      detail: options.detail ?? null,
-    });
+    const entry = { reason, until: this.#now() + cooldown, detail: options.detail ?? null };
+    this.#state.set(provider, entry);
+    if (Number.isFinite(entry.until)) this.#store?.saveProviderCooldown({ provider, ...entry });
+    else this.#store?.clearProviderCooldown(provider);
   }
 
   markAvailable(provider: string): void {
     this.#state.delete(provider);
+    this.#store?.clearProviderCooldown(provider);
   }
 
   status(provider: string): ProviderStatus {

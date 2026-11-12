@@ -89,6 +89,18 @@ final validation in a detached worktree → approval → fast-forward user's tre
 consolidated report (incomplete first, overlaps, integration, validation, cost) + model_outcomes → routing
 ```
 
+## Milestone 7 IDE flow (partial, not run in a real editor)
+
+```
+VS Code / Cursor ──► apps/vscode-extension ──spawn──► node apps/cli/dist/bin.js <cmd> --json
+   tree + board         (no @soot imports)              run | status <run> | cost <run> | stop <run> [--task id]
+        ▲                                                       │
+        └──────────── polls status (events.jsonl, attempts) ◄───┘
+```
+
+The extension holds no orchestration state; everything it shows comes from the engine's JSON
+(ADR-029). Runs from the editor are unattended, so approvals are refused, never given.
+
 ## Design summary (planned)
 
 A universal TypeScript orchestration core with thin adapters. The core never depends on a
@@ -133,9 +145,10 @@ and file-conflict management.
 ├── .github/workflows/ci.yml  # hosted CI (not yet running: repo unpublished)
 ├── scripts/ci.sh             # local CI, same steps as the workflow
 ├── apps/
-│   └── cli/                  # partial — `soot` CLI and SootEngine (M6)
+│   ├── cli/                  # partial — `soot` CLI and SootEngine (M6)
+│   └── vscode-extension/     # partial — thin VS Code / Cursor view over the CLI (M7, ADR-029)
 ├── packages/
-│   ├── core/                 # foundation: package metadata + SOOT_* env parsing (real, tested)
+│   ├── core/                 # foundation: package metadata, SOOT_* env parsing, logger (real, tested)
 │   ├── planner/              # prompt intake, fixture decomposer (M1, partial)
 │   ├── task-graph/           # task/result contracts + JSON Schema, dependency graph (M1, partial)
 │   ├── model-registry/       # partial (M2) — user model config, availability, selection, sourced pricing
@@ -144,7 +157,7 @@ and file-conflict management.
 │   ├── context-manager/      # SQLite execution state (M1, partial); context selection later
 │   ├── escalation/           # adaptive supervisor: triggers, escalation, bounds (M4)
 │   ├── provider-adapters/    # partial (M2) — ModelClient over AI SDK; Anthropic, OpenAI, OpenAI-compatible
-│   ├── harness-adapters/     # partial — OrchestrationService, MCP server (M6)
+│   ├── harness-adapters/     # partial — OrchestrationService, MCP server, generic ACP runner (M6)
 │   ├── integrations/         # partial (M5) — worktrees, validation, integration, reports
 │   └── observability/        # cost records/reports (M1, M5), routing log (M3), audit log (M5)
 ├── docs/
@@ -161,32 +174,33 @@ and file-conflict management.
 
 ### Workspace packages
 
-| Path                          | Status            | First real milestone | Responsibility                                   |
-| ----------------------------- | ----------------- | -------------------- | ------------------------------------------------ |
-| `apps/cli/`                   | partial           | M6                   | `soot` CLI, SootEngine, config, skill installer  |
-| `packages/core/`              | foundation (real) | M0                   | Package metadata, `parseEnv` for `SOOT_*` vars   |
-| `packages/planner/`           | partial (M1)      | M1                   | Prompt intake; fixture decomposer (no model yet) |
-| `packages/task-graph/`        | partial (M1)      | M1                   | Task/result contracts, JSON Schema, DAG          |
-| `packages/model-registry/`    | partial (M2)      | M2                   | User model config, availability, sourced pricing |
-| `packages/model-router/`      | partial (M3)      | M3                   | Per-task routing, cost/reliability policies      |
-| `packages/agent-runtime/`     | partial (M1, M5)  | M1                   | Scheduler, attempts, approvals; MockAgentRunner  |
-| `packages/context-manager/`   | partial (M1, M5)  | M1                   | SQLite state, outcomes; untrusted context        |
-| `packages/escalation/`        | partial (M4)      | M4                   | Escalation, fallback, bounds, downgrade rules    |
-| `packages/provider-adapters/` | partial (M2)      | M2                   | ModelClient over AI SDK; retries, fallback, keys |
-| `packages/harness-adapters/`  | partial           | M6                   | Service interface, MCP server; no harness runner |
-| `packages/integrations/`      | partial (M5)      | M5                   | Worktrees, conflict detection, validation        |
-| `packages/observability/`     | partial (M1, M5)  | M1                   | Cost records/reports; routing log; audit log     |
+| Path                          | Status            | First real milestone | Responsibility                                        |
+| ----------------------------- | ----------------- | -------------------- | ----------------------------------------------------- |
+| `apps/cli/`                   | partial           | M6                   | `soot` CLI, SootEngine, config, skill installer       |
+| `apps/vscode-extension/`      | partial (M7)      | M7                   | Editor view over the CLI; no orchestration            |
+| `packages/core/`              | foundation (real) | M0                   | Package metadata, `parseEnv`, leveled logger          |
+| `packages/planner/`           | partial (M1)      | M1                   | Prompt intake; fixture decomposer (no model yet)      |
+| `packages/task-graph/`        | partial (M1)      | M1                   | Task/result contracts, JSON Schema, DAG               |
+| `packages/model-registry/`    | partial (M2)      | M2                   | User model config, availability, sourced pricing      |
+| `packages/model-router/`      | partial (M3)      | M3                   | Per-task routing, cost/reliability policies           |
+| `packages/agent-runtime/`     | partial (M1, M5)  | M1                   | Scheduler, attempts, approvals; MockAgentRunner       |
+| `packages/context-manager/`   | partial (M1, M5)  | M1                   | SQLite state, outcomes; untrusted context             |
+| `packages/escalation/`        | partial (M4)      | M4                   | Escalation, fallback, bounds, downgrade rules         |
+| `packages/provider-adapters/` | partial (M2)      | M2                   | ModelClient over AI SDK; retries, fallback, keys      |
+| `packages/harness-adapters/`  | partial           | M6                   | Service, MCP server, generic ACP runner (mock-tested) |
+| `packages/integrations/`      | partial (M5)      | M5                   | Worktrees, conflict detection, validation             |
+| `packages/observability/`     | partial (M1, M5)  | M1                   | Cost records/reports; routing log; audit log          |
 
 ### Planned directories not created yet
 
 These appear in the spec's suggested layout but are intentionally absent until their milestone,
 so the tree never implies support that does not exist:
 
-- `skills/universal-orchestrator/` — universal agent skill (`SKILL.md`), installed by `soot install-skill`.
-- `examples/demo-app/` — the demo project used by the quick start and the M6 tests.
-- `extensions/{cursor,windsurf,kilo,vscode}/` and `apps/vscode-extension/` — Milestone 7.
-- `examples/` — once there is something runnable end to end.
-- `docs/{installation,providers,model-routing,task-decomposition,harness-integrations,security,examples}.md` — written alongside the features they describe.
+- `extensions/{cursor,windsurf,kilo}/` — per-editor work, only if an editor needs more than `apps/vscode-extension` (M7-02…M7-04).
+- `docs/{task-decomposition,harness-integrations,examples}.md` — written alongside the features they describe.
+
+`skills/universal-orchestrator/` (installed by `soot install-skill`), `examples/demo-app/` (quick
+start and M6 tests) and `docs/{installation,providers,model-routing,security}.md` now exist.
 
 ## Package conventions
 

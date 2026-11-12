@@ -1,13 +1,20 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join, resolve } from 'node:path';
-import { MockAgentRunner, type AgentRunner, type ApprovalGate } from '@soot/agent-runtime';
+import {
+  DEFAULT_ATTEMPT_TIMEOUT_MS,
+  MockAgentRunner,
+  type AgentRunner,
+  type ApprovalGate,
+  type Scheduler,
+} from '@soot/agent-runtime';
 import {
   AcpAgentRunner,
   describeCommand,
   spawnAcpAgent,
   type AcpRouteRecord,
 } from '@soot/harness-adapters';
+import { SILENT_LOGGER, parseEnv, type LogLevel, type Logger } from '@soot/core';
 import { openExecutionStore, type ExecutionStore, type ModelOutcome } from '@soot/context-manager';
 import { AdaptiveSupervisor, type AdaptiveEvent } from '@soot/escalation';
 import type {
@@ -17,13 +24,25 @@ import type {
   RunRequest,
 } from '@soot/harness-adapters';
 import {
+  auditLogPath,
   renderConsolidatedReport,
   runCodebaseWorkflow,
   type ConsolidatedReport,
 } from '@soot/integrations';
-import { ModelRegistry, loadRegistryConfigFile, type ModelEntry } from '@soot/model-registry';
+import {
+  ModelRegistry,
+  ProviderHealth,
+  loadRegistryConfigFile,
+  type ModelEntry,
+} from '@soot/model-registry';
 import { historyFromAttempts, resolvePolicy } from '@soot/model-router';
-import { buildCostReport, renderCostReport } from '@soot/observability';
+import {
+  AuditLog,
+  buildCostReport,
+  costRecordsFromAttempts,
+  renderCostReport,
+  summarizeCosts,
+} from '@soot/observability';
 import {
   FixtureDecomposer,
   NoFixtureError,
@@ -32,7 +51,7 @@ import {
   type DecompositionFixture,
 } from '@soot/planner';
 import { CONFIG_FILE, insideRepo, loadProjectConfig, type LoadedConfig } from './config.js';
-import { holdRun, requestStop, runningInfo } from './control.js';
+import { holdRun, requestStop, requestTaskStop, runningInfo } from './control.js';
 import { loadMockScript } from './mock-script.js';
 
 /*
@@ -65,8 +84,42 @@ export interface EngineOptions {
   readonly gitEnv?: NodeJS.ProcessEnv;
   /** Environment an ACP agent's scrubbed env is taken from (default `process.env`). */
   readonly agentEnv?: NodeJS.ProcessEnv;
-  /** Progress lines (stderr in the CLI). */
-  readonly progress?: (line: string) => void;
+  /** Leveled log lines (stderr in the CLI, filtered by `SOOT_LOG_LEVEL`). Default: silent. */
+  readonly log?: Logger;
+}
+
+/** Where the state directory came from, for `debug` lines. */
+export type DataDirSource = '--data-dir' | 'SOOT_DATA_DIR' | 'default (~/.soot)';
+
+export interface EngineRuntime {
+  readonly dataDir: string;
+  readonly dataDirSource: DataDirSource;
+  readonly logLevel: LogLevel;
+}
+
+/**
+ * The engine's runtime settings from `SOOT_*` variables (`parseEnv`), as used by the CLI and
+ * `soot mcp`. `--data-dir` wins over `SOOT_DATA_DIR`. No `.env` file is read.
+ */
+export function runtimeFromEnv(
+  env: Readonly<Record<string, string | undefined>>,
+  cwd: string,
+  dataDirFlag?: string,
+): EngineRuntime {
+  const parsed = parseEnv(env, { cwd });
+  if (dataDirFlag !== undefined) {
+    return {
+      dataDir: resolve(cwd, dataDirFlag),
+      dataDirSource: '--data-dir',
+      logLevel: parsed.logLevel,
+    };
+  }
+  const fromEnv = (env.SOOT_DATA_DIR?.trim() ?? '') !== '';
+  return {
+    dataDir: parsed.dataDir,
+    dataDirSource: fromEnv ? 'SOOT_DATA_DIR' : 'default (~/.soot)',
+    logLevel: parsed.logLevel,
+  };
 }
 
 const fail = (text: string, data: Record<string, JsonValue> = {}): CommandOutput => ({
@@ -112,6 +165,19 @@ export class SootEngine implements OrchestrationService {
 
   #store(): ExecutionStore {
     return openExecutionStore({ dataDir: this.#o.dataDir });
+  }
+
+  #eventsPath(runId: string): string {
+    return join(this.#o.dataDir, 'reports', `${runId}.events.jsonl`);
+  }
+
+  #events(runId: string): JsonValue[] {
+    const path = this.#eventsPath(runId);
+    if (!existsSync(path)) return [];
+    return readFileSync(path, 'utf8')
+      .split('\n')
+      .filter((l) => l.trim() !== '')
+      .map((l) => JSON.parse(l) as JsonValue);
   }
 
   #reportPath(runId: string): string {
@@ -164,7 +230,8 @@ export class SootEngine implements OrchestrationService {
   }
 
   async run(request: RunRequest, signal?: AbortSignal): Promise<CommandOutput> {
-    const progress = this.#o.progress ?? (() => undefined);
+    const log = this.#o.log ?? SILENT_LOGGER;
+    const progress = log.info;
     const repoRoot = resolve(this.#o.cwd, request.repo ?? '.');
     const runId = request.runId ?? newRunId();
     if (!RUN_ID.test(runId)) return fail(`invalid run id: ${runId}`);
@@ -180,9 +247,17 @@ export class SootEngine implements OrchestrationService {
     }
     // ACP (ADR-028): whether each attempt's routed model was applied by the agent.
     const acpRoutes: AcpRouteRecord[] = [];
+    let audit: AuditLog | null = null;
     const runner = this.#runner(cfg, (r) => {
       acpRoutes.push(r);
-      progress(
+      audit?.record('model-route', r.taskId, {
+        attempt: r.attempt,
+        routed: r.routed,
+        applied: r.applied,
+        agentValue: r.agentValue,
+        reason: r.reason,
+      });
+      (r.applied ? log.info : log.warn)(
         `soot: ${r.taskId} #${String(r.attempt)} ACP model ${r.applied ? 'applied' : 'NOT applied'}: ${r.reason}`,
       );
     });
@@ -212,14 +287,44 @@ export class SootEngine implements OrchestrationService {
 
     const store = this.#store();
     let control;
+    // Task cancellation requests (`soot stop <run> --task <id>`) arriving before or during the run.
+    let scheduler: Scheduler | null = null;
+    const pendingTaskStops: string[] = [];
+    const cancelTask = (taskId: string) => {
+      if (scheduler === null) {
+        pendingTaskStops.push(taskId);
+        return;
+      }
+      try {
+        scheduler.cancel(taskId);
+        progress(`soot: ${taskId} cancelled by request`);
+      } catch (error) {
+        log.warn(`soot: cannot cancel ${taskId}: ${(error as Error).message}`);
+      }
+    };
+    mkdirSync(join(this.#o.dataDir, 'reports'), { recursive: true, mode: 0o700 });
+    const eventsPath = this.#eventsPath(runId);
+    writeFileSync(eventsPath, '', { mode: 0o600 });
     try {
-      control = holdRun(this.#o.dataDir, runId, signal);
+      control = holdRun(this.#o.dataDir, runId, signal, 200, cancelTask);
     } catch (error) {
       store.close();
       return fail((error as Error).message);
     }
     try {
       store.createRun({ runId, intake, graph });
+      audit = new AuditLog({ runId, file: auditLogPath(this.#o.dataDir, runId) });
+      const runAudit = audit;
+      // Provider cooldowns recorded by earlier runs still apply (ADR-030).
+      const health = new ProviderHealth({ store });
+      for (const c of store.providerCooldowns(Date.now())) {
+        progress(
+          `soot: provider ${c.provider} unavailable until ${new Date(c.until).toISOString()} (${c.reason}, recorded earlier); routing skips it until then`,
+        );
+      }
+      log.debug(
+        `soot: debug: config ${cfg.path}; models ${cfg.modelsPath}; attempt timeout ${String(cfg.config.attemptTimeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS)} ms${cfg.config.attemptTimeoutMs === undefined ? ' (default)' : ''}; audit ${runAudit.file ?? ''}`,
+      );
       // Routing feedback (M5-07): soot-verified outcomes from earlier runs shape this run's routing.
       const outcomes = store.modelOutcomes();
       const history = historyFromAttempts(
@@ -234,9 +339,21 @@ export class SootEngine implements OrchestrationService {
         policy: cfg.config.policy,
         history,
         runId,
+        health,
+        // Run-budget spend is kept per attempt in soot.sqlite and reloaded on restart (ADR-030).
+        spend: store.spendLedger(runId),
         ...(cfg.config.escalation === undefined ? {} : { config: cfg.config.escalation }),
         onEvent: (e) => {
           progress(`soot: ${eventLine(e).slice(2)}`);
+          runAudit.record('routing-decision', e.taskId, {
+            attempt: e.attempt,
+            decision: e.type,
+            model: e.model,
+            reason: e.reason,
+            triggers: json(e.triggers),
+          });
+          // Live event log for `soot status <run>` (and IDE views) while the run is going.
+          appendFileSync(eventsPath, `${JSON.stringify(e)}\n`);
         },
       });
       const result = await runCodebaseWorkflow({
@@ -256,7 +373,12 @@ export class SootEngine implements OrchestrationService {
           ? {}
           : { attemptTimeoutMs: cfg.config.attemptTimeoutMs }),
         journal: store.journal(runId),
+        audit: runAudit,
         signal: control.signal,
+        onScheduler: (s) => {
+          scheduler = s;
+          for (const id of pendingTaskStops.splice(0)) cancelTask(id);
+        },
         // Routing history is credited to a model only when that model did the work: always for
         // the mock (routed model is its label), for ACP only where the agent applied the route.
         outcomes: isAcp
@@ -278,7 +400,8 @@ export class SootEngine implements OrchestrationService {
       });
       const { report } = result;
       const decisions = supervisor.events.map(eventLine);
-      mkdirSync(join(this.#o.dataDir, 'reports'), { recursive: true, mode: 0o700 });
+      // Cost records with the router's estimate per attempt, written automatically (ADR-030).
+      const costRecords = this.#costRecords(store, runId);
       const saved = {
         runId,
         fixtureId: decomposition.decomposer.fixtureId,
@@ -291,6 +414,8 @@ export class SootEngine implements OrchestrationService {
         ...(isAcp ? { acpRoutes } : {}),
         stopRequested: control.stopRequested(),
         report,
+        costRecords,
+        costSummary: summarizeCosts(costRecords),
       };
       writeFileSync(this.#reportPath(runId), `${JSON.stringify(saved, null, 2)}\n`, {
         mode: 0o600,
@@ -330,6 +455,20 @@ export class SootEngine implements OrchestrationService {
       control.release();
       store.close();
     }
+  }
+
+  /** Cost records rebuilt from the run's persisted attempts (routed estimates + reported actuals). */
+  #costRecords(store: ExecutionStore, runId: string) {
+    const run = store.loadRun(runId);
+    return costRecordsFromAttempts(
+      run.tasks,
+      run.attempts.map((a) => ({
+        taskId: a.taskId,
+        attempt: a.attempt,
+        assignment: a.assignment,
+        result: a.result,
+      })),
+    );
   }
 
   #savedReport(runId: string): { report: ConsolidatedReport; decisions: string[] } | null {
@@ -390,6 +529,16 @@ export class SootEngine implements OrchestrationService {
           verdict: verdict?.verdict ?? null,
           complete: verdict?.complete ?? false,
           reason: verdict?.reason ?? null,
+          attemptDetails: attempts.map((a) => ({
+            attempt: a.attempt,
+            state: a.state,
+            model: a.assignment?.model ?? null,
+            escalationLevel: a.assignment?.escalationLevel ?? null,
+            estimatedCostUsd: a.assignment?.estimatedCostUsd ?? null,
+            actualCostUsd: a.result?.usage.costUsd ?? null,
+            failure: a.failure?.kind ?? null,
+            error: a.error,
+          })),
         };
       });
       const state = running ? 'running' : (saved?.report.status ?? 'interrupted');
@@ -407,10 +556,15 @@ export class SootEngine implements OrchestrationService {
       return Promise.resolve({
         ok: true,
         text,
-        data: json({ runId, state, prompt: run.originalPrompt, tasks }) as Record<
-          string,
-          JsonValue
-        >,
+        data: json({
+          runId,
+          state,
+          running,
+          prompt: run.originalPrompt,
+          tasks,
+          events: this.#events(runId),
+          reportStatus: saved?.report.status ?? null,
+        }) as Record<string, JsonValue>,
       });
     } finally {
       store.close();
@@ -441,10 +595,16 @@ export class SootEngine implements OrchestrationService {
             })),
         })),
       );
+      const costRecords = this.#costRecords(store, id);
+      const summary = summarizeCosts(costRecords);
+      const routed = summary.routed;
       return Promise.resolve({
         ok: true,
-        text: `Run ${id}\n${renderCostReport(report)}\n(Actuals are what runners reported; mock runs report fictional amounts.)`,
-        data: json({ runId: id, cost: report }) as Record<string, JsonValue>,
+        text: `Run ${id}\n${renderCostReport(report)}\nRouted estimates: ${String(routed.attempts)} attempts, ${routed.costUsd === null ? `unknown (${String(routed.unpricedAttempts)} unpriced)` : `$${routed.costUsd.toFixed(6)}`}${routed.routeNotApplied > 0 ? `; route not applied on ${String(routed.routeNotApplied)}` : ''}\n(Actuals are what runners reported; mock runs report fictional amounts.)`,
+        data: json({ runId: id, cost: report, costRecords, costSummary: summary }) as Record<
+          string,
+          JsonValue
+        >,
       });
     } finally {
       store.close();
@@ -505,8 +665,22 @@ export class SootEngine implements OrchestrationService {
     });
   }
 
-  stop(runId: string): Promise<CommandOutput> {
+  stop(runId: string, taskId?: string): Promise<CommandOutput> {
     if (!RUN_ID.test(runId)) return Promise.resolve(fail(`invalid run id: ${runId}`));
+    if (taskId !== undefined) {
+      let sent: boolean;
+      try {
+        sent = requestTaskStop(this.#o.dataDir, runId, taskId);
+      } catch (error) {
+        return Promise.resolve(fail((error as Error).message));
+      }
+      if (!sent) return Promise.resolve(fail(`run ${runId} is not running`, { runId }));
+      return Promise.resolve({
+        ok: true,
+        text: `Cancel requested for task ${taskId} in ${runId}; its dependents are skipped, other tasks continue.`,
+        data: { runId, taskId, stopRequested: true },
+      });
+    }
     if (!requestStop(this.#o.dataDir, runId)) {
       return Promise.resolve(fail(`run ${runId} is not running`, { runId }));
     }
@@ -542,6 +716,7 @@ export class SootEngine implements OrchestrationService {
       policy: cfg.config.policy,
       concurrency: cfg.config.concurrency,
       attemptTimeoutMs: cfg.config.attemptTimeoutMs ?? null,
+      effectiveAttemptTimeoutMs: cfg.config.attemptTimeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS,
       agent: this.#o.agent.kind,
       acpAgent: cfg.config.acpAgent === undefined ? null : json(cfg.config.acpAgent),
       approvals: this.#o.approvals.mode,
@@ -557,6 +732,7 @@ export class SootEngine implements OrchestrationService {
       `State dir: ${this.#o.dataDir}`,
       `Models: ${cfg.modelsPath} (${String(data.models)} models)`,
       `Policy: ${cfg.config.policy}; concurrency ${String(cfg.config.concurrency)}`,
+      `Attempt timeout: ${String(data.effectiveAttemptTimeoutMs)} ms${cfg.config.attemptTimeoutMs === undefined ? ' (default; set "attemptTimeoutMs" to change)' : ''}`,
       `Agent: ${this.#o.agent.kind === 'none' ? 'none (run refuses: pick --agent mock or --agent acp)' : this.#agentLabel(cfg)}`,
       `ACP agent command: ${cfg.config.acpAgent === undefined ? 'not configured' : describeCommand(cfg.config.acpAgent)}`,
       `Approvals: ${this.#o.approvals.mode} (soot never approves on your behalf)`,

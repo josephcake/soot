@@ -183,3 +183,65 @@ M6 notes (2026-11-12, ADR-026):
   by the CLI (`tests/m6-acp-end-to-end.test.ts`). No vendor binary was run. ADR-028 adds the
   routed model through the agent's `model` session option when offered, and "route not applied"
   records otherwise (mock agent only).
+
+## M7 — IDE Extensions
+
+| ID    | Description                                                              | Priority | Milestone | Dependencies | Status      | Component                  | Acceptance criteria                                                                |
+| ----- | ------------------------------------------------------------------------ | -------- | --------- | ------------ | ----------- | -------------------------- | ---------------------------------------------------------------------------------- |
+| M7-01 | VS Code extension (thin adapter over the soot CLI)                       | P2       | M7        | M6-01        | Implemented | apps/vscode-extension      | Loaded and used in a real VS Code; core orchestration stays outside the extension. |
+| M7-02 | Cursor compatibility                                                     | P2       | M7        | M7-01        | Not Started | apps/vscode-extension      | Verified individually in a real Cursor before any claim.                           |
+| M7-03 | Windsurf compatibility                                                   | P3       | M7        | M7-01        | Not Started | apps/vscode-extension      | Verified individually in a real Windsurf before any claim.                         |
+| M7-04 | Kilo Code compatibility                                                  | P3       | M7        | M7-01        | Not Started | apps/vscode-extension      | Verified individually in a real Kilo Code before any claim.                        |
+| M7-05 | Task visualization: task graph by layer, active agents, execution status | P2       | M7        | M7-01        | Implemented | apps/vscode-extension      | Graph and status match the engine's `soot status` for a run.                       |
+| M7-06 | Model assignment visibility: models per attempt, escalation/retry events | P2       | M7        | M7-01        | Implemented | apps/vscode-extension, cli | Each attempt's model and each escalation shown as the engine recorded them.        |
+| M7-07 | Cost reporting: estimate and actual, per run                             | P2       | M7        | M7-01        | Implemented | apps/vscode-extension      | Same numbers as `soot cost`; estimates and actuals never mixed.                    |
+| M7-08 | Task cancellation and orchestration on/off from the IDE (`stop --task`)  | P2       | M7        | M7-01        | Implemented | apps/vscode-extension, cli | Cancelling one task skips its dependents; other tasks continue.                    |
+
+M7 notes (2026-11-12, ADR-029):
+
+- **M7-01 Implemented, not verified in an editor:** `apps/vscode-extension` (`soot-vscode`,
+  private, unpublished) is an ESM extension for VS Code ^1.100 with no runtime dependencies. It
+  runs the soot CLI (`run`, `status`, `cost`, `stop`, all `--json`) and imports no soot package.
+  It is tested only against a fake `vscode` module (`src/test-support/fake-vscode.ts`) and the
+  real built CLI with `--agent mock` (`tests/m7-vscode-extension.test.ts`). A `.vsix` builds
+  locally (`pnpm --filter soot-vscode package:vsix`, `vsce package` through `pnpm dlx`, never
+  `publish`). **It has not been loaded in VS Code or Cursor**, so the M7 exit criterion "at least
+  one functional IDE extension" is not met.
+- **M7-02…M7-04 Not Started:** nothing is claimed for Cursor, Windsurf or Kilo Code (or GitHub
+  Copilot). Each needs its own run in that editor.
+- **M7-05…M7-07 Implemented:** the tree view and the plain-text board show what `soot status
+<run>` and `soot cost <run>` report: task graph by layer, per-attempt models, escalation level
+  and failures, escalate/retry/fallback/downgrade events (from the run's new
+  `reports/<run>.events.jsonl`), estimate vs actual cost. Text blocks only (ADR-009).
+- **M7-08 Implemented:** `soot stop <run> --task <id>` (and MCP `soot_stop` with `taskId`)
+  cancels one task through the scheduler; its dependents are skipped and other tasks continue.
+  Runs started from the IDE are unattended: approvals are refused, never given.
+
+## Engine hardening (cross-cutting, ADR-030)
+
+Prepares the engine for real keys or a real harness; nothing here uses either. These rows do
+not change any milestone status.
+
+| ID   | Description                                                          | Priority | Milestone  | Dependencies | Status      | Component                                        | Acceptance criteria                                                                     |
+| ---- | -------------------------------------------------------------------- | -------- | ---------- | ------------ | ----------- | ------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| H-01 | `SOOT_DATA_DIR` / `SOOT_LOG_LEVEL` honoured by the real CLI and MCP  | P1       | M6 (cross) | M0-04, M6-01 | Completed   | core, apps/cli                                   | Real `soot` and `soot mcp` processes change state dir and log output by variable.       |
+| H-02 | Provider health and run-budget spend persisted in `soot.sqlite`      | P1       | M4 (cross) | M4-05        | Completed   | model-registry, context-manager, escalation, cli | A restarted process skips a down provider until cooldown; budget rebuilt from attempts. |
+| H-03 | Routed estimates in cost records; routing decisions in the audit log | P1       | M3/M5 (x)  | M3-03, M5-08 | Completed   | observability, cli                               | Estimates on records without fabricated actuals; every decision audited.                |
+| H-04 | Default attempt timeout (30 min), explicit `attemptTimeoutMs` wins   | P1       | M4 (cross) | M4-05        | Completed   | agent-runtime, cli, docs                         | A hung runner without a configured timeout still ends; explicit value wins; documented. |
+| H-05 | Sideload note for the unpublished `.vsix` (VS Code, Cursor)          | P3       | M7         | M7-01        | Implemented | apps/vscode-extension                            | Clearly marked unverified; does not complete M7-01 or M7-02.                            |
+
+Hardening notes (2026-11-12):
+
+- **H-01:** `runtimeFromEnv` (apps/cli) wraps `parseEnv`; `createLogger` (core) applies the level.
+  Tests: `tests/hardening-cli.test.ts` (built binary and `soot mcp` over stdio).
+- **H-02:** tables `provider_cooldowns` and `attempt_spend` (schema v4). Tests:
+  `tests/hardening-restart.test.ts` (store reopened, new `ProviderHealth`/supervisor/scheduler),
+  and a two-process `soot run` test in `tests/hardening-cli.test.ts`.
+- **H-03:** `costRecordsFromAttempts` and `recordRoutedEstimate` (observability); audit types
+  `routing-decision` and `model-route`. Routing history is still credited only where the route
+  was applied (ADR-028 for ACP). Tests: `packages/observability/src/cost.test.ts`,
+  `tests/hardening-cli.test.ts`.
+- **H-04:** `DEFAULT_ATTEMPT_TIMEOUT_MS` in `@soot/agent-runtime`; the ACP 2 s cancel cutoff is
+  unchanged. Tests: `packages/agent-runtime/src/scheduler-attempts.test.ts` (fake timers).
+- **H-05:** `apps/vscode-extension/README.md#sideloading-the-local-build-unverified`. M7-01 and
+  M7-02 stay as they were.

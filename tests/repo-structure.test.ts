@@ -37,7 +37,8 @@ describe('workspace packages', () => {
   it.each(workspaceDirs)('%s is a buildable, testable, documented workspace package', (dir) => {
     const manifest = readJson(`${dir}/package.json`) as Manifest;
     const leaf = dir.split('/').at(-1) ?? '';
-    expect(manifest.name).toBe(`@soot/${leaf}`);
+    // VS Code extension manifests cannot use npm scopes, so the extension is `soot-vscode`.
+    expect(manifest.name).toBe(dir === 'apps/vscode-extension' ? 'soot-vscode' : `@soot/${leaf}`);
     expect(manifest.license).toBe('MIT');
     expect(manifest.private).toBe(true);
     expect(manifest.scripts.build).toBeDefined();

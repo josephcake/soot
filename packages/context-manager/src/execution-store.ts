@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import type { PersistedProviderCooldown, UnavailableReason } from '@soot/model-registry';
 import type {
   Assignment,
   AttemptFailure,
@@ -24,10 +25,26 @@ import {
 /** File name of the state database inside `SOOT_DATA_DIR`. */
 export const STATE_DB_FILE = 'soot.sqlite';
 /**
- * v2 (Milestone 4) adds `attempt_details`; v3 (Milestone 5) adds `model_outcomes`. Older
- * databases are migrated in place (both changes only add tables).
+ * v2 (Milestone 4) adds `attempt_details`; v3 (Milestone 5) adds `model_outcomes`; v4 adds
+ * `provider_cooldowns` and `attempt_spend` (ADR-030). Older databases are migrated in place
+ * (every change only adds tables).
  */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
+
+/** Spend attributed to one attempt for budgets: a reported actual, or the routed estimate. */
+export interface AttemptSpend {
+  readonly taskId: string;
+  readonly attempt: number;
+  readonly usd: number;
+  /** `actual`: the runner reported this cost. `estimate`: the routed estimate (no actual). */
+  readonly source: 'actual' | 'estimate';
+}
+
+/** Per-run spend ledger in `soot.sqlite` (`attempt_spend`), used to rebuild run budgets. */
+export interface AttemptSpendLedger {
+  attemptSpend(): AttemptSpend[];
+  saveAttemptSpend(spend: AttemptSpend): void;
+}
 
 /**
  * Per-attempt state as persisted. `running`: started with no recorded finish (the process may
@@ -176,6 +193,22 @@ export class ExecutionStore {
         recorded_at TEXT NOT NULL,
         PRIMARY KEY (run_id, task_id, attempt)
       );
+      CREATE TABLE IF NOT EXISTS provider_cooldowns (
+        provider TEXT PRIMARY KEY,
+        reason TEXT NOT NULL,
+        until_ms INTEGER NOT NULL,
+        detail TEXT,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS attempt_spend (
+        run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+        task_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        usd REAL NOT NULL,
+        source TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, task_id, attempt)
+      );
     `);
     const version = this.#db
       .prepare('SELECT value FROM meta WHERE key = ?')
@@ -184,8 +217,8 @@ export class ExecutionStore {
       this.#db
         .prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
         .run('schema_version', String(SCHEMA_VERSION));
-    } else if (Number(version.value) === 1 || Number(version.value) === 2) {
-      // v1/v2 → v3: the only changes are new tables, created above.
+    } else if ([1, 2, 3].includes(Number(version.value))) {
+      // v1/v2/v3 → v4: the only changes are new tables, created above.
       this.#db
         .prepare('UPDATE meta SET value = ? WHERE key = ?')
         .run(String(SCHEMA_VERSION), 'schema_version');
@@ -244,6 +277,73 @@ export class ExecutionStore {
       outcome: r.outcome === 'verified' ? 'verified' : 'failed',
       reason: r.reason,
     }));
+  }
+
+  /**
+   * Timed provider cooldowns still in force at `now` (epoch ms), so a restarted run keeps
+   * skipping a provider that was down (implements `ProviderHealthStore`).
+   */
+  providerCooldowns(now: number): PersistedProviderCooldown[] {
+    const rows = this.#db
+      .prepare(
+        'SELECT provider, reason, until_ms, detail FROM provider_cooldowns WHERE until_ms > ? ORDER BY provider',
+      )
+      .all(now) as { provider: string; reason: string; until_ms: number; detail: string | null }[];
+    return rows.map((r) => ({
+      provider: r.provider,
+      reason: r.reason as UnavailableReason,
+      until: r.until_ms,
+      detail: r.detail,
+    }));
+  }
+
+  saveProviderCooldown(c: PersistedProviderCooldown): void {
+    if (!Number.isFinite(c.until)) return; // session-long marks are not persisted
+    this.#db
+      .prepare(
+        'INSERT OR REPLACE INTO provider_cooldowns (provider, reason, until_ms, detail, updated_at) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run(c.provider, c.reason, Math.ceil(c.until), c.detail, this.#now().toISOString());
+  }
+
+  clearProviderCooldown(provider: string): void {
+    this.#db.prepare('DELETE FROM provider_cooldowns WHERE provider = ?').run(provider);
+  }
+
+  /** The run's spend ledger: one row per attempt, overwritten when an actual replaces an estimate. */
+  spendLedger(runId: string): AttemptSpendLedger {
+    this.#requireRun(runId);
+    const save = this.#db.prepare(
+      'INSERT OR REPLACE INTO attempt_spend (run_id, task_id, attempt, usd, source, recorded_at) VALUES (?, ?, ?, ?, ?, ?)',
+    );
+    return {
+      attemptSpend: () =>
+        (
+          this.#db
+            .prepare(
+              'SELECT task_id, attempt, usd, source FROM attempt_spend WHERE run_id = ? ORDER BY task_id, attempt',
+            )
+            .all(runId) as { task_id: string; attempt: number; usd: number; source: string }[]
+        ).map((r) => ({
+          taskId: r.task_id,
+          attempt: r.attempt,
+          usd: r.usd,
+          source: r.source === 'actual' ? 'actual' : 'estimate',
+        })),
+      saveAttemptSpend: (spend) => {
+        if (!Number.isFinite(spend.usd) || spend.usd < 0) {
+          throw new RangeError(`invalid spend for ${spend.taskId}#${String(spend.attempt)}`);
+        }
+        save.run(
+          runId,
+          spend.taskId,
+          spend.attempt,
+          spend.usd,
+          spend.source,
+          this.#now().toISOString(),
+        );
+      },
+    };
   }
 
   close(): void {

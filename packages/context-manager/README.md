@@ -33,5 +33,11 @@ transfer continue after a restart.
 Schema v3 (Milestone 5) adds `model_outcomes`: soot's verdict (`verified` or `failed`) per
 attempt with model and tier (`recordModelOutcome`, `modelOutcomes`), to feed routing history.
 
-Only validated tasks and structured agent results are stored. Nothing free-form from agents
+Schema v4 (ADR-030) adds `provider_cooldowns` (timed provider outages, through
+`saveProviderCooldown` / `providerCooldowns`, used as a `ProviderHealthStore`) and
+`attempt_spend` (per-attempt run-budget spend, reported actual or routed estimate, through
+`spendLedger(runId)`), so a restarted run skips providers still cooling down and rebuilds its
+budget. v1–v3 databases are migrated in place.
+
+Only validated tasks, structured agent results, provider cooldowns and spend amounts are stored. Nothing free-form from agents
 is persisted.

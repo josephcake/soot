@@ -37,8 +37,8 @@ checks at a tier stops being chosen for that tier (`tests/m6-cli-end-to-end.test
 
 The adaptive supervisor (ADR-024) retries, falls back to another provider, or escalates one
 tier up when an attempt fails or soot's verification fails, passing the earlier findings on.
-Attempts, escalations and budgets are bounded. Every decision is printed by `soot run` and kept
-in the run's report.
+Attempts, escalations and budgets are bounded. Every decision is printed by `soot run`, kept
+in the run's report and appended to its audit log (ADR-030).
 
 ## Inspect
 
