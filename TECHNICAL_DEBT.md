@@ -23,7 +23,7 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   `IMPLEMENTATION_STATUS = 'stub'`, and `PLANNED_MILESTONE`. Their package boundaries follow
   spec §15 and may be merged or split once Milestone 1 design settles (record in DECISIONS.md).
 - **[Intentional] `parseEnv` is not called by any runtime yet** and nothing loads `.env`
-  files; it exists to fix the config contract for local-first state (`IAR_DATA_DIR`).
+  files; it exists to fix the config contract for local-first state (`SOOT_DATA_DIR`).
 - **[Intentional] Vitest projects are discovered by directory scan** in `vitest.config.ts`,
   and workspace packages are aliased to `src/` for tests. Packages under `apps/` other than
   `cli` need an alias entry when added.

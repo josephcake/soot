@@ -50,7 +50,7 @@ and file-conflict management.
 ├── apps/
 │   └── cli/                  # stub — future `orchestrator` CLI (M6); depends on core
 ├── packages/
-│   ├── core/                 # foundation: package metadata + IAR_* env parsing (real, tested)
+│   ├── core/                 # foundation: package metadata + SOOT_* env parsing (real, tested)
 │   ├── planner/              # stub — prompt analysis, task decomposition (M1)
 │   ├── task-graph/           # stub — task schema, dependency graph, scheduler (M1)
 │   ├── model-registry/       # stub — model discovery, capability/pricing registry (M2)
@@ -76,7 +76,7 @@ and file-conflict management.
 | Path                          | Status            | First real milestone | Responsibility                                   |
 | ----------------------------- | ----------------- | -------------------- | ------------------------------------------------ |
 | `apps/cli/`                   | stub              | M6                   | Future `orchestrator` CLI; depends on core       |
-| `packages/core/`              | foundation (real) | M0                   | Package metadata, `parseEnv` for `IAR_*` vars    |
+| `packages/core/`              | foundation (real) | M0                   | Package metadata, `parseEnv` for `SOOT_*` vars   |
 | `packages/planner/`           | stub              | M1                   | Prompt analyzer, task decomposer                 |
 | `packages/task-graph/`        | stub              | M1                   | Task schema, dependency graph, scheduler         |
 | `packages/model-registry/`    | stub              | M2                   | Model discovery, capability/pricing registry     |

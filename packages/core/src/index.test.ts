@@ -7,9 +7,9 @@ const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.
   version: string;
 };
 
-describe('@intelligent-agent-router/core package metadata', () => {
+describe('@soot/core package metadata', () => {
   it('matches package.json', () => {
-    expect(PACKAGE_NAME).toBe('@intelligent-agent-router/core');
+    expect(PACKAGE_NAME).toBe('@soot/core');
     expect(PACKAGE_NAME).toBe(manifest.name);
     expect(PACKAGE_VERSION).toBe(manifest.version);
   });

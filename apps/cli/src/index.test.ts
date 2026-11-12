@@ -6,7 +6,7 @@ const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.
   name: string;
 };
 
-describe('@intelligent-agent-router/cli stub', () => {
+describe('@soot/cli stub', () => {
   it('exports the name declared in package.json', () => {
     expect(PACKAGE_NAME).toBe(manifest.name);
   });
@@ -16,7 +16,7 @@ describe('@intelligent-agent-router/cli stub', () => {
     expect(PLANNED_MILESTONE).toBe(6);
   });
 
-  it('links to @intelligent-agent-router/core through the workspace', () => {
-    expect(DEPENDS_ON).toEqual(['@intelligent-agent-router/core']);
+  it('links to @soot/core through the workspace', () => {
+    expect(DEPENDS_ON).toEqual(['@soot/core']);
   });
 });

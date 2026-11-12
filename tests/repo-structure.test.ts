@@ -37,7 +37,7 @@ describe('workspace packages', () => {
   it.each(workspaceDirs)('%s is a buildable, testable, documented workspace package', (dir) => {
     const manifest = readJson(`${dir}/package.json`) as Manifest;
     const leaf = dir.split('/').at(-1) ?? '';
-    expect(manifest.name).toBe(`@intelligent-agent-router/${leaf}`);
+    expect(manifest.name).toBe(`@soot/${leaf}`);
     expect(manifest.license).toBe('MIT');
     expect(manifest.private).toBe(true);
     expect(manifest.scripts.build).toBeDefined();
@@ -79,7 +79,7 @@ describe('documentation and tracking files', () => {
 
   it('LICENSE is MIT and matches the root package.json', () => {
     expect(read('LICENSE')).toMatch(/^MIT License\n/);
-    expect(read('LICENSE')).toContain('Copyright (c) 2026 the intelligent-agent-router authors');
+    expect(read('LICENSE')).toContain('Copyright (c) 2026 the soot authors');
     expect((readJson('package.json') as Manifest).license).toBe('MIT');
   });
 
@@ -101,8 +101,8 @@ describe('environment configuration', () => {
     expect(secretAssignments).toEqual([]);
   });
 
-  it('documents every IAR_* variable in docs/configuration.md', () => {
-    const vars = [...example.matchAll(/^#?\s*(IAR_[A-Z0-9_]+)=/gm)].map((m) => m[1]);
+  it('documents every SOOT_* variable in docs/configuration.md', () => {
+    const vars = [...example.matchAll(/^#?\s*(SOOT_[A-Z0-9_]+)=/gm)].map((m) => m[1]);
     expect(vars.length).toBeGreaterThan(0);
     const docs = read('docs/configuration.md');
     for (const name of vars) expect(docs).toContain(name);

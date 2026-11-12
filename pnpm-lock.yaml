@@ -38,7 +38,7 @@ importers:
 
   apps/cli:
     dependencies:
-      '@intelligent-agent-router/core':
+      '@soot/core':
         specifier: workspace:*
         version: link:../../packages/core
 

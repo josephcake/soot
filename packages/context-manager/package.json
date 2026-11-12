@@ -1,5 +1,5 @@
 {
-  "name": "@intelligent-agent-router/context-manager",
+  "name": "@soot/context-manager",
   "version": "0.0.0",
   "private": true,
   "description": "[Stub \u2014 Milestone 1] Per-task context selection and persisted workflow state.",
@@ -22,6 +22,6 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
-    "test": "vitest run --config ../../vitest.config.ts --project @intelligent-agent-router/context-manager"
+    "test": "vitest run --config ../../vitest.config.ts --project @soot/context-manager"
   }
 }

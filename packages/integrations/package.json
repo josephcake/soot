@@ -1,5 +1,5 @@
 {
-  "name": "@intelligent-agent-router/integrations",
+  "name": "@soot/integrations",
   "version": "0.0.0",
   "private": true,
   "description": "[Stub \u2014 Milestone 5] Result integration, conflict detection, and validation (git worktrees).",
@@ -22,6 +22,6 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
-    "test": "vitest run --config ../../vitest.config.ts --project @intelligent-agent-router/integrations"
+    "test": "vitest run --config ../../vitest.config.ts --project @soot/integrations"
   }
 }

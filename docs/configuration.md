@@ -4,14 +4,14 @@ Configuration is read from environment variables. `.env.example` lists every var
 to `.env` for local overrides. `.env` is git-ignored and must never be committed.
 
 > Milestone 0: nothing loads `.env` automatically yet. Variables are read only by
-> `parseEnv(process.env)` from `@intelligent-agent-router/core`, which no runtime calls yet.
+> `parseEnv(process.env)` from `@soot/core`, which no runtime calls yet.
 
 ## Orchestrator variables (read today by `parseEnv`)
 
-| Variable        | Default                       | Values                                                        | Purpose                                                              |
-| --------------- | ----------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `IAR_LOG_LEVEL` | `info`                        | `silent`, `error`, `warn`, `info`, `debug` (case-insensitive) | Engine log verbosity. Invalid values throw `EnvConfigError`.         |
-| `IAR_DATA_DIR`  | `~/.intelligent-agent-router` | absolute or relative path (relative resolves against cwd)     | Local-first state directory: future SQLite DB, worktrees, audit log. |
+| Variable         | Default   | Values                                                        | Purpose                                                              |
+| ---------------- | --------- | ------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `SOOT_LOG_LEVEL` | `info`    | `silent`, `error`, `warn`, `info`, `debug` (case-insensitive) | Engine log verbosity. Invalid values throw `EnvConfigError`.         |
+| `SOOT_DATA_DIR`  | `~/.soot` | absolute or relative path (relative resolves against cwd)     | Local-first state directory: future SQLite DB, worktrees, audit log. |
 
 Empty values are treated as unset.
 
@@ -31,5 +31,5 @@ Rules for when they are used:
 - Tests must not require them; real-provider tests will be opt-in.
 
 `tests/repo-structure.test.ts` fails if `.env.example` ever contains a value for a
-`*KEY*`, `*TOKEN*`, `*SECRET*`, or `*PASSWORD*` variable, and if any `IAR_*` variable in
+`*KEY*`, `*TOKEN*`, `*SECRET*`, or `*PASSWORD*` variable, and if any `SOOT_*` variable in
 `.env.example` is missing from this document.

@@ -1,12 +1,12 @@
 /**
- * @intelligent-agent-router/integrations
+ * @soot/integrations
  *
  * STUB: Result integration, conflict detection, and validation (git worktrees).
  * Nothing is implemented here yet; planned for Milestone 5.
  * See ROADMAP.md and TASKS.md. Do not rely on this package.
  */
 
-export const PACKAGE_NAME = '@intelligent-agent-router/integrations';
+export const PACKAGE_NAME = '@soot/integrations';
 
 /** Implementation status of this package. Becomes 'implemented' only when real code lands. */
 export const IMPLEMENTATION_STATUS = 'stub' as const;

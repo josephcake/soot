@@ -1,5 +1,5 @@
 {
-  "name": "@intelligent-agent-router/core",
+  "name": "@soot/core",
   "version": "0.0.0",
   "private": true,
   "description": "[Stub \u2014 Milestone 1] Shared foundation: package metadata and environment configuration parsing. Orchestration types arrive in Milestone 1.",
@@ -22,6 +22,6 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
-    "test": "vitest run --config ../../vitest.config.ts --project @intelligent-agent-router/core"
+    "test": "vitest run --config ../../vitest.config.ts --project @soot/core"
   }
 }

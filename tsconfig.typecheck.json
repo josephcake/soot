@@ -7,8 +7,8 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@intelligent-agent-router/cli": ["./apps/cli/src/index.ts"],
-      "@intelligent-agent-router/*": ["./packages/*/src/index.ts"]
+      "@soot/cli": ["./apps/cli/src/index.ts"],
+      "@soot/*": ["./packages/*/src/index.ts"]
     }
   },
   "include": ["apps/*/src/**/*.ts", "packages/*/src/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]

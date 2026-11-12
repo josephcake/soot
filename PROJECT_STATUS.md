@@ -12,7 +12,7 @@ Milestone 0 — Repository Foundation
 
 ## Current Status
 
-Completed (Milestone 0). Milestone 1 not started — awaiting go-ahead from Mochi.
+Completed (Milestone 0). Project renamed to `soot` (ADR-013); repo at `/workspace/soot`. Milestone 1 approved by Mochi; feature work not started yet.
 
 ## Completed
 

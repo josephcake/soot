@@ -14,7 +14,7 @@ const workspaceProjects = ['apps', 'packages'].flatMap((group) =>
     .map((entry) => ({
       extends: true as const,
       test: {
-        name: `@intelligent-agent-router/${entry.name}`,
+        name: `@soot/${entry.name}`,
         root: `${repoRoot}${group}/${entry.name}`,
         include: ['src/**/*.test.ts'],
       },
@@ -26,11 +26,11 @@ export default defineConfig({
     // Resolve workspace packages to source so tests never depend on a stale dist/.
     alias: [
       {
-        find: /^@intelligent-agent-router\/(cli)$/,
+        find: /^@soot\/(cli)$/,
         replacement: `${repoRoot}apps/$1/src/index.ts`,
       },
       {
-        find: /^@intelligent-agent-router\/(.+)$/,
+        find: /^@soot\/(.+)$/,
         replacement: `${repoRoot}packages/$1/src/index.ts`,
       },
     ],

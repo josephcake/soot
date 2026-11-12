@@ -1,4 +1,6 @@
-# intelligent-agent-router
+# soot
+
+_Named after the soot sprites, the black dust bunnies from Studio Ghibli. Formerly `intelligent-agent-router`._
 
 > **Status: Milestone 0 — repository foundation only.**
 > There is **no working orchestration yet**: no prompt decomposition, no model routing, no
@@ -9,7 +11,7 @@
 
 ## What this project is for
 
-`intelligent-agent-router` is planned as an open-source, model-agnostic **task-level
+`soot` is planned as an open-source, model-agnostic **task-level
 orchestration engine** that plugs into the AI coding tools developers already use
 (as a skill, CLI, MCP server, or extension) instead of replacing them.
 
@@ -41,14 +43,14 @@ These are recorded in [`DECISIONS.md`](DECISIONS.md).
 
 ## Current functionality (verified)
 
-| Area                             | Status                                                                |
-| -------------------------------- | --------------------------------------------------------------------- |
-| pnpm monorepo, 13 packages       | Builds with `tsc -b` (project references)                             |
-| Strict TypeScript                | Typecheck passes                                                      |
-| ESLint + Prettier                | Lint and format check pass                                            |
-| Vitest                           | Unit + repository-structure tests run                                 |
-| `@intelligent-agent-router/core` | Exports package metadata and `parseEnv()` for `IAR_*` vars            |
-| Everything else                  | **Stub** (exports only its name and `IMPLEMENTATION_STATUS = 'stub'`) |
+| Area                       | Status                                                                |
+| -------------------------- | --------------------------------------------------------------------- |
+| pnpm monorepo, 13 packages | Builds with `tsc -b` (project references)                             |
+| Strict TypeScript          | Typecheck passes                                                      |
+| ESLint + Prettier          | Lint and format check pass                                            |
+| Vitest                     | Unit + repository-structure tests run                                 |
+| `@soot/core`               | Exports package metadata and `parseEnv()` for `SOOT_*` vars           |
+| Everything else            | **Stub** (exports only its name and `IMPLEMENTATION_STATUS = 'stub'`) |
 
 ### Supported providers
 
@@ -73,8 +75,8 @@ Individual steps: `pnpm run typecheck | lint | format:check | test | build`.
 
 ## Configuration
 
-Copy `.env.example` to `.env` if you need to override defaults. Only `IAR_LOG_LEVEL` and
-`IAR_DATA_DIR` exist today; provider key names are listed as reserved and are not read by
+Copy `.env.example` to `.env` if you need to override defaults. Only `SOOT_LOG_LEVEL` and
+`SOOT_DATA_DIR` exist today; provider key names are listed as reserved and are not read by
 any code. Details: [`docs/configuration.md`](docs/configuration.md). Never commit real keys.
 
 ## Example execution and cost optimization

@@ -1,5 +1,5 @@
 /**
- * @intelligent-agent-router/core
+ * @soot/core
  *
  * Milestone 0 foundation only: package metadata and environment parsing.
  * No orchestration, routing, or provider code exists yet (see ROADMAP.md).

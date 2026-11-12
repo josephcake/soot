@@ -6,7 +6,7 @@ const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.
   name: string;
 };
 
-describe('@intelligent-agent-router/task-graph stub', () => {
+describe('@soot/task-graph stub', () => {
   it('exports the name declared in package.json', () => {
     expect(PACKAGE_NAME).toBe(manifest.name);
   });

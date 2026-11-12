@@ -1,5 +1,5 @@
 {
-  "name": "@intelligent-agent-router/cli",
+  "name": "@soot/cli",
   "version": "0.0.0",
   "private": true,
   "description": "[Stub \u2014 Milestone 6] Standalone `orchestrator` CLI (no commands implemented yet).",
@@ -22,9 +22,9 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
-    "test": "vitest run --config ../../vitest.config.ts --project @intelligent-agent-router/cli"
+    "test": "vitest run --config ../../vitest.config.ts --project @soot/cli"
   },
   "dependencies": {
-    "@intelligent-agent-router/core": "workspace:*"
+    "@soot/core": "workspace:*"
   }
 }

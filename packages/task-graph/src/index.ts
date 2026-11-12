@@ -1,12 +1,12 @@
 /**
- * @intelligent-agent-router/task-graph
+ * @soot/task-graph
  *
  * STUB: Task schema, dependency graph, and scheduler.
  * Nothing is implemented here yet; planned for Milestone 1.
  * See ROADMAP.md and TASKS.md. Do not rely on this package.
  */
 
-export const PACKAGE_NAME = '@intelligent-agent-router/task-graph';
+export const PACKAGE_NAME = '@soot/task-graph';
 
 /** Implementation status of this package. Becomes 'implemented' only when real code lands. */
 export const IMPLEMENTATION_STATUS = 'stub' as const;

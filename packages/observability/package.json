@@ -1,5 +1,5 @@
 {
-  "name": "@intelligent-agent-router/observability",
+  "name": "@soot/observability",
   "version": "0.0.0",
   "private": true,
   "description": "[Stub \u2014 Milestone 1] Task-level cost tracking, audit log, and execution reporting.",
@@ -22,6 +22,6 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
-    "test": "vitest run --config ../../vitest.config.ts --project @intelligent-agent-router/observability"
+    "test": "vitest run --config ../../vitest.config.ts --project @soot/observability"
   }
 }

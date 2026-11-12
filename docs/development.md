@@ -24,11 +24,11 @@
 | `pnpm run test`         | Vitest, all projects                                                                         |
 | `pnpm run ci`           | `scripts/ci.sh`: install (frozen lockfile), typecheck, lint, format check, test, clean build |
 
-Per package: `pnpm --filter @intelligent-agent-router/<name> build` / `test`.
+Per package: `pnpm --filter @soot/<name> build` / `test`.
 
 ## Adding a package
 
-1. Create `packages/<name>/` with `package.json` (name `@intelligent-agent-router/<name>`,
+1. Create `packages/<name>/` with `package.json` (name `@soot/<name>`,
    `private`, `MIT`, `build` and `test` scripts), `tsconfig.json` (composite, extends
    `../../tsconfig.base.json`), `src/index.ts`, a test, and a `README.md` stating its status.
 2. Add it to the root `tsconfig.json` references.

@@ -20,7 +20,7 @@ npm-debug.log*
 pnpm-debug.log*
 
 # Local orchestrator state (future SQLite DB, worktrees, etc.)
-.iar/
+.soot/
 *.sqlite
 *.sqlite3
 *.db

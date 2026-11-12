@@ -17,7 +17,7 @@ function readManifest(): PackageManifest {
     readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
   );
   if (!isManifest(raw)) {
-    throw new Error('@intelligent-agent-router/core: package.json is missing name or version');
+    throw new Error('@soot/core: package.json is missing name or version');
   }
   return raw;
 }
