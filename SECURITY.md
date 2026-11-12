@@ -2,8 +2,9 @@
 
 ## Status
 
-The project is pre-release (Milestone 0). No version is published and no code yet handles
-provider credentials, executes agents, or touches user repositories.
+The project is pre-release. No version is published. The code reads provider keys only in the
+provider adapters, runs project checks, and changes git repositories through isolated worktrees;
+see [`docs/security.md`](docs/security.md) for what is enforced and the known limits.
 
 ## Reporting a vulnerability
 

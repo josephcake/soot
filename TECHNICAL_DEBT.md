@@ -19,8 +19,8 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 
 ## Code
 
-- **[Intentional] 2 of 13 workspace packages are still stubs** (`cli`, `harness-adapters`).
-  Package boundaries are kept (ADR-019).
+- **[Intentional] No workspace package is a stub any more;** `cli` and `harness-adapters` are
+  partial (M6). Package boundaries are kept (ADR-019).
 - **[Intentional] Decomposition is fixture-only.** `FixtureDecomposer` matches recorded
   prompts and refuses others; there is no prompt analysis. Model-backed decomposition comes
   after Milestone 2. Fixture token estimates are placeholders, not measurements.
@@ -30,9 +30,8 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   Harness runners are Milestone 6; real providers depend on M2-07.
 - **[Intentional] Timeouts are opt-in.** Without `attemptTimeoutMs` a hung runner blocks its
   task until cancelled. Without a supervisor the scheduler runs one attempt per task.
-- **[Intentional] No orchestrator wiring module.** The intake → decompose → graph → schedule →
-  store flow is wired in `tests/m1-end-to-end.test.ts`; a reusable entry point arrives with
-  the CLI/skill (Milestone 6) or earlier if Milestone 5 needs it.
+- **[Resolved in M6] Orchestrator wiring.** `SootEngine` (`apps/cli`) is the reusable entry
+  point used by the CLI and the MCP server (ADR-026).
 - **[Intentional] Write conflicts are still planned from declared file sets.** Since M5 actual
   writes are checked from the real diff (out-of-scope edits fail the task) and overlapping
   diffs are reported, but scheduling itself uses only declared sets.
@@ -41,8 +40,9 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Intentional] Timing-based concurrency tests** use 150 ms mock delays and bounds of
   roughly 2× the delay. Very slow CI machines could make them flaky; widen bounds before
   weakening the overlap assertions.
-- **[Intentional] The kill/restart test builds all packages** (`tsc -b`) in `beforeAll`
-  because the child process runs the built output.
+- **[Intentional] Subprocess tests build all packages** (`tsc -b`) in `beforeAll` because the
+  child process runs the built output (kill/restart, `soot stop`, `soot mcp`). The build is
+  serialised by a lock directory under `node_modules/.cache` so parallel test files do not race.
 - **[Intentional] SQLite migrations are hand-written** (v1→v2 in place; unknown versions are
   refused). There is no migration framework. Scheduler timestamps in `RunReport` are process-monotonic; persisted times are
   wall-clock ISO strings.
@@ -83,10 +83,9 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   (after M2-07).
 - **[Intentional] Policy thresholds and the prior weight are untuned defaults.** Calibrate them
   from recorded history and benchmark runs (spec §17 Test 5, Milestone 6).
-- **[Intentional] Outcome history is persisted but wired by the caller.** Since M5,
-  soot-verified outcomes are stored in `soot.sqlite` (`model_outcomes`) and change routing via
-  `historyFromAttempts`; the glue from the store to the router lives in the caller (the M5 test
-  today, the CLI in M6). Only mock agents have produced outcomes so far.
+- **[Intentional] Outcome history is wired in `soot run`.** Soot-verified outcomes in
+  `soot.sqlite` (`model_outcomes`) are loaded before routing (ADR-026). Only mock agents have
+  produced outcomes so far, so no history reflects a real model.
 - **[Intentional] The routing log is in memory** (text and JSON Lines export). It is not yet
   written into the M5 audit log.
 - **[Intentional] Latency is not part of routing** (spec §5 step 6). Availability is, through
@@ -132,6 +131,44 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Intentional] The fixture-repo tests use real git, `node --test` and `tsc`** with real
   timers; they take ~25 s and need git ≥ 2.38 (`merge-tree --write-tree`).
 - **[Intentional] Provider health and run spend remain in memory** (unchanged from M4).
+
+## Skill, CLI and MCP (Milestone 6)
+
+- **[Blocked] No vendor harness has been run (M6-04, M6-05).** The generic ACP driver is tested
+  only with soot's own mock ACP agent. Claude Code and Codex stay `not-implemented`. Real model
+  execution without a harness also needs M2-07.
+- **[Resolved in M6 for agents that advertise it] ACP routed model (ADR-028).** When the agent
+  offers a `model` session config option, soot sets it to the routed model per attempt and
+  records the outcome as routing history. Agents without that option (or that refuse or do not
+  confirm the value) pick their own model; the run reports "route not applied" and those
+  attempts are not counted. Matching is by exact ref or the id after `provider/`; no alias map.
+- **[Intentional] ACP v1 reports no token counts.** Usage shows 0 tokens; cost only if the agent
+  sends a USD `usage_update`. soot never estimates tokens to fill the gap.
+- **[Intentional] ACP: one agent process and session per attempt.** No session resume or
+  reuse; a retry starts fresh with soot's findings in the prompt.
+- **[Intentional] ACP: soot offers only `fs/read_text_file` (worktree) and `fs/write_text_file`
+  (write lease).** No terminal capability, no MCP servers. An agent that writes through its own
+  tools instead of ACP is still caught by soot's diff check, but there is no OS sandbox: a
+  spawned agent can touch anything its user can (see docs/security.md).
+- **[Intentional] ACP permission details are agent-provided text,** cleaned and truncated before
+  they are shown to the person approving. soot never selects "allow always"; when only that
+  option is offered, approval becomes a cancel.
+- **[Intentional] Read-only tasks also get a worktree as ACP `cwd`** (with no write lease), so
+  the agent never runs in the user's checkout.
+- **[Intentional] The skill is not verified in any product.** Installation is tested in temp
+  directories; whether a host agent loads it and delegates is unverified.
+- **[Intentional] MCP runs are unattended.** No elicitation: approvals are refused over MCP and
+  results stay on the integration branch. The MCP server is tested with the official SDK client
+  only (SDK v2.4.0; compatibility with older clients is untested).
+- **[Intentional] Stop and status use files in the state directory** (`control/<run>.lock`,
+  `.stop`, polled every 200 ms). A run whose process died shows as `interrupted`; there is no
+  daemon and no automatic resume from the CLI yet.
+- **[Intentional] Prompts must match a recorded fixture** (spec examples or the project's
+  `fixtures` file). Arbitrary prompts are refused until model-backed decomposition exists.
+- **[Intentional] The quick start needs a local copy of the repo.** Nothing is published; it was
+  reproduced from a fresh clone on the build box only, not on another machine or OS.
+- **[Intentional] `soot models` does not probe providers.** It reports the registry and policy;
+  availability comes from configuration.
 
 ## Documentation / community
 

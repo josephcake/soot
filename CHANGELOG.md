@@ -3,6 +3,32 @@
 All notable changes are recorded here by milestone. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). No versions have been released.
 
+## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
+
+### Added
+
+- `@soot/cli` (was a stub): the `soot` binary with `run`, `models`, `status`, `config`, `cost`,
+  `stop`, `install-skill`, `mcp`; `SootEngine`; `soot.config.json` schema; mock scripts;
+  terminal approvals (no approve-all); cross-process stop; saved reports.
+- `@soot/harness-adapters` (was a stub): `OrchestrationService`, `createSootMcpServer` (official
+  MCP SDK v2, tools `soot_run|status|cost|models|stop`), `HARNESS_SUPPORT` (Claude Code, Codex,
+  Grok: not implemented, not claimed).
+- `skills/universal-orchestrator/SKILL.md` and `soot install-skill`.
+- `examples/demo-app` with config, fictional registry and mock script; fixture-backed CLI tests
+  for spec §17 Tests 1 and 2 and the Test 4 graph shape, `soot stop` and `soot mcp` over stdio.
+- Docs: installation and quick start, providers, model routing, security; config file reference.
+- Generic ACP driver (ADR-027): `AcpAgentRunner`, `spawnAcpAgent` and a scripted mock ACP agent
+  (test double) in `@soot/harness-adapters`, on the official `@agentclientprotocol/sdk` (stable
+  v1). `soot run --agent acp` / `soot mcp --agent acp` spawn the user's configured `acpAgent`
+  command. New approval action `harness-permission`. Tested only with the mock ACP agent.
+- ACP routed model (ADR-028): soot sets the agent's `model` session option to the routed model
+  when offered; otherwise every attempt reports "route not applied". `acpRoutes` in run reports.
+
+### Changed
+
+- `@soot/integrations`: protected paths. A task that changes a protected file fails as
+  out-of-scope even inside its write lease.
+
 ## [Unreleased] — Milestone 5: Codebase integration and safety (verified locally 2026-11-12, fixture repos, mocks)
 
 ### Added

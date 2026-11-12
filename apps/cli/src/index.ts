@@ -1,20 +1,38 @@
 /**
  * @soot/cli
  *
- * STUB: Standalone `orchestrator` CLI (no commands implemented yet).
- * Nothing is implemented here yet; planned for Milestone 6.
- * See ROADMAP.md and TASKS.md. Do not rely on this package.
+ * Milestone 6 (partial): the `soot` command (run, status, cost, models, config, stop, mcp,
+ * install-skill) and the engine behind it and the MCP server. Fixture-backed: decomposition
+ * uses recorded fixtures and the only agent runner is the scripted mock.
  */
-
-import { PACKAGE_NAME as CORE_PACKAGE_NAME } from '@soot/core';
 
 export const PACKAGE_NAME = '@soot/cli';
 
-/** Implementation status of this package. Becomes 'implemented' only when real code lands. */
-export const IMPLEMENTATION_STATUS = 'stub' as const;
+/** `partial`: commands work against fixtures; no real agent runner exists yet. */
+export const IMPLEMENTATION_STATUS = 'partial' as const;
 
-/** Milestone in which this package is scheduled to receive its first real implementation. */
+/** Milestone that delivered the first real implementation. */
 export const PLANNED_MILESTONE = 6;
 
-/** The core package this app is built on (proves the workspace link and project reference). */
-export const DEPENDS_ON = [CORE_PACKAGE_NAME] as const;
+export { USAGE, VERSION, main, type CliIo } from './cli.js';
+export { SootEngine, type AgentMode, type EngineOptions } from './engine.js';
+export {
+  CONFIG_FILE,
+  ConfigError,
+  ProjectConfigSchema,
+  loadProjectConfig,
+  type LoadedConfig,
+  type ProjectConfig,
+} from './config.js';
+export { MockScriptFileSchema, loadMockScript } from './mock-script.js';
+export { interactiveApprovals, unattendedApprovals } from './approvals.js';
+export {
+  DEFAULT_SKILL_SOURCE,
+  SKILL_NAME,
+  SKILL_TARGETS,
+  installSkill,
+  type InstallResult,
+  type InstallSkillOptions,
+  type SkillTarget,
+} from './install-skill.js';
+export { holdRun, requestStop, runningInfo } from './control.js';

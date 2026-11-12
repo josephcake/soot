@@ -1,0 +1,6 @@
+{
+  "name": "soot-demo-app",
+  "private": true,
+  "type": "module",
+  "description": "Tiny fixture app for trying soot locally with the scripted mock agent."
+}

@@ -11,7 +11,7 @@ every exit criterion is verified from real runs. Dates are recorded only when ve
 | M3        | Intelligent Model Routing         | Completed (verified locally with fixture registry)  | 2026-11-12      |
 | M4        | Adaptive Execution                | Completed (verified locally with mock agents)       | 2026-11-12      |
 | M5        | Codebase Integration and Safety   | Completed (verified locally; fixture repos, mocks)  | 2026-11-12      |
-| M6        | Universal Skill and CLI           | Not Started                                         | —               |
+| M6        | Universal Skill and CLI           | In Progress (partial)                               | —               |
 | M7        | IDE Extensions                    | Not Started                                         | —               |
 
 The MVP (MVP-01…MVP-08) is reached at the end of M5 for the engine and M6 for the first
@@ -86,7 +86,7 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Deliverables:** universal orchestration skill (`SKILL.md`); Claude Code integration; Codex integration; MCP server where appropriate; standalone CLI (`orchestrator run|models|status|config|cost|stop`); installation docs.
 - **Dependencies:** M5.
 - **Acceptance / exit criteria:** a user invokes orchestration from a supported harness; one prompt triggers the complete workflow; the user receives the consolidated result.
-- **Status:** Not Started
+- **Status:** In Progress (partial). Exit criteria **not met**: no harness is supported yet (M6-04/05 not started) and real execution needs BYOK providers (M2-07, Blocked). Done: the `soot` CLI, the MCP server (tested with the official SDK client), the universal skill and its installer, and the docs, all against fixtures and a scripted mock agent (ADR-026); and one generic ACP driver with `soot run --agent acp`, tested only against soot's own mock ACP agent (ADR-027). No vendor harness has been run through it.
 - **Completion date:** —
 
 ## M7 — IDE Extensions

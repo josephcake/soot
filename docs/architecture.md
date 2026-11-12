@@ -133,7 +133,7 @@ and file-conflict management.
 ├── .github/workflows/ci.yml  # hosted CI (not yet running: repo unpublished)
 ├── scripts/ci.sh             # local CI, same steps as the workflow
 ├── apps/
-│   └── cli/                  # stub — future `orchestrator` CLI (M6); depends on core
+│   └── cli/                  # partial — `soot` CLI and SootEngine (M6)
 ├── packages/
 │   ├── core/                 # foundation: package metadata + SOOT_* env parsing (real, tested)
 │   ├── planner/              # prompt intake, fixture decomposer (M1, partial)
@@ -144,7 +144,7 @@ and file-conflict management.
 │   ├── context-manager/      # SQLite execution state (M1, partial); context selection later
 │   ├── escalation/           # adaptive supervisor: triggers, escalation, bounds (M4)
 │   ├── provider-adapters/    # partial (M2) — ModelClient over AI SDK; Anthropic, OpenAI, OpenAI-compatible
-│   ├── harness-adapters/     # stub — Claude Code, Codex, MCP, etc. (M6)
+│   ├── harness-adapters/     # partial — OrchestrationService, MCP server (M6)
 │   ├── integrations/         # partial (M5) — worktrees, validation, integration, reports
 │   └── observability/        # cost records/reports (M1, M5), routing log (M3), audit log (M5)
 ├── docs/
@@ -163,7 +163,7 @@ and file-conflict management.
 
 | Path                          | Status            | First real milestone | Responsibility                                   |
 | ----------------------------- | ----------------- | -------------------- | ------------------------------------------------ |
-| `apps/cli/`                   | stub              | M6                   | Future `orchestrator` CLI; depends on core       |
+| `apps/cli/`                   | partial           | M6                   | `soot` CLI, SootEngine, config, skill installer  |
 | `packages/core/`              | foundation (real) | M0                   | Package metadata, `parseEnv` for `SOOT_*` vars   |
 | `packages/planner/`           | partial (M1)      | M1                   | Prompt intake; fixture decomposer (no model yet) |
 | `packages/task-graph/`        | partial (M1)      | M1                   | Task/result contracts, JSON Schema, DAG          |
@@ -173,7 +173,7 @@ and file-conflict management.
 | `packages/context-manager/`   | partial (M1, M5)  | M1                   | SQLite state, outcomes; untrusted context        |
 | `packages/escalation/`        | partial (M4)      | M4                   | Escalation, fallback, bounds, downgrade rules    |
 | `packages/provider-adapters/` | partial (M2)      | M2                   | ModelClient over AI SDK; retries, fallback, keys |
-| `packages/harness-adapters/`  | stub              | M6                   | Harness adapters (Claude Code, Codex, MCP, …)    |
+| `packages/harness-adapters/`  | partial           | M6                   | Service interface, MCP server; no harness runner |
 | `packages/integrations/`      | partial (M5)      | M5                   | Worktrees, conflict detection, validation        |
 | `packages/observability/`     | partial (M1, M5)  | M1                   | Cost records/reports; routing log; audit log     |
 
@@ -182,7 +182,8 @@ and file-conflict management.
 These appear in the spec's suggested layout but are intentionally absent until their milestone,
 so the tree never implies support that does not exist:
 
-- `skills/universal-orchestrator/` — universal agent skill (`SKILL.md`), Milestone 6.
+- `skills/universal-orchestrator/` — universal agent skill (`SKILL.md`), installed by `soot install-skill`.
+- `examples/demo-app/` — the demo project used by the quick start and the M6 tests.
 - `extensions/{cursor,windsurf,kilo,vscode}/` and `apps/vscode-extension/` — Milestone 7.
 - `examples/` — once there is something runnable end to end.
 - `docs/{installation,providers,model-routing,task-decomposition,harness-integrations,security,examples}.md` — written alongside the features they describe.

@@ -139,22 +139,47 @@ M1-05/M1-08 `packages/agent-runtime/src/{scheduler,mock-agent}.test.ts`; M1-07
 
 ## M6 — Universal Skill and CLI
 
-| ID    | Description                                                          | Priority | Milestone | Dependencies   | Status      | Component                 | Acceptance criteria                                                    |
-| ----- | -------------------------------------------------------------------- | -------- | --------- | -------------- | ----------- | ------------------------- | ---------------------------------------------------------------------- |
-| M6-01 | CLI: `orchestrator` commands run, models, status, config, cost, stop | P1       | M6        | M5             | Not Started | apps/cli                  | Each command works against fixtures; `run` executes the full workflow. |
-| M6-02 | Universal agent skill (`skills/universal-orchestrator/SKILL.md`)     | P1       | M6        | M6-01          | Not Started | skills/                   | Installable; host agent delegates to engine.                           |
-| M6-03 | MCP server exposing orchestration                                    | P1       | M6        | M6-01          | Not Started | packages/harness-adapters | Works with at least one MCP client, tested.                            |
-| M6-04 | Claude Code integration                                              | P2       | M6        | M6-02 or M6-03 | Not Started | packages/harness-adapters | Verified end to end in Claude Code before any claim.                   |
-| M6-05 | Codex integration                                                    | P2       | M6        | M6-02 or M6-03 | Not Started | packages/harness-adapters | Verified end to end in Codex before any claim.                         |
-| M6-06 | Installation, provider, routing, and security docs                   | P1       | M6        | M6-01          | Not Started | docs/                     | Fresh-machine quick start reproduced.                                  |
-| M6-07 | Acceptance scenarios spec §17 Tests 1, 2, 4 end to end               | P0       | M6        | M6-01, M2-07   | Not Started | tests/                    | Recorded runs; Test 4 needs ≥2 real providers (BYOK).                  |
-| M6-08 | Cost comparison benchmark (spec §17 Test 5)                          | P2       | M6        | M6-07          | Not Started | tests/, observability     | Savings claimed only from measured data.                               |
+| ID    | Description                                                        | Priority | Milestone | Dependencies   | Status      | Component                 | Acceptance criteria                                                     |
+| ----- | ------------------------------------------------------------------ | -------- | --------- | -------------- | ----------- | ------------------------- | ----------------------------------------------------------------------- |
+| M6-01 | CLI: `soot` commands run, models, status, config, cost, stop       | P1       | M6        | M5             | Completed   | apps/cli                  | Each command works against fixtures; `run` executes the full workflow.  |
+| M6-02 | Universal agent skill (`skills/universal-orchestrator/SKILL.md`)   | P1       | M6        | M6-01          | Implemented | skills/                   | Installable; host agent delegates to engine.                            |
+| M6-03 | MCP server exposing orchestration                                  | P1       | M6        | M6-01          | Completed   | packages/harness-adapters | Works with at least one MCP client, tested.                             |
+| M6-04 | Claude Code integration                                            | P2       | M6        | M6-02 or M6-03 | Not Started | packages/harness-adapters | Verified end to end in Claude Code before any claim.                    |
+| M6-05 | Codex integration                                                  | P2       | M6        | M6-02 or M6-03 | Not Started | packages/harness-adapters | Verified end to end in Codex before any claim.                          |
+| M6-06 | Installation, provider, routing, and security docs                 | P1       | M6        | M6-01          | Implemented | docs/                     | Fresh-machine quick start reproduced.                                   |
+| M6-07 | Acceptance scenarios spec §17 Tests 1, 2, 4 end to end             | P0       | M6        | M6-01, M2-07   | Blocked     | tests/                    | Recorded runs; Test 4 needs ≥2 real providers (BYOK).                   |
+| M6-08 | Cost comparison benchmark (spec §17 Test 5)                        | P2       | M6        | M6-07          | Not Started | tests/, observability     | Savings claimed only from measured data.                                |
+| M6-09 | Generic ACP driver (soot as ACP client) and `soot run --agent acp` | P1       | M6        | M6-01          | Completed   | packages/harness-adapters | Tested against soot's own mock ACP agent only; no vendor agent claimed. |
 
-## M7 — IDE Extensions (post-MVP)
+M6 notes (2026-11-12, ADR-026):
 
-| ID    | Description                                                                               | Priority | Milestone | Dependencies | Status      | Component             | Acceptance criteria                    |
-| ----- | ----------------------------------------------------------------------------------------- | -------- | --------- | ------------ | ----------- | --------------------- | -------------------------------------- |
-| M7-01 | VS Code extension: task graph, agents, models, escalations, cost, cancel (UI per ADR-009) | P3       | M7        | M6           | Not Started | apps/vscode-extension | Functional in VS Code; core unchanged. |
-| M7-02 | Cursor compatibility                                                                      | P3       | M7        | M7-01        | Not Started | extensions/cursor     | Verified individually.                 |
-| M7-03 | Windsurf compatibility                                                                    | P3       | M7        | M7-01        | Not Started | extensions/windsurf   | Verified individually.                 |
-| M7-04 | Kilo Code compatibility                                                                   | P3       | M7        | M7-01        | Not Started | extensions/kilo       | Verified individually.                 |
+- **M6-01 Completed:** `soot run|models|status|config|cost|stop` (plus `install-skill`, `mcp`)
+  work against fixtures; `run` executes the full M1–M5 workflow with the scripted mock agent
+  (`tests/m6-cli-end-to-end.test.ts`, `tests/m6-cli-subprocess.test.ts`). The binary is `soot`,
+  not `orchestrator` (project rename). Without `--agent mock` it refuses: no real runner exists.
+- **M6-02 Implemented:** the skill exists and installs into `.agents/skills`, `.claude/skills`
+  and `.grok/skills` (tested in temp directories only). "Host agent delegates to engine" is not
+  verified in any real host agent.
+- **M6-03 Completed:** `soot mcp` (stdio) and `createSootMcpServer`, tested with the official MCP
+  SDK client in process and over stdio against the built binary. Not verified inside any
+  product. Runs over MCP are unattended (approvals refused).
+- **M6-04 / M6-05 Not Started:** `HARNESS_SUPPORT` lists them as `not-implemented`,
+  `verifiedEndToEnd: false`. The generic ACP driver (M6-09) is the intended way they would
+  connect later (through an ACP mode or adapter the user installs and signs in to), but neither
+  has been run, so nothing is claimed.
+- **M6-06 Implemented:** `docs/installation.md`, `providers.md`, `model-routing.md`,
+  `security.md`. The keyless quick start was reproduced step by step from a fresh local clone
+  in a temp directory on the build box, not on a separate fresh machine.
+- **M6-07 Blocked (on M2-07):** fixture-backed CLI runs of Tests 1, 2 and the Test 4 graph
+  shape pass with the mock agent, but they are not the recorded real runs the criterion asks
+  for, and Test 4 needs ≥2 real providers.
+- **M6-08 Not Started:** no savings are claimed without measured runs.
+- **M6-09 Completed (ADR-027):** `AcpAgentRunner` drives any ACP agent over the stable ACP v1
+  protocol (official `@agentclientprotocol/sdk`), one session per attempt in the task's
+  worktree. Permission requests go to soot's approval gate only (unattended → rejected, task
+  refused, independent tasks continue; approved → "allow once" only). `soot run --agent acp`
+  spawns only the `acpAgent` command the user configured. Tested only with soot's own mock ACP
+  agent, in process (`packages/harness-adapters/src/acp/runner.test.ts`) and spawned over stdio
+  by the CLI (`tests/m6-acp-end-to-end.test.ts`). No vendor binary was run. ADR-028 adds the
+  routed model through the agent's `model` session option when offered, and "route not applied"
+  records otherwise (mock agent only).

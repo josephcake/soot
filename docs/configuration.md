@@ -4,8 +4,8 @@ Configuration is read from environment variables. `.env.example` lists every var
 to `.env` for local overrides. `.env` is git-ignored and must never be committed.
 
 > Nothing loads `.env` automatically yet. Variables are read only by
-> `parseEnv(process.env)` from `@soot/core`. No CLI exists yet (Milestone 6); callers pass
-> `parseEnv(process.env).dataDir` to `openExecutionStore` from `@soot/context-manager`.
+> `parseEnv(process.env)` from `@soot/core`; the `soot` CLI uses it for the state directory
+> (override with `--data-dir`).
 
 ## Orchestrator variables (read today by `parseEnv`)
 
@@ -84,3 +84,55 @@ and the built-in policies do not select it. Cost estimates and provider-reported
 `tests/repo-structure.test.ts` fails if `.env.example` ever contains a value for a
 `*KEY*`, `*TOKEN*`, `*SECRET*`, or `*PASSWORD*` variable, and if any `SOOT_*` variable in
 `.env.example` is missing from this document.
+
+## Project config (`soot.config.json`)
+
+The `soot` CLI reads `soot.config.json` from the repository root (or `--config <file>`). Commit
+it with the project: it is the only source of the commands soot runs, and soot protects it from
+task edits. Unknown keys are rejected.
+
+```json
+{
+  "version": 1,
+  "models": "models.json",
+  "policy": "balanced",
+  "allowedExecutables": ["node"],
+  "checks": [
+    { "name": "test", "kind": "test", "argv": ["node", "--test", "tests/**/*.test.js"] },
+    { "name": "lint", "kind": "lint", "argv": ["node", "scripts/lint.mjs"] }
+  ],
+  "acceptance": {
+    "update-page-title": [
+      {
+        "name": "acceptance:title",
+        "kind": "acceptance",
+        "argv": ["node", "--test", "acceptance/title.test.js"]
+      }
+    ]
+  },
+  "protectedPaths": ["acceptance/", "scripts/"]
+}
+```
+
+| Key                  | Default    | Meaning                                                                                                                  |
+| -------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `models`             | (required) | Model registry file (above), relative to the config file.                                                                |
+| `policy`             | `balanced` | `economy`, `balanced` or `quality` ([routing](model-routing.md)).                                                        |
+| `checks`             | `[]`       | Project checks run on every task that changes files, and on the merged result.                                           |
+| `acceptance`         | `{}`       | Extra commands per task id; also run for read-only tasks (their only way to be verified).                                |
+| `protectedPaths`     | `[]`       | Paths no task may change, even inside its lease. The config, registry, fixtures and mock script are added automatically. |
+| `allowedExecutables` | `[]`       | Exact `argv[0]` values allowed to run. Destructive programs are refused regardless.                                      |
+| `concurrency`        | `4`        | Tasks running at once (1–16).                                                                                            |
+| `attemptTimeoutMs`   | none       | Abort an attempt after this long.                                                                                        |
+| `escalation`         | defaults   | Escalation limits and budgets (`@soot/escalation`, e.g. `{ "sameModelRetries": 0 }`).                                    |
+| `fixtures`           | none       | JSON array of extra recorded decompositions `{ id, prompt, tasks }`.                                                     |
+| `acpAgent`           | none       | ACP agent for `--agent acp`: `command`, `args`, `passEnv` (variable names; credential-like names are rejected).          |
+
+Check entries: `name`, `kind` (`test`, `typecheck`, `lint`, `acceptance`), `argv`, optional
+`timeoutMs` and `required` (default `true`).
+
+## CLI state files
+
+Under the state directory: `soot.sqlite` (runs, attempts, model outcomes), `reports/<run>.json`
+(the consolidated report), `audit/<run>.jsonl`, `worktrees/<run>/` (removed after the run) and
+`control/<run>.lock|.stop` (used by `soot stop`).

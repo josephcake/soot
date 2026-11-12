@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "label": "soot demo app: scripted mock agent (test double, fictional usage)",
+  "tasks": {
+    "update-page-title": {
+      "summary": "[mock] set the page title",
+      "writes": {
+        "src/pages/index.html": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <title>HELLO WORLD</title>\n    <link rel=\"stylesheet\" href=\"../styles/button.css\" />\n  </head>\n  <body>\n    <h1 id=\"title\">HELLO WORLD</h1>\n    <button class=\"btn-primary\">Go</button>\n    <button class=\"btn-secondary\">Cancel</button>\n  </body>\n</html>\n"
+      },
+      "usage": {
+        "inputTokens": 1800,
+        "outputTokens": 250,
+        "costUsd": 0.00076
+      },
+      "delayMs": 50
+    },
+    "update-button-color": {
+      "summary": "[mock] primary button purple",
+      "writes": {
+        "src/styles/button.css": ".btn-primary {\n  background: purple;\n}\n\n.btn-secondary {\n  background: gray;\n}\n"
+      },
+      "usage": {
+        "inputTokens": 2100,
+        "outputTokens": 280,
+        "costUsd": 0.00087
+      },
+      "delayMs": 50
+    },
+    "add-dropdown-component": {
+      "summary": "[mock] added Dropdown",
+      "writes": {
+        "src/components/Dropdown.tsx": "import { useState, type KeyboardEvent } from 'react';\n\nexport interface DropdownProps {\n  readonly options: readonly string[];\n  readonly onSelect: (option: string) => void;\n}\n\nexport function Dropdown({ options, onSelect }: DropdownProps) {\n  const [open, setOpen] = useState(false);\n  const [active, setActive] = useState(0);\n  const onKeyDown = (e: KeyboardEvent) => {\n    if (e.key === 'ArrowDown') setActive((i) => Math.min(options.length - 1, i + 1));\n    if (e.key === 'ArrowUp') setActive((i) => Math.max(0, i - 1));\n    if (e.key === 'Enter') onSelect(options[active] ?? '');\n    if (e.key === 'Escape') setOpen(false);\n  };\n  return (\n    <div role=\"listbox\" tabIndex={0} onKeyDown={onKeyDown} onClick={() => setOpen(!open)}>\n      {open && options.map((o, i) => <div key={o} role=\"option\" aria-selected={i === active}>{o}</div>)}\n    </div>\n  );\n}\n",
+        "src/components/Dropdown.test.tsx": "// Component tests (need a React test setup in a real project).\nimport { Dropdown } from './Dropdown';\n\nexport const cases = [{ name: 'renders options', component: Dropdown }];\n"
+      },
+      "usage": {
+        "inputTokens": 5200,
+        "outputTokens": 2100,
+        "costUsd": 0.0136
+      },
+      "delayMs": 50
+    },
+    "verify-auth-bug": {
+      "summary": "[mock] the expiry comparison bug is fixed; regression test passes",
+      "findings": [
+        {
+          "kind": "observation",
+          "message": "src/auth/session.js uses >= for expiry; tests/auth/session.test.js covers the boundary."
+        }
+      ],
+      "usage": {
+        "inputTokens": 9000,
+        "outputTokens": 1200,
+        "costUsd": 0.075
+      },
+      "delayMs": 50
+    },
+    "implement-feature": {
+      "summary": "[mock] implemented slugify",
+      "writes": {
+        "src/feature/slugify.js": "export function slugify(text) {\n  return text\n    .toLowerCase()\n    .replace(/[^a-z0-9]+/g, '-')\n    .replace(/^-|-$/g, '');\n}\n"
+      },
+      "usage": {
+        "inputTokens": 6000,
+        "outputTokens": 1500,
+        "costUsd": 0.012
+      },
+      "delayMs": 50
+    },
+    "add-feature-tests": {
+      "summary": "[mock] tests for slugify",
+      "writes": {
+        "tests/feature/slugify.test.js": "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { slugify } from '../../src/feature/slugify.js';\n\ntest('slugify lowercases and joins words', () => {\n  assert.equal(slugify('Hello World!'), 'hello-world');\n});\n\ntest('slugify trims separators', () => {\n  assert.equal(slugify('  --a--  '), 'a');\n});\n"
+      },
+      "usage": {
+        "inputTokens": 3000,
+        "outputTokens": 900,
+        "costUsd": 0.00188
+      },
+      "delayMs": 50
+    },
+    "security-review": {
+      "summary": "[mock] reviewed src/feature/slugify.js",
+      "findings": [
+        {
+          "kind": "observation",
+          "message": "src/feature/slugify.js: no user input reaches a sink; scope: src/feature/."
+        }
+      ],
+      "usage": {
+        "inputTokens": 7000,
+        "outputTokens": 800,
+        "costUsd": 0.055
+      },
+      "delayMs": 50
+    }
+  }
+}

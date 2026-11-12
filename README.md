@@ -2,17 +2,15 @@
 
 _Named after the soot sprites, the black dust bunnies from Studio Ghibli. Formerly `intelligent-agent-router`._
 
-> **Status: Milestones 1, 3, 4 and 5 done (mocks, fixtures and fixture git repos); Milestone 2
-> (provider connectivity) in progress, verified with mocked HTTP only.**
-> The engine can take one prompt, decompose it **from recorded fixtures** (there is no
-> model-backed decomposition), build a dependency graph, run independent tasks concurrently
-> with **mock agents** (a test double; no model is called), persist state in SQLite, and
-> resume after a crash. It can route each task to a model from your registry under an
-> Economy, Balanced, Quality, or Custom policy, and explain every choice (heuristic complexity
-> evaluation). Provider adapters (Anthropic, OpenAI, OpenAI-compatible) exist but have **not
-> been run against a real provider**. There is **no CLI
-> command, no agent skill, and no IDE extension** yet. See
-> [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for the live status.
+> **Status: Milestones 1, 3, 4 and 5 done (mocks, fixtures and fixture git repos); Milestones 2
+> (provider connectivity) and 6 (CLI and skill) in progress.**
+> The `soot` CLI runs the whole workflow on a git repository from one prompt: decompose
+> **from recorded fixtures** (no model-backed decomposition), route each task under an
+> Economy, Balanced or Quality policy, run independent tasks in parallel worktrees, verify each
+> with the project's own checks, integrate serially and report per-task cost. The only agent is
+> a **scripted mock** (no model is called). Provider adapters exist but have **not been run
+> against a real provider**. An MCP server and a universal agent skill exist; **no harness
+> (Claude Code, Codex, …) is supported yet**. See [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
 ## What this project is for
 
@@ -79,8 +77,19 @@ endpoints are refused by policy (ADR-016). See
 
 ### Supported harnesses
 
-**None yet.** A universal agent skill and Claude Code / Codex / MCP integration are
-Milestone 6; IDE extensions are Milestone 7. No compatibility is claimed until tested.
+**None yet.** `soot mcp` serves soot over MCP (tested with the official MCP SDK client, not
+inside any product) and `soot install-skill` installs the universal skill into `.agents`,
+`.claude` and `.grok` skill folders. `soot run --agent acp` runs tasks through an ACP agent
+command you configure (one generic driver, tested only with soot's own mock ACP agent). Claude Code and Codex integration (M6-04/05) and IDE
+extensions (M7) are not built. No compatibility is claimed until tested.
+
+## Try it (no keys)
+
+See [`docs/installation.md`](docs/installation.md): build this checkout, copy
+`examples/demo-app` to a temp directory, and run
+`soot run "<prompt>" --agent mock --mock-script mock-agent.json`. Also:
+[providers](docs/providers.md), [model routing](docs/model-routing.md),
+[security](docs/security.md), [configuration](docs/configuration.md).
 
 ## Quick start (contributors)
 

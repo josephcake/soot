@@ -10,7 +10,37 @@
   "exclude": ["src/**/*.test.ts"],
   "references": [
     {
+      "path": "../../packages/agent-runtime"
+    },
+    {
+      "path": "../../packages/context-manager"
+    },
+    {
       "path": "../../packages/core"
+    },
+    {
+      "path": "../../packages/escalation"
+    },
+    {
+      "path": "../../packages/harness-adapters"
+    },
+    {
+      "path": "../../packages/integrations"
+    },
+    {
+      "path": "../../packages/model-registry"
+    },
+    {
+      "path": "../../packages/model-router"
+    },
+    {
+      "path": "../../packages/observability"
+    },
+    {
+      "path": "../../packages/planner"
+    },
+    {
+      "path": "../../packages/task-graph"
     }
   ]
 }

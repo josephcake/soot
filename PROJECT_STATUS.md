@@ -4,13 +4,29 @@ Last Updated: 2026-11-12
 
 ## Current Phase
 
-Milestone 5 — Codebase Integration and Safety (completed, verified locally on fixture git repositories with mock agents); Milestone 2 In Progress (partial; M2-07 Blocked)
+Milestone 6 — Universal Skill and CLI (in progress, partial: CLI, MCP server, skill and docs against fixtures and a scripted mock agent; exit criteria not met); Milestone 2 In Progress (partial; M2-07 Blocked)
 
 ## Overall Progress
 
-5 / 8 milestones completed (M0, M1, M3, M4, M5 verified locally; M2 in progress, partial; M6–M7 not started)
+5 / 8 milestones completed (M0, M1, M3, M4, M5 verified locally; M2 and M6 in progress, partial; M7 not started)
 
 ## Current Status
+
+Milestone 6 is In Progress (partial, ADR-026). The `soot` CLI (`run`, `models`, `status`,
+`config`, `cost`, `stop`, `install-skill`, `mcp`) runs the full workflow on a real git
+repository from one prompt, but only for **recorded prompts** and with the **scripted mock
+agent** (`--agent mock`); every run says so. The MCP server exposes the same service and is
+tested with the official MCP SDK client (in process and over stdio). The universal skill
+installs into `.agents`, `.claude` and `.grok` skill folders. Installation, provider, routing and
+security docs exist; the keyless quick start was reproduced from a fresh clone on the build box.
+A generic ACP driver (ADR-027) lets `soot run --agent acp` run each task through the
+ACP agent command the user configures, with permission requests answered only by a person
+(unattended: rejected, the task refused, independent tasks continue). When the agent advertises a `model` session option, soot applies the routed model per attempt;
+otherwise it reports "route not applied" (ADR-028). It is tested only against soot's own mock
+ACP agent. Not done: no vendor harness has been run (Claude Code
+M6-04, Codex M6-05: not claimed), no real provider (M2-07 Blocked), so M6-07 (real recorded acceptance runs) is Blocked and M6-08 not started. M5
+gained protected paths: a task that edits a protected file (such as its acceptance test) fails
+even inside its lease.
 
 Milestone 5 is Completed and verified locally on real temporary git repositories, with real
 `node --test`, `tsc` and lint commands run by soot itself and mock agents that write files (no
@@ -85,15 +101,16 @@ local only.
 
 - [ ] Milestone 2. M2-03 (local endpoint) is Implemented: covered by mocked HTTP, but the live test skipped because no Ollama or LM Studio was running. M2-07 is Blocked.
 - [ ] M0-11 (first hosted CI run) is blocked on publish approval.
+- [ ] Milestone 6. M6-01, M6-03 and M6-09 (generic ACP driver, mock ACP agent only) Completed; M6-02 and M6-06 Implemented; M6-04, M6-05, M6-08 Not Started; M6-07 Blocked on M2-07. Exit criteria not met.
 
 ## Not Started
 
-- [ ] Milestone 6 — Universal Skill and CLI
 - [ ] Milestone 7 — IDE Extensions
 
 ## Blockers
 
 - Hosted GitHub Actions CI cannot run until the repository is published (ADR-006; Mochi decides). Not a milestone blocker: the same checks are verified locally.
+- **Milestone 6 exit criteria** need a supported harness: running the generic ACP driver against a real harness the user already installed and signed in to (M6-04/05), which this box must not do, plus real providers (M2-07). Mochi decides next steps.
 - **M2-07 Blocked:** Milestone 2's real-provider exit criterion needs user-supplied (BYOK) keys for at least two providers (ADR-011, ADR-017). soot will not mint, request, or spend.
 
 ## Known Issues
@@ -107,33 +124,20 @@ local only.
 
 ## Next Actions
 
-1. Mochi: review Milestone 5. Decide whether to start Milestone 6 (universal skill and CLI). Not started.
+1. Mochi: review the generic ACP driver (ADR-027). Verifying it with a real harness (M6-04/05) needs a machine where the user has installed and signed in to that harness and agrees to a run; Mochi decides when and where. Milestone 7 not started.
 2. Mochi: decide when and whether to run M2-07 with user-supplied keys. Real routing outcomes, model-backed evaluation and calibrated thresholds depend on it.
 3. Optional: run `pnpm vitest run packages/provider-adapters/src/local-endpoint.test.ts` with Ollama or LM Studio running to verify M2-03 live.
 
 ## MVP Readiness
 
-Not Ready (MVP-01, MVP-02, MVP-05 core in place with fixtures/mocks; MVP-03 partial (mocks only, real providers blocked); MVP-04 routing in place with heuristic evaluation; MVP-06 in place with mocks; MVP-07, -08 in place, verified on fixture repos with mock agents; no harness-facing surface until M6)
+Not Ready (MVP-01, MVP-02, MVP-05 core in place with fixtures/mocks; MVP-03 partial (mocks only, real providers blocked); MVP-04 routing in place with heuristic evaluation; MVP-06 in place with mocks; MVP-07, -08 in place, verified on fixture repos with mock agents; CLI and MCP surfaces exist (fixture prompts, mock agent only); no supported harness yet)
 
 ## Latest Validation
 
-Recorded 2026-11-12 ~02:28 PST from a real run of `bash scripts/ci.sh` in `/workspace/soot`, Node 24.22.1, git 2.47.3. The run covers install --frozen-lockfile, typecheck, lint, format:check, test and a clean build.
+Recorded 2026-11-12 ~03:22 PST from a real run of `bash scripts/ci.sh` in `/workspace/soot`, Node 24.22.1, git 2.47.3. The run covers install --frozen-lockfile, typecheck, lint, format:check, test and a clean build.
 
 - **Build:** pass. `tsc -b` built all 13 packages.
-- **Tests:** pass. 50 test files (49 passed, 1 skipped) and 370 tests (369 passed, 1 skipped, 0 failures), Vitest 5.1.0. The skipped test is the live local-endpoint test: no runtime was listening on 127.0.0.1:11434 or :1234.
+- **Tests:** pass. 58 test files (57 passed, 1 skipped) and 423 tests (422 passed, 1 skipped, 0 failures), Vitest 5.1.0. The skipped test is the live local-endpoint test: no runtime was listening on 127.0.0.1:11434 or :1234.
 - **Typecheck / lint / format:** pass.
-- **Network audit:** the full suite was re-run with a global `fetch` guard. The only real requests were the two localhost probes. No key-like environment variables were set; the secret-isolation test sets a fake one and checks it never appears.
-- **Mutation checks** (temporarily breaking the code, then restoring it): ignoring failing checks fails 6 M5 tests; auto-approving deletions fails 2; dropping conflicts silently fails 2; skipping the scope check fails 2.
-- **Milestone 5 exit criteria** (`tests/m5-codebase-end-to-end.test.ts`, 12 tests, real temporary git repos, mock agents):
-  - **EC1 safe parallel changes:** two Test 1 tasks run concurrently in separate worktrees outside the repo; the user's tree is untouched during the run; both are verified, integrated (`soot: integrate …` commits), validated again, approved, and fast-forwarded; only the main worktree remains afterwards.
-  - **EC2 conflicts detected:** an edit outside the write lease is caught from the real diff (`out-of-scope`) and reported as an overlap; a commit made by the user mid-run produces an integration conflict in `src/button.ts`, surfaced with the branch kept, while the other task integrates.
-  - **EC3 integration failures reported:** conflicts, refused approvals and a working tree left untouched are listed under `NOT COMPLETE` and `problems`.
-  - **EC4 evidence:** soot runs `node --test`, `tsc -p tsconfig.json` and the lint script on each task's commit. A type error with forged agent evidence ends as `failed-validation: typecheck failed (exit 2)`; a failing acceptance test is fed back and the task escalates `alpha/test-small` → `beta/test-mid` and is verified.
-  - **M5-06 cost:** totals match the mocks' reported usage across 4 attempts, by model, with estimates shown separately.
-  - **M5-07 routing feedback:** after two runs where the small model fails soot's acceptance test, the stored outcomes move Balanced routing from `alpha/test-small` to `beta/test-mid`; outcomes survive a reopen.
-  - **M5-08 permissions:** unattended deletion is refused (never auto-approved) and its dependent skipped while independent work continues; the interactive gate pauses until answered (approved proceeds, denied refused); destructive checks (`rm`, `git push`, a non-allowlisted interpreter) are refused and audited; a fake key in the environment never reaches checks, reports or the audit log.
-  - **M5-09 injection:** hostile check output and findings cause no approval requests and no scope change; the dependent that "followed" them fails out-of-scope; the flags are audited.
-  - **Cancellation:** aborting a run mid-flight aborts the agents, removes worktrees and leaves the tree clean.
-  - **DeepSeek:** never assigned.
-- **Milestone 4, 3, 2 and 1 evidence** is unchanged (`tests/m4-adaptive-end-to-end.test.ts`, `tests/m3-routing-end-to-end.test.ts`; `packages/provider-adapters`, `packages/model-registry`, `tests/credential-boundary.test.ts`; `tests/m1-end-to-end.test.ts`, `tests/resume-after-kill.test.ts`). M2-07 is Blocked.
-- **Hosted CI:** not run, because the repository is not published (ADR-006).
+- **Network audit:** the in-process suite was re-run with a global `fetch` guard; the only real requests were the two localhost probes. Subprocess tests (`soot stop`, `soot mcp`, and the mock ACP agent processes spawned by `soot run --agent acp`) run built soot code that does not depend on the provider adapters. The only ACP agent ever spawned is soot's own mock (`node .../mock-agent-bin.js`); no vendor binary was run. No key-like environment variables were set.
+- **Quick start:** `docs/installation.md` reproduced step by step from a fresh `git clone` of this repo in `/tmp` (demo runs: unattended INCOMPLETE exit 2, interactive `y` COMPLETE exit 0 with fast-forward, Test 4 shape INCOMPLETE with the review unverified, skill installed into a temp dir).

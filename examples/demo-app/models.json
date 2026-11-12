@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "providers": [
+    { "id": "demo-a", "kind": "anthropic", "apiKeyEnv": "ANTHROPIC_API_KEY" },
+    { "id": "demo-b", "kind": "openai", "apiKeyEnv": "OPENAI_API_KEY" }
+  ],
+  "models": [
+    {
+      "provider": "demo-a",
+      "modelId": "demo-small",
+      "capabilities": {
+        "tools": true,
+        "structuredOutput": true,
+        "vision": false,
+        "reasoning": false,
+        "streaming": true
+      },
+      "contextWindow": 200000,
+      "maxOutputTokens": 8192,
+      "pricing": {
+        "inputPerMTokUsd": 0.25,
+        "outputPerMTokUsd": 1.25,
+        "source": "fictional demo value (not a real price)",
+        "asOf": "2026-11-12"
+      },
+      "reliability": { "low": 0.9, "medium": 0.7, "high": 0.4, "source": "fictional demo prior" }
+    },
+    {
+      "provider": "demo-b",
+      "modelId": "demo-mid",
+      "capabilities": {
+        "tools": true,
+        "structuredOutput": true,
+        "vision": true,
+        "reasoning": false,
+        "streaming": true
+      },
+      "contextWindow": 400000,
+      "maxOutputTokens": 16384,
+      "pricing": {
+        "inputPerMTokUsd": 1,
+        "outputPerMTokUsd": 4,
+        "source": "fictional demo value (not a real price)",
+        "asOf": "2026-11-12"
+      },
+      "reliability": { "low": 0.95, "medium": 0.88, "high": 0.7, "source": "fictional demo prior" }
+    },
+    {
+      "provider": "demo-a",
+      "modelId": "demo-large",
+      "capabilities": {
+        "tools": true,
+        "structuredOutput": true,
+        "vision": true,
+        "reasoning": true,
+        "streaming": true
+      },
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "pricing": {
+        "inputPerMTokUsd": 5,
+        "outputPerMTokUsd": 25,
+        "source": "fictional demo value (not a real price)",
+        "asOf": "2026-11-12"
+      },
+      "reliability": { "low": 0.97, "medium": 0.95, "high": 0.9, "source": "fictional demo prior" }
+    }
+  ]
+}

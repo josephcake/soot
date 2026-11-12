@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "models": "models.json",
+  "policy": "balanced",
+  "allowedExecutables": ["node"],
+  "checks": [
+    { "name": "test", "kind": "test", "argv": ["node", "--test", "tests/**/*.test.js"] },
+    { "name": "lint", "kind": "lint", "argv": ["node", "scripts/lint.mjs"] }
+  ],
+  "acceptance": {
+    "update-page-title": [
+      {
+        "name": "acceptance:title",
+        "kind": "acceptance",
+        "argv": ["node", "--test", "acceptance/title.test.js"]
+      }
+    ],
+    "update-button-color": [
+      {
+        "name": "acceptance:button",
+        "kind": "acceptance",
+        "argv": ["node", "--test", "acceptance/button.test.js"]
+      }
+    ],
+    "add-dropdown-component": [
+      {
+        "name": "acceptance:dropdown",
+        "kind": "acceptance",
+        "argv": ["node", "--test", "acceptance/dropdown.test.js"]
+      }
+    ],
+    "verify-auth-bug": [
+      {
+        "name": "regression:auth",
+        "kind": "test",
+        "argv": ["node", "--test", "tests/auth/session.test.js"]
+      }
+    ],
+    "implement-feature": [
+      {
+        "name": "acceptance:feature",
+        "kind": "acceptance",
+        "argv": ["node", "--test", "acceptance/feature.test.js"]
+      }
+    ]
+  },
+  "protectedPaths": ["acceptance/", "tests/auth/", "scripts/"]
+}

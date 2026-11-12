@@ -3,7 +3,7 @@
  * process being killed (SIGKILL), and a restart resumes without re-running completed tasks.
  * The child runs the BUILT packages, so this test builds them first.
  */
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,8 +14,8 @@ import { STATE_DB_FILE, openExecutionStore } from '@soot/context-manager';
 import { parseEnv } from '@soot/core';
 import { createPromptIntake } from '@soot/planner';
 import { buildTaskGraph, type Task } from '@soot/task-graph';
+import { buildWorkspace } from './helpers/workspace-build.js';
 
-const root = fileURLToPath(new URL('../', import.meta.url));
 const childScript = fileURLToPath(new URL('./fixtures/crash-child.mjs', import.meta.url));
 
 const task = (id: string, dependsOn: string[] = []): Task => ({
@@ -32,15 +32,8 @@ const task = (id: string, dependsOn: string[] = []): Task => ({
 
 let dataRoot = '';
 
-beforeAll(() => {
-  execFileSync(
-    process.execPath,
-    [join(root, 'node_modules/typescript/bin/tsc'), '-b', 'tsconfig.json'],
-    {
-      cwd: root,
-      stdio: 'pipe',
-    },
-  );
+beforeAll(async () => {
+  await buildWorkspace();
   dataRoot = mkdtempSync(join(tmpdir(), 'soot-kill-'));
 }, 120_000);
 

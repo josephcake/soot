@@ -15,6 +15,8 @@ export const APPROVAL_ACTIONS = [
   'write-outside-scope',
   /** Fast-forwarding the user's working tree to the integrated result. */
   'integrate-into-working-tree',
+  /** A harness agent (over ACP) asks permission for one of its own tool calls. */
+  'harness-permission',
 ] as const;
 export type ApprovalAction = (typeof APPROVAL_ACTIONS)[number];
 
