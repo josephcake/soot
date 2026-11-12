@@ -24,6 +24,8 @@ export {
   ProviderConfigSchema,
   RegistryConfigError,
   RegistryConfigSchema,
+  ReliabilitySchema,
+  UNKNOWN_RELIABILITY,
   loadRegistryConfigFile,
   parseRegistryConfig,
   type Capabilities,
@@ -34,6 +36,7 @@ export {
   type ProviderKind,
   type RegistryConfig,
   type RegistryConfigInput,
+  type Reliability,
 } from './config.js';
 export { isCallable, providerRestriction, type ProviderRestriction } from './policy.js';
 export {

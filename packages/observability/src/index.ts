@@ -2,7 +2,7 @@
  * @soot/observability
  *
  * Milestone 1: per-task usage/cost records that keep planner estimates and reported actuals
- * strictly separate. No dashboard or UI (ADR-009); audit logs and reports come later.
+ * strictly separate. Milestone 3: the routing explanation log. No dashboard or UI (ADR-009); audit logs and reports come later.
  */
 
 export const PACKAGE_NAME = '@soot/observability';
@@ -29,3 +29,9 @@ export {
   type EstimatedUsd,
   type TaskCostRecord,
 } from './cost.js';
+export {
+  RoutingLog,
+  formatRoutingEntry,
+  type RoutingCandidateLine,
+  type RoutingLogEntry,
+} from './routing-log.js';

@@ -258,3 +258,26 @@ the old one.
 - **Alternatives:** the SDK's built-in retries (not rate-limit-aware and not observable in tests); hand-written HTTP clients per provider (more code, more drift); the OpenAI Responses API first (different wire format from compatible endpoints); a bundled model catalogue with prices (goes stale and would be guessed).
 - **Consequences:** Provider behaviour is covered by one contract suite that runs against the mock test double and each adapter over a scripted `fetch`. Real-provider behaviour is unverified until M2-07 (BYOK).
 - **Reversible:** Yes. The `ModelClient` interface isolates callers from the AI SDK.
+
+## ADR-023: Milestone 3 implementation choices (task-level routing)
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Sweed, under ADR-012: smaller extensible option)
+- **Context:** Milestone 3 needs per-task model selection that is cheap where possible, strong where needed, explainable, and policy-driven (build spec §5). There is no model-backed planner yet, no real provider runs (M2-07 Blocked), and soot must never hardcode model names or guess metadata.
+- **Decision:**
+  - **Heuristic evaluation:** `evaluateTask` starts from the planner's declared complexity and only raises it. `debugging`, security and architecture work raise it to at least medium. More than 50k planned tokens means at least medium, and more than 150k means high. A small rule table maps the open task-capability vocabulary onto model capabilities. Every task needs `tools` and `structuredOutput`, because soot's API executor uses tool calls and validated results. Security, architecture and data-migration work is _high-risk_ and uses the `high` reliability threshold. Every rule that fires is recorded as a reason. Unmapped capabilities are reported, not guessed. A model-backed evaluator can replace this behind `TaskProfile`.
+  - **Reliability = configured prior ⊕ measured history.** Model config gains optional `reliability: {low, medium, high, source}`, which is unknown by default and needs a source when set. History blends in as (prior·k + successes)/(k + attempts), with k = 5. Without a prior, history counts after 3 attempts. Only succeeded and failed attempts count; cancelled and blocked ones say nothing about the model. Unknown reliability is excluded unless a policy allows it.
+  - **Policies are one validated structure.** Economy, Balanced and Quality are presets; Custom is a preset plus overrides.
+    - Economy: cheapest model at thresholds 0.60/0.70/0.80.
+    - Balanced: lowest estimated cost per success (cost ÷ p) at 0.75/0.85/0.90, so a slightly pricier but more reliable model can win.
+    - Quality: highest reliability at 0.85/0.90/0.95, and the only preset that allows unpriced models.
+    - Custom can also set provider allow and deny lists, local-only, a per-task cost cap, the prior weight, and what to do when nothing qualifies.
+    - These numbers are defaults, not measurements.
+  - **No silent fallbacks.** If no model meets the threshold, the decision is `unroutable` with a reason, unless the policy opts into `onNoQualifying: 'most-reliable'`.
+  - **Filtering reuses `ModelRegistry.select`**, which covers capabilities (unknown counts as missing), context window, availability, and restricted (DeepSeek) and listed-only providers. The router adds checks for max output tokens, price, the cost cap and reliability.
+  - **Costs are estimates end to end.** Costs come from the registry's sourced list prices, are typed `EstimatedUsd`, and are labelled `kind: 'estimate'`. Routing never writes into a task's planner estimate or into actuals.
+  - **Explanations:** every decision lists every registry model with its outcome (selected, eligible, below threshold, or excluded), estimate, reliability and exclusion reasons, plus a one-sentence reason. `RoutingLog` in `@soot/observability` stores entries in memory and renders text and JSON Lines.
+  - **Routing is pure and per task:** `routeTasks` maps `routeTask` over the tasks independently. The router calls no model.
+- **Alternatives:** a single quality score per model (cannot express "fine for CSS, unreliable for debugging"); ranking without thresholds (cannot meet "cheapest above a reliability threshold"); LLM-based complexity scoring now (needs real providers, M2-07); built-in benchmark priors (would be guesses or go stale).
+- **Consequences:** Routing quality depends on the user's priors until history accumulates. The fixture registry in tests is fictional. Latency is not considered yet.
+- **Reversible:** Yes. The evaluator, policy presets and blending formula are each isolated.

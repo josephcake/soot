@@ -2,13 +2,15 @@
 
 _Named after the soot sprites, the black dust bunnies from Studio Ghibli. Formerly `intelligent-agent-router`._
 
-> **Status: Milestone 1 done; Milestone 2 (provider connectivity) in progress, verified with
-> mocked HTTP only.**
+> **Status: Milestones 1 and 3 done (mocks and fixtures); Milestone 2 (provider connectivity)
+> in progress, verified with mocked HTTP only.**
 > The engine can take one prompt, decompose it **from recorded fixtures** (there is no
 > model-backed decomposition), build a dependency graph, run independent tasks concurrently
 > with **mock agents** (a test double; no model is called), persist state in SQLite, and
-> resume after a crash. Provider adapters (Anthropic, OpenAI, OpenAI-compatible) exist but
-> have **not been run against a real provider**. There is **no model routing, no CLI
+> resume after a crash. It can route each task to a model from your registry under an
+> Economy, Balanced, Quality, or Custom policy, and explain every choice (heuristic complexity
+> evaluation). Provider adapters (Anthropic, OpenAI, OpenAI-compatible) exist but have **not
+> been run against a real provider**. There is **no CLI
 > command, no agent skill, and no IDE extension** yet. See
 > [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for the live status.
 
@@ -46,21 +48,22 @@ These are recorded in [`DECISIONS.md`](DECISIONS.md).
 
 ## Current functionality (verified)
 
-| Area                       | Status                                                                |
-| -------------------------- | --------------------------------------------------------------------- |
-| pnpm monorepo, 13 packages | Builds with `tsc -b` (project references)                             |
-| Strict TypeScript          | Typecheck passes                                                      |
-| ESLint + Prettier          | Lint and format check pass                                            |
-| Vitest                     | Unit + repository-structure tests run                                 |
-| `@soot/core`               | Exports package metadata and `parseEnv()` for `SOOT_*` vars           |
-| `@soot/task-graph`         | Task + agent-result contracts (JSON Schema), dependency graph (M1)    |
-| `@soot/planner`            | Immutable prompt intake; fixture-backed decomposer only (M1)          |
-| `@soot/agent-runtime`      | Concurrent scheduler + `MockAgentRunner` test double (M1)             |
-| `@soot/context-manager`    | SQLite execution state, resume after kill (M1)                        |
-| `@soot/observability`      | Per-task estimate vs actual cost records, no UI (M1)                  |
-| `@soot/model-registry`     | User model config, availability, selection, sourced pricing (M2)      |
-| `@soot/provider-adapters`  | `ModelClient` over the AI SDK, mocked-HTTP verified (M2)              |
-| Everything else            | **Stub** (exports only its name and `IMPLEMENTATION_STATUS = 'stub'`) |
+| Area                       | Status                                                                 |
+| -------------------------- | ---------------------------------------------------------------------- |
+| pnpm monorepo, 13 packages | Builds with `tsc -b` (project references)                              |
+| Strict TypeScript          | Typecheck passes                                                       |
+| ESLint + Prettier          | Lint and format check pass                                             |
+| Vitest                     | Unit + repository-structure tests run                                  |
+| `@soot/core`               | Exports package metadata and `parseEnv()` for `SOOT_*` vars            |
+| `@soot/task-graph`         | Task + agent-result contracts (JSON Schema), dependency graph (M1)     |
+| `@soot/planner`            | Immutable prompt intake; fixture-backed decomposer only (M1)           |
+| `@soot/agent-runtime`      | Concurrent scheduler + `MockAgentRunner` test double (M1)              |
+| `@soot/context-manager`    | SQLite execution state, resume after kill (M1)                         |
+| `@soot/observability`      | Estimate vs actual cost records (M1); routing explanation log (M3)     |
+| `@soot/model-registry`     | User model config, availability, selection, sourced pricing (M2)       |
+| `@soot/provider-adapters`  | `ModelClient` over the AI SDK, mocked-HTTP verified (M2)               |
+| `@soot/model-router`       | Per-task routing with policies and explanations, fixture-verified (M3) |
+| Everything else            | **Stub** (exports only its name and `IMPLEMENTATION_STATUS = 'stub'`)  |
 
 ### Supported providers
 
@@ -98,7 +101,10 @@ the variable your model config names (`apiKeyEnv`), and nothing loads `.env` fil
 
 No user-facing command exists yet. The Milestone 1 flow (prompt → fixture decomposition →
 graph → concurrent mock execution → persisted results) runs in
-[`tests/m1-end-to-end.test.ts`](tests/m1-end-to-end.test.ts). No savings are claimed. The
+[`tests/m1-end-to-end.test.ts`](tests/m1-end-to-end.test.ts). Per-task routing of the spec's
+fixture prompts under each policy, with explanations, runs in
+[`tests/m3-routing-end-to-end.test.ts`](tests/m3-routing-end-to-end.test.ts) against a
+fictional registry. No savings are claimed. The
 target behavior is described in [`docs/specs/build-spec.md`](docs/specs/build-spec.md);
 savings will only be reported from real benchmark data.
 

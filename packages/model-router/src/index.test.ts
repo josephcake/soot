@@ -6,13 +6,13 @@ const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.
   name: string;
 };
 
-describe('@soot/model-router stub', () => {
+describe('@soot/model-router package', () => {
   it('exports the name declared in package.json', () => {
     expect(PACKAGE_NAME).toBe(manifest.name);
   });
 
-  it('honestly reports that it is not implemented yet', () => {
-    expect(IMPLEMENTATION_STATUS).toBe('stub');
+  it('reports its Milestone 3 implementation status', () => {
+    expect(IMPLEMENTATION_STATUS).toBe('partial');
     expect(PLANNED_MILESTONE).toBe(3);
   });
 });

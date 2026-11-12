@@ -74,6 +74,28 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Intentional] Retry delays are capped at 30 s**, including `retry-after` values. Longer
   server-requested waits turn into a fallback/cooldown instead of a long sleep.
 
+## Model routing (Milestone 3)
+
+- **[Intentional] Complexity evaluation is heuristic** (ADR-023). It uses the planner's declared
+  complexity, a capability rule table and token thresholds, and does no language
+  understanding. Replace it with a model-backed evaluator once real providers are available
+  (after M2-07).
+- **[Intentional] Policy thresholds and the prior weight are untuned defaults.** Calibrate them
+  from recorded history and benchmark runs (spec §17 Test 5, Milestone 6).
+- **[Intentional] Success history is in memory.** Nothing aggregates attempts from `soot.sqlite`
+  into `SuccessHistory` yet. Wire this up when real attempts exist (Milestone 4).
+- **[Intentional] The routing log is in memory** (text and JSON Lines export). Persisting it with
+  the run in `soot.sqlite` is part of the audit log (Milestone 5).
+- **[Intentional] Latency is not part of routing** (spec §5 step 6). Availability is, through
+  `ProviderHealth`.
+- **[Intentional] Routing is done once per task.** Re-evaluation during execution (escalation
+  and downgrade) is Milestone 4.
+- **[Intentional] Routed estimates are not yet written back automatically** into cost records.
+  `tests/m3-routing-end-to-end.test.ts` shows the wiring by hand. The runtime will do it when
+  real execution lands.
+- **[Intentional] The router tests use a fictional registry.** Its prices and reliability priors
+  describe no real model.
+
 ## Documentation / community
 
 - **[Intentional] No dedicated security or conduct contact address yet.** `SECURITY.md` and

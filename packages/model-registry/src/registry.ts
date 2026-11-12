@@ -1,5 +1,6 @@
 import {
   CAPABILITIES,
+  UNKNOWN_RELIABILITY,
   type Capability,
   type ModelConfig,
   type ProviderConfig,
@@ -131,6 +132,7 @@ export class ModelRegistry {
         contextWindow: null,
         maxOutputTokens: null,
         pricing: null,
+        reliability: { ...UNKNOWN_RELIABILITY },
         selectable: false,
         ref,
         origin: 'discovered',

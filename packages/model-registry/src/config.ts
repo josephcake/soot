@@ -84,6 +84,39 @@ export const PricingSchema = z
   })
   .strict();
 
+const probability = z.number().min(0).max(1).nullable().default(null);
+
+/**
+ * User-declared prior probability that the model completes a task of each complexity
+ * (0..1), with provenance. Routing (Milestone 3) blends it with measured history.
+ * `null` = unknown; soot never invents a reliability for a model.
+ */
+export const ReliabilitySchema = z
+  .object({
+    low: probability,
+    medium: probability,
+    high: probability,
+    /** Where the prior came from, e.g. `team benchmark 2026-11` or `user judgement`. */
+    source: z.string().min(1).max(500).nullable().default(null),
+  })
+  .strict()
+  .superRefine((r, ctx) => {
+    const declared = r.low !== null || r.medium !== null || r.high !== null;
+    if (declared && r.source === null)
+      ctx.addIssue({
+        code: 'custom',
+        message: 'a reliability prior needs a source',
+        path: ['source'],
+      });
+  });
+
+export const UNKNOWN_RELIABILITY = Object.freeze({
+  low: null,
+  medium: null,
+  high: null,
+  source: null,
+});
+
 export const ModelConfigSchema = z
   .object({
     provider: slug,
@@ -101,6 +134,8 @@ export const ModelConfigSchema = z
     maxOutputTokens: tokens,
     /** `null` = price unknown. */
     pricing: PricingSchema.nullable().default(null),
+    /** Prior success probability per complexity; `null` fields = unknown. */
+    reliability: ReliabilitySchema.default(UNKNOWN_RELIABILITY),
     /** Set false to keep a model listed but out of automatic selection. */
     selectable: z.boolean().default(true),
   })
@@ -148,6 +183,7 @@ export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 export type Capabilities = z.infer<typeof CapabilitiesSchema>;
 export type Pricing = z.infer<typeof PricingSchema>;
+export type Reliability = z.infer<typeof ReliabilitySchema>;
 export type RegistryConfig = z.infer<typeof RegistryConfigSchema>;
 export type RegistryConfigInput = z.input<typeof RegistryConfigSchema>;
 

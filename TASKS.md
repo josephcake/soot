@@ -84,14 +84,20 @@ M1-05/M1-08 `packages/agent-runtime/src/{scheduler,mock-agent}.test.ts`; M1-07
 
 ## M3 — Intelligent Model Routing
 
-| ID    | Description                                                                              | Priority | Milestone | Dependencies | Status      | Component                            | Acceptance criteria                                                            |
-| ----- | ---------------------------------------------------------------------------------------- | -------- | --------- | ------------ | ----------- | ------------------------------------ | ------------------------------------------------------------------------------ |
-| M3-01 | Task complexity and required-capability evaluation                                       | P0       | M3        | M1-01        | Not Started | packages/model-router                | Fixture tasks classified; reasons recorded.                                    |
-| M3-02 | Capability filter (drop models lacking mandatory capabilities)                           | P0       | M3        | M2-04, M3-01 | Not Started | packages/model-router                | Unit tests for each capability dimension.                                      |
-| M3-03 | Cost estimation per task per candidate model                                             | P0       | M3        | M2-06, M3-01 | Not Started | packages/model-router                | Estimates computed from registry pricing; labeled as estimates.                |
-| M3-04 | Select cheapest model above reliability threshold (uses historical success when present) | P0       | M3        | M3-02, M3-03 | Not Started | packages/model-router                | Simple task → cheap model, complex → stronger model; per-task, not per-prompt. |
-| M3-05 | Routing explanation log                                                                  | P1       | M3        | M3-04        | Not Started | packages/model-router, observability | Every decision has a readable reason and candidate list.                       |
-| M3-06 | Policies: Economy / Balanced / Quality / Custom                                          | P1       | M3        | M3-04        | Not Started | packages/model-router                | Same task set routes differently per policy (tested).                          |
+> Status: **Completed (verified locally with a fictional registry and the spec fixture prompts)**,
+> 2026-11-12. Complexity evaluation is heuristic (ADR-023). Routing calls no model, so real
+> providers are not needed for these exit criteria; using the routes for real calls still
+> depends on M2-07 (Blocked). Evidence: `packages/model-router/src/*.test.ts`,
+> `packages/observability/src/routing-log.test.ts`, `tests/m3-routing-end-to-end.test.ts`.
+
+| ID    | Description                                                                              | Priority | Milestone | Dependencies | Status    | Component                            | Acceptance criteria                                                            |
+| ----- | ---------------------------------------------------------------------------------------- | -------- | --------- | ------------ | --------- | ------------------------------------ | ------------------------------------------------------------------------------ |
+| M3-01 | Task complexity and required-capability evaluation                                       | P0       | M3        | M1-01        | Completed | packages/model-router                | Fixture tasks classified; reasons recorded.                                    |
+| M3-02 | Capability filter (drop models lacking mandatory capabilities)                           | P0       | M3        | M2-04, M3-01 | Completed | packages/model-router                | Unit tests for each capability dimension.                                      |
+| M3-03 | Cost estimation per task per candidate model                                             | P0       | M3        | M2-06, M3-01 | Completed | packages/model-router                | Estimates computed from registry pricing; labeled as estimates.                |
+| M3-04 | Select cheapest model above reliability threshold (uses historical success when present) | P0       | M3        | M3-02, M3-03 | Completed | packages/model-router                | Simple task → cheap model, complex → stronger model; per-task, not per-prompt. |
+| M3-05 | Routing explanation log                                                                  | P1       | M3        | M3-04        | Completed | packages/model-router, observability | Every decision has a readable reason and candidate list.                       |
+| M3-06 | Policies: Economy / Balanced / Quality / Custom                                          | P1       | M3        | M3-04        | Completed | packages/model-router                | Same task set routes differently per policy (tested).                          |
 
 ## M4 — Adaptive Execution
 

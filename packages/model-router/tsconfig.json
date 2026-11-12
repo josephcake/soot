@@ -7,5 +7,16 @@
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts", "src/test-fixtures.ts"],
+  "references": [
+    {
+      "path": "../model-registry"
+    },
+    {
+      "path": "../observability"
+    },
+    {
+      "path": "../task-graph"
+    }
+  ]
 }

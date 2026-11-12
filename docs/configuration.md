@@ -68,14 +68,18 @@ it with `loadRegistryConfigFile(path)` (`@soot/model-registry`):
         "outputPerMTokUsd": 15,
         "source": "<pricing page URL>",
         "asOf": "2026-11-12"
-      }
+      },
+      "reliability": { "low": 0.9, "medium": 0.8, "high": 0.6, "source": "<your evaluation>" }
     }
   ]
 }
 ```
 
 Anything you leave out is **unknown** (`null`), never guessed. Prices must carry a `source`
-and an `asOf` date. Cost estimates and provider-reported actuals stay separate types.
+and an `asOf` date. `reliability` is your prior estimate (0–1) that the model completes a task
+of each complexity. It needs a `source`. The router (`@soot/model-router`) blends it with
+recorded success history. A model with no prior and too little history has unknown reliability,
+and the built-in policies do not select it. Cost estimates and provider-reported actuals stay separate types.
 
 `tests/repo-structure.test.ts` fails if `.env.example` ever contains a value for a
 `*KEY*`, `*TOKEN*`, `*SECRET*`, or `*PASSWORD*` variable, and if any `SOOT_*` variable in

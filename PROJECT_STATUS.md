@@ -4,18 +4,22 @@ Last Updated: 2026-11-12
 
 ## Current Phase
 
-Milestone 2 — Multi-Provider Model Connectivity (In Progress, partial; mocks only)
+Milestone 3 — Intelligent Model Routing (completed, verified locally with fixtures); Milestone 2 In Progress (partial; M2-07 Blocked)
 
 ## Overall Progress
 
-2 / 8 milestones completed (M0 and M1 verified locally; M2 in progress; M3–M7 not started)
+3 / 8 milestones completed (M0, M1, M3 verified locally; M2 in progress, partial; M4–M7 not started)
 
 ## Current Status
 
-In Progress (Milestone 2, partial). The mockable scope is implemented and verified with mocked
-HTTP and a scripted test double. **No real provider has been called and no real key has been
-used.** M2-07 (real calls on ≥ 2 providers with user keys) is Blocked, so Milestone 2 is not
-Completed. Project name `soot` (ADR-013); repo at `/workspace/soot`, local only.
+Milestone 3 is Completed and verified locally. Every task is routed independently against a
+fictional model registry, using the spec's fixture prompts. Decisions are explained and depend on
+the policy. Complexity evaluation is heuristic (ADR-023). The router calls no model.
+
+Milestone 2 stays In Progress (partial). Its mockable scope is verified with mocked HTTP. **No
+real provider has been called and no real key has been used.** M2-07 is Blocked, so routed
+tasks cannot yet run on real providers. Project name `soot` (ADR-013); repo at `/workspace/soot`,
+local only.
 
 ## Completed
 
@@ -36,6 +40,13 @@ Completed. Project name `soot` (ADR-013); repo at `/workspace/soot`, local only.
 - [x] M2-05 Discovery, unavailable-provider handling, fallback (simulated outages)
 - [x] M2-06 Sourced and dated pricing; capability metadata; unknown stays unknown
 - [x] M2-08 Credential isolation, asserted by leak tests and a repo boundary guard
+- [x] Milestone 3 — Intelligent Model Routing (M3-01…M3-06), `@soot/model-router`:
+  - M3-01 heuristic complexity and capability evaluation, with reasons
+  - M3-02 capability filter, tested per dimension (tools, structured output, vision, reasoning, streaming, context window, max output, availability, DeepSeek)
+  - M3-03 per-candidate cost estimates from registry pricing (`EstimatedUsd`, `kind: 'estimate'`)
+  - M3-04 best model above the reliability threshold, from priors blended with history
+  - M3-05 routing explanation log (`RoutingLog` in `@soot/observability`)
+  - M3-06 Economy / Balanced / Quality / Custom policies
 
 ## In Progress
 
@@ -44,7 +55,6 @@ Completed. Project name `soot` (ADR-013); repo at `/workspace/soot`, local only.
 
 ## Not Started
 
-- [ ] Milestone 3 — Intelligent Model Routing (MVP-04)
 - [ ] Milestone 4 — Adaptive Execution (MVP-06)
 - [ ] Milestone 5 — Codebase Integration and Safety (MVP-07, MVP-08)
 - [ ] Milestone 6 — Universal Skill and CLI
@@ -65,27 +75,29 @@ Completed. Project name `soot` (ADR-013); repo at `/workspace/soot`, local only.
 
 ## Next Actions
 
-1. Mochi: review the Milestone 2 mockable scope, and decide when and whether to run M2-07 with user-supplied keys.
-2. Optional: run `pnpm vitest run packages/provider-adapters/src/local-endpoint.test.ts` with Ollama or LM Studio running to verify M2-03 live.
-3. Milestone 3 (routing) starts only on Mochi's go-ahead.
+1. Mochi: review Milestone 3. Decide whether to start Milestone 4 (adaptive execution), which can proceed with mocks.
+2. Mochi: decide when and whether to run M2-07 with user-supplied keys. Real routing outcomes, model-backed evaluation and calibrated thresholds depend on it.
+3. Optional: run `pnpm vitest run packages/provider-adapters/src/local-endpoint.test.ts` with Ollama or LM Studio running to verify M2-03 live.
 
 ## MVP Readiness
 
-Not Ready (MVP-01, MVP-02, MVP-05 core in place with fixtures/mocks; MVP-03 partial (mocks only, real providers blocked); MVP-04, -06, -07, -08 open)
+Not Ready (MVP-01, MVP-02, MVP-05 core in place with fixtures/mocks; MVP-03 partial (mocks only, real providers blocked); MVP-04 routing in place with heuristic evaluation; MVP-06, -07, -08 open)
 
 ## Latest Validation
 
-Recorded 2026-11-12 ~01:27 PST from a real run of `bash scripts/ci.sh` (install --frozen-lockfile → typecheck → lint → format:check → test → clean build) in `/workspace/soot`, Node 24.22.1:
+Recorded 2026-11-12 ~01:38 PST from a real run of `bash scripts/ci.sh` in `/workspace/soot`, Node 24.22.1. The run covers install --frozen-lockfile, typecheck, lint, format:check, test and a clean build.
 
-- Build: pass. `tsc -b` built all 13 packages.
-- Tests: pass. 34 test files (33 passed, 1 skipped), 259 tests (258 passed, 1 skipped, 0 failures), Vitest 5.1.0. The skipped test is the live local-endpoint test: no runtime was listening on 127.0.0.1:11434 or :1234.
-- Typecheck / lint / format: pass.
-- Network audit: the full suite was re-run with a global `fetch` guard. The only real requests were the two localhost probes. Every provider request went to injected mock `fetch` functions. No key-like environment variables were set.
-- Milestone 2 evidence:
-  - `contract.test.ts` runs 13 contract cases against each of 4 targets (mock, Anthropic, OpenAI, OpenAI-compatible), plus 5 request-wiring checks.
-  - `credentials.test.ts` covers leaks.
-  - `fallback.test.ts` covers outages, fallback, discovery and the DeepSeek refusal.
-  - `tests/credential-boundary.test.ts` is the repo guard.
-  - The model-registry tests cover config, selection and pricing.
-- Milestone 1 evidence is unchanged: `tests/m1-end-to-end.test.ts`, `tests/resume-after-kill.test.ts`.
-- Hosted CI: not run, because the repository is not published (ADR-006).
+- **Build:** pass. `tsc -b` built all 13 packages.
+- **Tests:** pass. 40 test files (39 passed, 1 skipped) and 302 tests (301 passed, 1 skipped, 0 failures), Vitest 5.1.0. The skipped test is the live local-endpoint test: no runtime was listening on 127.0.0.1:11434 or :1234.
+- **Typecheck / lint / format:** pass.
+- **Network audit:** the full suite was re-run with a global `fetch` guard. The only real requests were the two localhost probes. No key-like environment variables were set.
+- **Milestone 3 exit criteria** (`tests/m3-routing-end-to-end.test.ts`, fictional registry, spec fixture prompts):
+  - **EC1:** in spec §17 Test 1, both tasks go to `alpha/test-small`, the cheapest eligible model.
+  - **EC2:** in Test 2 under Balanced, `verify-auth-bug` (high) goes to `alpha/test-large`, at the 0.90 threshold.
+  - **EC3:** in Test 2 under Balanced, the three tasks get three different models: `alpha/test-small`, `beta/test-mid` and `alpha/test-large`. In Test 4 the tasks are spread across two providers.
+  - **EC4:** 9 log entries across three policies. Each has a reason and lists all 6 models, with exactly one selected.
+  - **Policies:** `add-dropdown-component` goes to `alpha/test-small` under Economy, `beta/test-mid` under Balanced and `beta/test-frontier` under Quality.
+  - **DeepSeek:** never selected.
+- **Milestone 2 evidence** is unchanged: `packages/provider-adapters` and `packages/model-registry` tests and `tests/credential-boundary.test.ts`. M2-07 is Blocked.
+- **Milestone 1 evidence** is unchanged: `tests/m1-end-to-end.test.ts` and `tests/resume-after-kill.test.ts`.
+- **Hosted CI:** not run, because the repository is not published (ADR-006).

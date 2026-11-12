@@ -8,7 +8,7 @@ every exit criterion is verified from real runs. Dates are recorded only when ve
 | M0        | Repository Foundation             | Completed (verified locally; hosted CI not yet run) | 2026-11-12      |
 | M1        | Core Orchestration                | Completed (verified locally with mock agents)       | 2026-11-12      |
 | M2        | Multi-Provider Model Connectivity | In Progress (partial; mocks only, M2-07 blocked)    | —               |
-| M3        | Intelligent Model Routing         | Not Started                                         | —               |
+| M3        | Intelligent Model Routing         | Completed (verified locally with fixture registry)  | 2026-11-12      |
 | M4        | Adaptive Execution                | Not Started                                         | —               |
 | M5        | Codebase Integration and Safety   | Not Started                                         | —               |
 | M6        | Universal Skill and CLI           | Not Started                                         | —               |
@@ -56,8 +56,9 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Deliverables:** task complexity evaluation; capability matching; cost estimation; model selection; routing explanations; configurable policies (Economy / Balanced / Quality / Custom).
 - **Dependencies:** M1, M2.
 - **Acceptance / exit criteria:** simple tasks go to inexpensive capable models; complex tasks can go to stronger models; selection is per task; routing decisions are logged and explainable.
-- **Status:** Not Started
-- **Completion date:** —
+- **Status:** Completed. Verified locally with a fictional model registry and the spec's fixture prompts, without network access or keys. Complexity evaluation is heuristic until a model-backed planner exists (ADR-023). Routed tasks cannot run on real providers until M2-07 (Blocked).
+- **Evidence:** `tests/m3-routing-end-to-end.test.ts` (EC1–EC4), `packages/model-router` tests (M3-01…M3-06), `packages/observability/src/routing-log.test.ts`.
+- **Completion date:** 2026-11-12
 
 ## M4 — Adaptive Execution
 

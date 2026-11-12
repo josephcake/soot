@@ -1,8 +1,9 @@
 # Architecture and Repository Layout
 
-> **Current state (Milestone 1):** task-graph, planner (fixture decomposer only),
+> **Current state (Milestones 1–3):** task-graph, planner (fixture decomposer only),
 > agent-runtime (scheduler + mock runner), context-manager (SQLite state), and observability
-> (cost records) have their Milestone 1 scope. The rest of the design below is the _plan_ from
+> (cost records, routing log) have their Milestone 1 scope; model-registry and
+> provider-adapters have the Milestone 2 mockable scope; model-router has Milestone 3. The rest of the design below is the _plan_ from
 > [`specs/build-spec.md`](specs/build-spec.md) §14 and ADR-019; other packages are stubs.
 > See [`../ROADMAP.md`](../ROADMAP.md).
 
@@ -20,6 +21,26 @@ prompt + context ─► planner.createPromptIntake ─► planner.FixtureDecompo
                                                         ▼
                                  RunReport + AgentResult (validated) ─► observability cost records
 ```
+
+## Milestone 3 routing flow (implemented)
+
+```text
+tasks ─► model-router.evaluateTask (complexity, mandatory capabilities, risk; reasons)
+           │
+           ▼
+   model-registry.select (capabilities, context, availability, DeepSeek restricted)
+           │  + router checks (max output, price, cost cap, reliability known)
+           ▼
+   estimateCost (list prices → EstimatedUsd) + reliability (prior ⊕ history)
+           │
+           ▼
+   policy (Economy / Balanced / Quality / Custom) ─► RoutingDecision per task
+           │                                          (reason + every candidate)
+           ▼
+   observability.RoutingLog (text / JSON Lines)
+```
+
+`model-router` depends on `model-registry`, `observability`, and `task-graph`; it calls no model.
 
 Package dependencies: `planner`, `agent-runtime`, and `observability` depend on `task-graph`;
 `context-manager` depends on `task-graph` and (types only) `agent-runtime`. `task-graph` depends
@@ -75,14 +96,14 @@ and file-conflict management.
 │   ├── planner/              # prompt intake, fixture decomposer (M1, partial)
 │   ├── task-graph/           # task/result contracts + JSON Schema, dependency graph (M1, partial)
 │   ├── model-registry/       # partial (M2) — user model config, availability, selection, sourced pricing
-│   ├── model-router/         # stub — per-task routing, cost/reliability policies (M3)
+│   ├── model-router/         # partial (M3) — per-task routing, policies, explanations
 │   ├── agent-runtime/        # scheduler, mock agent runner (M1, partial)
 │   ├── context-manager/      # SQLite execution state (M1, partial); context selection later
 │   ├── escalation/           # stub — escalation/downgrade rules (M4)
 │   ├── provider-adapters/    # partial (M2) — ModelClient over AI SDK; Anthropic, OpenAI, OpenAI-compatible
 │   ├── harness-adapters/     # stub — Claude Code, Codex, MCP, etc. (M6)
 │   ├── integrations/         # stub — worktrees, conflict detection, validation (M5)
-│   └── observability/        # task-level cost records (M1, partial); audit log later
+│   └── observability/        # cost records (M1), routing explanation log (M3); audit log later
 ├── docs/
 │   ├── architecture.md       # this file
 │   ├── configuration.md      # environment variables
@@ -104,14 +125,14 @@ and file-conflict management.
 | `packages/planner/`           | partial (M1)      | M1                   | Prompt intake; fixture decomposer (no model yet) |
 | `packages/task-graph/`        | partial (M1)      | M1                   | Task/result contracts, JSON Schema, DAG          |
 | `packages/model-registry/`    | partial (M2)      | M2                   | User model config, availability, sourced pricing |
-| `packages/model-router/`      | stub              | M3                   | Per-task routing, cost/reliability policies      |
+| `packages/model-router/`      | partial (M3)      | M3                   | Per-task routing, cost/reliability policies      |
 | `packages/agent-runtime/`     | partial (M1)      | M1                   | Scheduler; MockAgentRunner test double           |
 | `packages/context-manager/`   | partial (M1)      | M1                   | SQLite execution state; context selection later  |
 | `packages/escalation/`        | stub              | M4                   | Escalation and downgrade rules                   |
 | `packages/provider-adapters/` | partial (M2)      | M2                   | ModelClient over AI SDK; retries, fallback, keys |
 | `packages/harness-adapters/`  | stub              | M6                   | Harness adapters (Claude Code, Codex, MCP, …)    |
 | `packages/integrations/`      | stub              | M5                   | Worktrees, conflict detection, validation        |
-| `packages/observability/`     | partial (M1)      | M1                   | Task-level cost records; audit log later         |
+| `packages/observability/`     | partial (M1, M3)  | M1                   | Cost records; routing log; audit log later       |
 
 ### Planned directories not created yet
 

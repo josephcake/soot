@@ -3,6 +3,25 @@
 All notable changes are recorded here by milestone. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). No versions have been released.
 
+## [Unreleased] — Milestone 3: Intelligent model routing (verified locally 2026-11-12, fixtures)
+
+### Added
+
+- `@soot/model-router`: per-task routing with these parts:
+  - heuristic complexity and capability evaluation that records its reasons
+  - a capability filter
+  - cost estimates from registry list prices
+  - reliability estimates from configured priors blended with recorded history
+  - selection of the best model above the policy threshold
+  - Economy, Balanced, Quality and Custom policies
+  - a full explanation for every decision
+- `@soot/observability`: `RoutingLog` with readable text and JSON Lines output.
+- `@soot/model-registry`: optional `reliability` priors per complexity tier. They are unknown by
+  default and need a source when set.
+- `tests/m3-routing-end-to-end.test.ts` checks exit criteria EC1–EC4 on the spec's fixture
+  prompts.
+- ADR-023.
+
 ## [Unreleased] — Milestone 2: Multi-provider connectivity (in progress; mocks only)
 
 ### Added

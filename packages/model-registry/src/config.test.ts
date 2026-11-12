@@ -52,6 +52,7 @@ describe('registry config (M2-04, M2-06)', () => {
       contextWindow: null,
       maxOutputTokens: null,
       pricing: null,
+      reliability: { low: null, medium: null, high: null, source: null },
       selectable: true,
     });
   });
@@ -97,5 +98,45 @@ describe('registry config (M2-04, M2-06)', () => {
 
   it('reports unreadable files clearly', () => {
     expect(() => loadRegistryConfigFile('/nonexistent/models.json')).toThrow(/cannot read JSON/);
+  });
+});
+
+describe('reliability priors', () => {
+  const base = {
+    version: 1 as const,
+    providers: [{ id: 'p', kind: 'openai-compatible' as const, baseURL: 'http://127.0.0.1:1/v1' }],
+  };
+  it('defaults to unknown, never a guessed number', () => {
+    const config = parseRegistryConfig({ ...base, models: [{ provider: 'p', modelId: 'm' }] });
+    expect(config.models[0]?.reliability).toEqual({
+      low: null,
+      medium: null,
+      high: null,
+      source: null,
+    });
+  });
+  it('requires a source when any prior is declared, and bounds values to 0..1', () => {
+    expect(() =>
+      parseRegistryConfig({
+        ...base,
+        models: [{ provider: 'p', modelId: 'm', reliability: { low: 0.9 } }],
+      }),
+    ).toThrow(/source/);
+    expect(() =>
+      parseRegistryConfig({
+        ...base,
+        models: [{ provider: 'p', modelId: 'm', reliability: { low: 1.2, source: 'x' } }],
+      }),
+    ).toThrow();
+    const ok = parseRegistryConfig({
+      ...base,
+      models: [{ provider: 'p', modelId: 'm', reliability: { low: 0.9, source: 'team eval' } }],
+    });
+    expect(ok.models[0]?.reliability).toEqual({
+      low: 0.9,
+      medium: null,
+      high: null,
+      source: 'team eval',
+    });
   });
 });
