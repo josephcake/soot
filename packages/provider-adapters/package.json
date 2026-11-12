@@ -2,7 +2,7 @@
   "name": "@soot/provider-adapters",
   "version": "0.0.0",
   "private": true,
-  "description": "[Stub \u2014 Milestone 2] Provider abstraction (Vercel AI SDK in-process and local endpoints; ADR-019).",
+  "description": "Provider abstraction over the Vercel AI SDK (in-process): Anthropic, OpenAI, OpenAI-compatible endpoints; retries, rate limits, fallback, discovery, credential isolation.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -23,5 +23,14 @@
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "test": "vitest run --config ../../vitest.config.ts --project @soot/provider-adapters"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "4.0.102",
+    "@ai-sdk/openai": "4.0.115",
+    "@ai-sdk/openai-compatible": "3.0.90",
+    "@ai-sdk/provider": "4.0.37",
+    "@soot/model-registry": "workspace:*",
+    "ai": "7.0.170",
+    "zod": "^4.6.7"
   }
 }

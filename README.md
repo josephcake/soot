@@ -2,11 +2,13 @@
 
 _Named after the soot sprites, the black dust bunnies from Studio Ghibli. Formerly `intelligent-agent-router`._
 
-> **Status: Milestone 1 — core orchestration, with mock agents only.**
+> **Status: Milestone 1 done; Milestone 2 (provider connectivity) in progress, verified with
+> mocked HTTP only.**
 > The engine can take one prompt, decompose it **from recorded fixtures** (there is no
 > model-backed decomposition), build a dependency graph, run independent tasks concurrently
 > with **mock agents** (a test double; no model is called), persist state in SQLite, and
-> resume after a crash. There is **no model routing, no provider connectivity, no CLI
+> resume after a crash. Provider adapters (Anthropic, OpenAI, OpenAI-compatible) exist but
+> have **not been run against a real provider**. There is **no model routing, no CLI
 > command, no agent skill, and no IDE extension** yet. See
 > [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for the live status.
 
@@ -56,12 +58,19 @@ These are recorded in [`DECISIONS.md`](DECISIONS.md).
 | `@soot/agent-runtime`      | Concurrent scheduler + `MockAgentRunner` test double (M1)             |
 | `@soot/context-manager`    | SQLite execution state, resume after kill (M1)                        |
 | `@soot/observability`      | Per-task estimate vs actual cost records, no UI (M1)                  |
+| `@soot/model-registry`     | User model config, availability, selection, sourced pricing (M2)      |
+| `@soot/provider-adapters`  | `ModelClient` over the AI SDK, mocked-HTTP verified (M2)              |
 | Everything else            | **Stub** (exports only its name and `IMPLEMENTATION_STATUS = 'stub'`) |
 
 ### Supported providers
 
-**None yet.** Provider connectivity is Milestone 2: Anthropic and OpenAI first, through the
-Vercel AI SDK in-process (ADR-017, ADR-019), tested with mocks until you bring your own keys.
+**Implemented, verified with mocks only.** Milestone 2 (in progress) adds adapters for
+Anthropic, OpenAI, and generic OpenAI-compatible endpoints (Ollama, LM Studio) through the
+Vercel AI SDK in-process (ADR-017, ADR-019, ADR-022). They are tested against mocked HTTP. **No
+real provider has been called yet**: that needs your own keys (M2-07, blocked). soot ships no
+built-in model list; you configure models yourself (`@soot/model-registry`). DeepSeek
+endpoints are refused by policy (ADR-016). See
+[`packages/provider-adapters/README.md`](packages/provider-adapters/README.md).
 
 ### Supported harnesses
 
@@ -81,9 +90,9 @@ Individual steps: `pnpm run typecheck | lint | format:check | test | build`.
 
 ## Configuration
 
-Copy `.env.example` to `.env` if you need to override defaults. Only `SOOT_LOG_LEVEL` and
-`SOOT_DATA_DIR` exist today; provider key names are listed as reserved and are not read by
-any code. Details: [`docs/configuration.md`](docs/configuration.md). Never commit real keys.
+Copy `.env.example` to `.env` if you need to override defaults. `SOOT_LOG_LEVEL` and
+`SOOT_DATA_DIR` configure soot. Provider keys are read only by the provider adapters, from
+the variable your model config names (`apiKeyEnv`), and nothing loads `.env` files yet. Details: [`docs/configuration.md`](docs/configuration.md). Never commit real keys.
 
 ## Example execution and cost optimization
 

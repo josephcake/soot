@@ -74,12 +74,12 @@ and file-conflict management.
 │   ├── core/                 # foundation: package metadata + SOOT_* env parsing (real, tested)
 │   ├── planner/              # prompt intake, fixture decomposer (M1, partial)
 │   ├── task-graph/           # task/result contracts + JSON Schema, dependency graph (M1, partial)
-│   ├── model-registry/       # stub — model discovery, capability/pricing registry (M2)
+│   ├── model-registry/       # partial (M2) — user model config, availability, selection, sourced pricing
 │   ├── model-router/         # stub — per-task routing, cost/reliability policies (M3)
 │   ├── agent-runtime/        # scheduler, mock agent runner (M1, partial)
 │   ├── context-manager/      # SQLite execution state (M1, partial); context selection later
 │   ├── escalation/           # stub — escalation/downgrade rules (M4)
-│   ├── provider-adapters/    # stub — provider abstraction, AI SDK, local endpoints (M2)
+│   ├── provider-adapters/    # partial (M2) — ModelClient over AI SDK; Anthropic, OpenAI, OpenAI-compatible
 │   ├── harness-adapters/     # stub — Claude Code, Codex, MCP, etc. (M6)
 │   ├── integrations/         # stub — worktrees, conflict detection, validation (M5)
 │   └── observability/        # task-level cost records (M1, partial); audit log later
@@ -103,12 +103,12 @@ and file-conflict management.
 | `packages/core/`              | foundation (real) | M0                   | Package metadata, `parseEnv` for `SOOT_*` vars   |
 | `packages/planner/`           | partial (M1)      | M1                   | Prompt intake; fixture decomposer (no model yet) |
 | `packages/task-graph/`        | partial (M1)      | M1                   | Task/result contracts, JSON Schema, DAG          |
-| `packages/model-registry/`    | stub              | M2                   | Model discovery, capability/pricing registry     |
+| `packages/model-registry/`    | partial (M2)      | M2                   | User model config, availability, sourced pricing |
 | `packages/model-router/`      | stub              | M3                   | Per-task routing, cost/reliability policies      |
 | `packages/agent-runtime/`     | partial (M1)      | M1                   | Scheduler; MockAgentRunner test double           |
 | `packages/context-manager/`   | partial (M1)      | M1                   | SQLite execution state; context selection later  |
 | `packages/escalation/`        | stub              | M4                   | Escalation and downgrade rules                   |
-| `packages/provider-adapters/` | stub              | M2                   | Provider abstraction (AI SDK, local)             |
+| `packages/provider-adapters/` | partial (M2)      | M2                   | ModelClient over AI SDK; retries, fallback, keys |
 | `packages/harness-adapters/`  | stub              | M6                   | Harness adapters (Claude Code, Codex, MCP, …)    |
 | `packages/integrations/`      | stub              | M5                   | Worktrees, conflict detection, validation        |
 | `packages/observability/`     | partial (M1)      | M1                   | Task-level cost records; audit log later         |

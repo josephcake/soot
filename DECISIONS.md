@@ -235,3 +235,26 @@ the old one.
 - **Alternatives:** hand-written validators plus a hand-written JSON Schema (two sources that drift); Ajv (validation only, schema still hand-written); `better-sqlite3` (native build); failing graph construction on file conflicts instead of serializing (forces the planner to order everything).
 - **Consequences:** Packages build and test independently; the kill/restart test builds the packages and runs them in a child process.
 - **Reversible:** Yes, each part independently.
+
+## ADR-022: Milestone 2 implementation choices (provider connectivity, mocks only)
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Sweed, under ADR-012: smaller extensible option)
+- **Context:** Milestone 2 needs one provider abstraction, Anthropic and OpenAI adapters (ADR-017), a thin registry, availability and fallback, sourced pricing, and credential isolation. ADR-011 rules out real keys and paid calls, so everything is verified against mocks. Lumen's research (`docs/research/2026-11-12-soot.md` §3, §4, §6) informed the details.
+- **Decision:**
+  - **AI SDK, pinned exactly:** `ai@7.0.170`, `@ai-sdk/anthropic@4.0.102`, `@ai-sdk/openai@4.0.115`, `@ai-sdk/openai-compatible@3.0.90`, `@ai-sdk/provider@4.0.37`, all dependencies of `@soot/provider-adapters` only. Exact pins are a supply-chain measure (research §6). No `@ai-sdk/harness` or other experimental packages (ADR-019). No LiteLLM. No proprietary agent SDKs.
+  - **Model objects only, never string ids:** a bare string model in the AI SDK routes through the hosted Vercel gateway. `AiSdkModelClient` rejects strings, and adapters always build provider model objects.
+  - **OpenAI uses Chat Completions** (`openai.chat()`), the same wire format as OpenAI-compatible endpoints. The Responses API is deferred.
+  - **soot owns retries:** SDK retries are off (`maxRetries: 0`). `withRetries` makes at most 3 attempts by default. It honours `retry-after-ms`/`retry-after` (seconds or HTTP date, capped at 30 s) and otherwise uses exponential backoff with half jitter. That fallback matters because Anthropic 429s may omit `retry-after`. Streams are retried only before their first event, so output is never replayed.
+  - **Error taxonomy:** every failure becomes a `ProviderError` with a `kind` (429 → `rate-limited`; 401/403 → `auth`; 408 → `timeout`; ≥ 500 including 529 → `unavailable`; other 4xx → `invalid-request`), plus `status` and `retryAfterMs`. It carries no raw cause, headers, or body, and its message is scrubbed of the key.
+  - **Structured output is validated on receipt** against the caller's zod schema. A response that ignores the schema becomes `invalid-output`, because research §3 found silently ignored capabilities to be a pattern. Tool names must be portable snake_case.
+  - **Fallback is soot's, not the SDK's:** `generateWithFallback` marks provider-level failures (outage, rate limit after retries, timeout, auth) in `ProviderHealth` with a cooldown (outage 60 s, rate limit = retry-after or 30 s, auth until fixed) and tries the next candidate. Request-level failures and aborts do not fall back.
+  - **Registry:** soot ships no model names and no prices. Users configure them. Unknown metadata is `null`. Prices are per million tokens and require `source` and `asOf`. Cost estimates and actuals keep distinct branded types (ADR-021), and cached tokens without a cache price give an unknown actual rather than a guess. Discovery (`GET /models`) only adds unselectable entries with unknown metadata, and models the provider no longer lists are excluded from selection.
+  - **DeepSeek (ADR-016):** any provider whose id or base URL host is DeepSeek is `restricted`. Restricted and `listed-only` providers are excluded from selection, and `createModelClient` / `discoverModelIds` refuse them before any network access.
+  - **Credentials:** keys are read in one place, the adapter layer (`readApiKey` in `createModelClient` and `discoverModelIds`), from the variable a config names (`apiKeyEnv`, validated as a variable name). The key is passed to the SDK factory and kept privately only as a redaction pattern. Clients serialize to `{ref, adapter}`. A repo guard test fails if production code elsewhere reads a key variable. Explicit keys are always passed to SDK factories, so they never fall back to reading `process.env` themselves.
+  - **AI SDK warning logging is off by default** (`globalThis.AI_SDK_LOG_WARNINGS ??= false`). Warnings are returned on responses, scrubbed, instead of printed.
+  - **Health is in memory** for Milestone 2. Persisting it is debt.
+  - **Local endpoints** use the generic OpenAI-compatible adapter. The live test probes only `127.0.0.1:11434` (Ollama) and `127.0.0.1:1234` (LM Studio) and is skipped when neither is listening.
+- **Alternatives:** the SDK's built-in retries (not rate-limit-aware and not observable in tests); hand-written HTTP clients per provider (more code, more drift); the OpenAI Responses API first (different wire format from compatible endpoints); a bundled model catalogue with prices (goes stale and would be guessed).
+- **Consequences:** Provider behaviour is covered by one contract suite that runs against the mock test double and each adapter over a scripted `fetch`. Real-provider behaviour is unverified until M2-07 (BYOK).
+- **Reversible:** Yes. The `ModelClient` interface isolates callers from the AI SDK.

@@ -64,16 +64,23 @@ M1-05/M1-08 `packages/agent-runtime/src/{scheduler,mock-agent}.test.ts`; M1-07
 
 ## M2 — Multi-Provider Model Connectivity
 
+> Status: **In Progress (partial)**. Mockable scope verified 2026-11-12 with mocked HTTP and a
+> scripted test double only; no real provider call has been made. M2-03 is Implemented, not Verified: the generic
+> OpenAI-compatible adapter is covered by mocked HTTP, but the live local-runtime test was
+> **skipped** (no Ollama or LM Studio was running). M2-07 is Blocked on user-supplied keys
+> (ADR-011). Evidence: `packages/provider-adapters/src/*.test.ts`,
+> `packages/model-registry/src/*.test.ts`, `tests/credential-boundary.test.ts`; choices in ADR-022.
+
 | ID    | Description                                                                                                | Priority | Milestone | Dependencies     | Status      | Component                        | Acceptance criteria                                                                                |
 | ----- | ---------------------------------------------------------------------------------------------------------- | -------- | --------- | ---------------- | ----------- | -------------------------------- | -------------------------------------------------------------------------------------------------- |
-| M2-01 | Provider abstraction interface (chat, streaming, tool calling, structured output, usage) + mocked provider | P0       | M2        | M1-06            | Not Started | packages/provider-adapters       | Contract tests pass against the mock.                                                              |
-| M2-02 | Anthropic + OpenAI adapters via Vercel AI SDK (ADR-017, ADR-019); mocks only                               | P0       | M2        | M2-01            | Not Started | packages/provider-adapters       | Mocked HTTP tests; retries and rate-limit handling tested.                                         |
-| M2-03 | Local endpoint support (Ollama / LM Studio)                                                                | P1       | M2        | M2-02            | Not Started | packages/provider-adapters       | Works against a local runtime when available; skipped (not faked) otherwise.                       |
-| M2-04 | Model registry with manual model config; no hardcoded model names                                          | P0       | M2        | M2-01            | Not Started | packages/model-registry          | Registry loads user config; tests cover custom endpoints.                                          |
-| M2-05 | Model discovery + unavailable-provider handling + fallback                                                 | P1       | M2        | M2-04            | Not Started | packages/model-registry          | Simulated outage marks provider unavailable; fallback tested.                                      |
-| M2-06 | Pricing and capability metadata (context window, tools, structured output, vision, reasoning)              | P1       | M2        | M2-04            | Not Started | packages/model-registry          | Metadata sourced/refreshable; missing data represented as unknown, not guessed.                    |
-| M2-07 | Real execution on ≥2 independent providers with user-supplied keys                                         | P0       | M2        | M2-02, BYOK keys | Not Started | packages/provider-adapters       | Opt-in test run with real credentials recorded. Will be Blocked until keys are provided (ADR-011). |
-| M2-08 | Credential isolation: keys read only by adapters, never in task context/logs                               | P0       | M2        | M2-01            | Not Started | packages/provider-adapters, core | Tests assert keys absent from context, logs, results.                                              |
+| M2-01 | Provider abstraction interface (chat, streaming, tool calling, structured output, usage) + mocked provider | P0       | M2        | M1-06            | Completed   | packages/provider-adapters       | Contract tests pass against the mock.                                                              |
+| M2-02 | Anthropic + OpenAI adapters via Vercel AI SDK (ADR-017, ADR-019); mocks only                               | P0       | M2        | M2-01            | Completed   | packages/provider-adapters       | Mocked HTTP tests; retries and rate-limit handling tested.                                         |
+| M2-03 | Local endpoint support (Ollama / LM Studio)                                                                | P1       | M2        | M2-02            | Implemented | packages/provider-adapters       | Works against a local runtime when available; skipped (not faked) otherwise.                       |
+| M2-04 | Model registry with manual model config; no hardcoded model names                                          | P0       | M2        | M2-01            | Completed   | packages/model-registry          | Registry loads user config; tests cover custom endpoints.                                          |
+| M2-05 | Model discovery + unavailable-provider handling + fallback                                                 | P1       | M2        | M2-04            | Completed   | packages/model-registry          | Simulated outage marks provider unavailable; fallback tested.                                      |
+| M2-06 | Pricing and capability metadata (context window, tools, structured output, vision, reasoning)              | P1       | M2        | M2-04            | Completed   | packages/model-registry          | Metadata sourced/refreshable; missing data represented as unknown, not guessed.                    |
+| M2-07 | Real execution on ≥2 independent providers with user-supplied keys                                         | P0       | M2        | M2-02, BYOK keys | Blocked     | packages/provider-adapters       | Opt-in test run with real credentials recorded. Will be Blocked until keys are provided (ADR-011). |
+| M2-08 | Credential isolation: keys read only by adapters, never in task context/logs                               | P0       | M2        | M2-01            | Completed   | packages/provider-adapters, core | Tests assert keys absent from context, logs, results.                                              |
 
 ## M3 — Intelligent Model Routing
 

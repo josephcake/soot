@@ -2,7 +2,7 @@
   "name": "@soot/model-registry",
   "version": "0.0.0",
   "private": true,
-  "description": "[Stub \u2014 Milestone 2] Model discovery and capability/pricing registry.",
+  "description": "Thin model registry: user model config (no built-in models), discovery overlay, availability, requirement-based selection, sourced pricing.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -23,5 +23,9 @@
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "test": "vitest run --config ../../vitest.config.ts --project @soot/model-registry"
+  },
+  "dependencies": {
+    "@soot/observability": "workspace:*",
+    "zod": "^4.6.7"
   }
 }

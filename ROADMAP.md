@@ -7,7 +7,7 @@ every exit criterion is verified from real runs. Dates are recorded only when ve
 | --------- | --------------------------------- | --------------------------------------------------- | --------------- |
 | M0        | Repository Foundation             | Completed (verified locally; hosted CI not yet run) | 2026-11-12      |
 | M1        | Core Orchestration                | Completed (verified locally with mock agents)       | 2026-11-12      |
-| M2        | Multi-Provider Model Connectivity | Not Started                                         | —               |
+| M2        | Multi-Provider Model Connectivity | In Progress (partial; mocks only, M2-07 blocked)    | —               |
 | M3        | Intelligent Model Routing         | Not Started                                         | —               |
 | M4        | Adaptive Execution                | Not Started                                         | —               |
 | M5        | Codebase Integration and Safety   | Not Started                                         | —               |
@@ -46,7 +46,8 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Dependencies:** M0; M1 task schema.
 - **Acceptance / exit criteria:** at least two independent providers work with real API credentials; multiple models can be invoked; provider failures are handled; models can be selected dynamically.
 - **Note:** Real-credential verification is blocked until a user supplies their own keys (ADR-011). Mocked-provider tests are required regardless.
-- **Status:** Not Started
+- **Status:** In Progress (partial). Mockable scope (M2-01, -02, -04, -05, -06, -08) verified with mocked HTTP; M2-03 live local test skipped (no local runtime); M2-07 Blocked on BYOK keys. Not Completed: the real-credential exit criterion is unmet.
+- **Evidence:** `packages/provider-adapters`, `packages/model-registry` tests; `tests/credential-boundary.test.ts`; ADR-022.
 - **Completion date:** —
 
 ## M3 — Intelligent Model Routing

@@ -52,6 +52,28 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   and workspace packages are aliased to `src/` for tests. Packages under `apps/` other than
   `cli` need an alias entry when added.
 
+## Provider connectivity (Milestone 2)
+
+- **[Blocked] No real provider has been called (M2-07).** All adapter behaviour is verified
+  against mocked HTTP shaped from SDK and provider documentation. Wire-format drift will only
+  show up with user-supplied keys (ADR-011).
+- **[Intentional] Provider health is in memory.** Cooldowns reset when the process restarts.
+  Persist them in `soot.sqlite` when long-running orchestration needs it (Milestone 4).
+- **[Intentional] OpenAI uses Chat Completions, not the Responses API** (ADR-022). Responses-only
+  features (built-in tools, reasoning summaries) are unavailable until an adapter is added.
+- **[Intentional] Pricing is flat per million tokens.** There are no long-context tiers,
+  batch discounts, time-of-day pricing, or separate reasoning-token prices. Such models
+  must be priced conservatively by the user or left unpriced (unknown).
+- **[Intentional] Discovery results are not persisted** and discovery runs only when called.
+  Discovered models stay unselectable until a user configures them.
+- **[Intentional] Local endpoint (M2-03) not verified live.** The generic OpenAI-compatible
+  adapter is covered by mocked HTTP. The live test skipped because no Ollama or LM Studio was
+  running.
+- **[Intentional] Messages are text only.** Images, files and multi-turn tool results are not
+  in the `ModelClient` interface yet. The agent loop (Milestone 4) will need them.
+- **[Intentional] Retry delays are capped at 30 s**, including `retry-after` values. Longer
+  server-requested waits turn into a fallback/cooldown instead of a long sleep.
+
 ## Documentation / community
 
 - **[Intentional] No dedicated security or conduct contact address yet.** `SECURITY.md` and
@@ -63,7 +85,8 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 
 ## Security
 
-- No credential handling and no real agent execution yet. The state directory is created
+- Provider keys are handled only by `@soot/provider-adapters` (ADR-022). There is no real agent
+  execution yet. The state directory is created
   with mode `0700`; `soot.sqlite` stores the original prompt and structured results in plain
   text (no encryption at rest). Security requirements from
   spec §13 are tracked as tasks in `TASKS.md`.

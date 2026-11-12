@@ -3,6 +3,29 @@
 All notable changes are recorded here by milestone. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). No versions have been released.
 
+## [Unreleased] — Milestone 2: Multi-provider connectivity (in progress; mocks only)
+
+### Added
+
+- `@soot/model-registry`: user model config (no built-in models or prices), strict validation
+  (key fields must name environment variables), provider health with cooldowns, discovery
+  overlay, requirement-based selection with exclusion reasons, sourced and dated pricing,
+  and cost estimates kept separate from actuals. DeepSeek endpoints are restricted (ADR-016).
+- `@soot/provider-adapters`: the `ModelClient` interface (chat, streaming, tool calls,
+  validated structured output, usage) over the Vercel AI SDK in-process. Adapters for Anthropic,
+  OpenAI (Chat Completions) and generic OpenAI-compatible endpoints. soot-owned retries with
+  rate-limit handling, a sanitized error taxonomy, outage fallback, `GET /models` discovery,
+  credential isolation, and a scripted mock test double.
+- Tests: one provider contract suite run against the mock and each adapter over mocked HTTP;
+  credential-leak tests; outage and fallback tests; a repo-level credential boundary guard; and a
+  live local-endpoint test that is skipped when no local runtime is running.
+- `docs/research/2026-11-12-soot.md` (copy of Lumen's research) and ADR-022.
+
+### Not done
+
+- M2-07, real calls with user-supplied keys, is Blocked (ADR-011). No real provider has been
+  called.
+
 ## [Unreleased] — Milestone 1: Core orchestration (verified locally 2026-11-12, mock agents)
 
 ### Added
