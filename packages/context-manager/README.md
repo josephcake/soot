@@ -1,8 +1,14 @@
 # @soot/context-manager
 
-> **Status: partial (Milestone 1 and Milestone 4 scope implemented).** Persisted execution
-> state only.
-> Per-task context selection arrives in later milestones.
+> **Status: partial (Milestone 1, 4 and 5 scope implemented).** Persisted execution state,
+> model outcomes, and untrusted-content handling. Context selection arrives later.
+
+## Untrusted content (Milestone 5)
+
+`buildAgentContext` builds what a runner may show an agent: trusted task fields, permissions
+taken only from the task (write set, no agent commands, approval mode), and untrusted blocks
+(dependency results, prior attempts, tool output) fenced with `fenceUntrusted` and scanned by
+`scanForInjection` (heuristic; flags are audited, never obeyed).
 
 ## Execution state
 
@@ -23,6 +29,9 @@ failure, and supervisor review. A v1 database is migrated in place; unknown vers
 refused. Attempts the supervisor retried are stored as `retried`, and `loadRun` returns
 `attemptRecords` to pass as `previousAttemptRecords`, so retry limits, budgets, and context
 transfer continue after a restart.
+
+Schema v3 (Milestone 5) adds `model_outcomes`: soot's verdict (`verified` or `failed`) per
+attempt with model and tier (`recordModelOutcome`, `modelOutcomes`), to feed routing history.
 
 Only validated tasks and structured agent results are stored. Nothing free-form from agents
 is persisted.

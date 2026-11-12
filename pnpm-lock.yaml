@@ -82,7 +82,20 @@ importers:
 
   packages/harness-adapters: {}
 
-  packages/integrations: {}
+  packages/integrations:
+    dependencies:
+      '@soot/agent-runtime':
+        specifier: workspace:*
+        version: link:../agent-runtime
+      '@soot/context-manager':
+        specifier: workspace:*
+        version: link:../context-manager
+      '@soot/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@soot/task-graph':
+        specifier: workspace:*
+        version: link:../task-graph
 
   packages/model-registry:
     dependencies:

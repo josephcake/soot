@@ -12,17 +12,22 @@ import type {
   TaskOutcome,
 } from '@soot/agent-runtime';
 import {
+  ComplexitySchema,
   parseAgentResult,
   parseTask,
   type AgentResult,
+  type Complexity,
   type Task,
   type TaskGraph,
 } from '@soot/task-graph';
 
 /** File name of the state database inside `SOOT_DATA_DIR`. */
 export const STATE_DB_FILE = 'soot.sqlite';
-/** v2 (Milestone 4) adds `attempt_details`; v1 databases are migrated in place. */
-const SCHEMA_VERSION = 2;
+/**
+ * v2 (Milestone 4) adds `attempt_details`; v3 (Milestone 5) adds `model_outcomes`. Older
+ * databases are migrated in place (both changes only add tables).
+ */
+const SCHEMA_VERSION = 3;
 
 /**
  * Per-attempt state as persisted. `running`: started with no recorded finish (the process may
@@ -64,6 +69,17 @@ export interface PersistedRun {
    * escalation limits, budgets, and context transfer continue across restarts.
    */
   readonly attemptRecords: ReadonlyMap<string, readonly AttemptRecord[]>;
+}
+
+export interface ModelOutcome {
+  readonly runId: string;
+  readonly taskId: string;
+  readonly attempt: number;
+  readonly model: string;
+  /** Complexity tier the model was routed at. */
+  readonly tier: Complexity;
+  readonly outcome: 'verified' | 'failed';
+  readonly reason: string;
 }
 
 export interface CreateRunInput {
@@ -149,6 +165,17 @@ export class ExecutionStore {
         review_json TEXT,
         PRIMARY KEY (run_id, task_id, attempt)
       );
+      CREATE TABLE IF NOT EXISTS model_outcomes (
+        run_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        model TEXT NOT NULL,
+        tier TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, task_id, attempt)
+      );
     `);
     const version = this.#db
       .prepare('SELECT value FROM meta WHERE key = ?')
@@ -157,14 +184,66 @@ export class ExecutionStore {
       this.#db
         .prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
         .run('schema_version', String(SCHEMA_VERSION));
-    } else if (Number(version.value) === 1) {
-      // v1 → v2: the only change is the new attempt_details table, created above.
+    } else if (Number(version.value) === 1 || Number(version.value) === 2) {
+      // v1/v2 → v3: the only changes are new tables, created above.
       this.#db
         .prepare('UPDATE meta SET value = ? WHERE key = ?')
         .run(String(SCHEMA_VERSION), 'schema_version');
     } else if (Number(version.value) !== SCHEMA_VERSION) {
       throw new Error(`Unsupported state schema version ${version.value} in ${this.path}`);
     }
+  }
+
+  /**
+   * Record a model's outcome on a task attempt as soot judged it (Milestone 5, M5-07):
+   * `verified` only from soot's own evidence; `failed` when the agent failed or soot's
+   * validation failed. Outcomes that say nothing about the model (blocked, cancelled, provider
+   * errors) should not be recorded. Kept across runs: outcome history feeds later routing.
+   */
+  recordModelOutcome(outcome: ModelOutcome): void {
+    this.#db
+      .prepare(
+        `INSERT OR REPLACE INTO model_outcomes
+           (run_id, task_id, attempt, model, tier, outcome, reason, recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        outcome.runId,
+        outcome.taskId,
+        outcome.attempt,
+        outcome.model,
+        outcome.tier,
+        outcome.outcome,
+        outcome.reason,
+        this.#now().toISOString(),
+      );
+  }
+
+  /** All recorded model outcomes, oldest first. */
+  modelOutcomes(): ModelOutcome[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT run_id, task_id, attempt, model, tier, outcome, reason FROM model_outcomes
+         ORDER BY recorded_at, run_id, task_id, attempt`,
+      )
+      .all() as {
+      run_id: string;
+      task_id: string;
+      attempt: number;
+      model: string;
+      tier: string;
+      outcome: string;
+      reason: string;
+    }[];
+    return rows.map((r) => ({
+      runId: r.run_id,
+      taskId: r.task_id,
+      attempt: r.attempt,
+      model: r.model,
+      tier: ComplexitySchema.parse(r.tier),
+      outcome: r.outcome === 'verified' ? 'verified' : 'failed',
+      reason: r.reason,
+    }));
   }
 
   close(): void {

@@ -3,6 +3,33 @@
 All notable changes are recorded here by milestone. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). No versions have been released.
 
+## [Unreleased] — Milestone 5: Codebase integration and safety (verified locally 2026-11-12, fixture repos, mocks)
+
+### Added
+
+- `@soot/integrations` (was a stub): `runCodebaseWorkflow` and its parts:
+  - `Repository`: refuses a dirty tree, pins the base, one worktree and branch per task
+    (`soot/<run>/<task>`) outside the repo, reset on retry, cleanup of this run's worktrees
+  - `WriteLeases`, `withinScope`, `findDiffOverlaps`; out-of-scope edits caught from the real diff
+  - `runCheck` / `checkCommand`: argv without a shell, executable allowlist, destructive
+    programs and git subcommands refused, scrubbed environment, timeouts, redacted output
+  - `IsolatedTaskRunner`: soot commits, diffs and validates each attempt; only soot-run
+    evidence verifies a task; failed verification feeds the M4 supervisor
+  - `integrateSerially`: merge-tree dry run per task onto the current HEAD; conflicts recorded
+    and branches kept; final validation of the merged result
+  - fast-forward of the user's working tree only after final validation and explicit approval
+  - `buildConsolidatedReport` / `renderConsolidatedReport`: incomplete work listed first
+  - `applyStructuredEdits`: the scoped, all-or-nothing write primitive for ADR-020
+- `@soot/agent-runtime`: `ApprovalGate` (`UNATTENDED_APPROVALS`, `InteractiveApprovalGate`; no
+  auto-approve), `TaskWorkspace` and `TaskPermissions` for runners; `MockAgentRunner` can write
+  files, request approval and report fictional `costUsd`; assignments carry their tier.
+- `@soot/observability`: `AuditLog` (redacted JSON Lines, mode 0600), `buildCostReport` /
+  `renderCostReport` (estimate vs actual per task, per attempt and by model).
+- `@soot/context-manager`: schema v3 (`model_outcomes`, migrated in place) with
+  `recordModelOutcome` / `modelOutcomes`; `buildAgentContext`, `fenceUntrusted`,
+  `scanForInjection` for untrusted content.
+- `tests/m5-codebase-end-to-end.test.ts` checks exit criteria EC1–EC4 and M5-05…M5-09. ADR-025.
+
 ## [Unreleased] — Milestone 4: Adaptive execution (verified locally 2026-11-12, mocks)
 
 ### Added

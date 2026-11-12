@@ -2,8 +2,8 @@
 
 _Named after the soot sprites, the black dust bunnies from Studio Ghibli. Formerly `intelligent-agent-router`._
 
-> **Status: Milestones 1 and 3 done (mocks and fixtures); Milestone 2 (provider connectivity)
-> in progress, verified with mocked HTTP only.**
+> **Status: Milestones 1, 3, 4 and 5 done (mocks, fixtures and fixture git repos); Milestone 2
+> (provider connectivity) in progress, verified with mocked HTTP only.**
 > The engine can take one prompt, decompose it **from recorded fixtures** (there is no
 > model-backed decomposition), build a dependency graph, run independent tasks concurrently
 > with **mock agents** (a test double; no model is called), persist state in SQLite, and
@@ -59,11 +59,12 @@ These are recorded in [`DECISIONS.md`](DECISIONS.md).
 | `@soot/planner`            | Immutable prompt intake; fixture-backed decomposer only (M1)           |
 | `@soot/agent-runtime`      | Concurrent scheduler + `MockAgentRunner`; supervised attempts (M1, M4) |
 | `@soot/context-manager`    | SQLite execution state and attempt history, resume after kill (M1, M4) |
-| `@soot/observability`      | Estimate vs actual cost records (M1); routing explanation log (M3)     |
+| `@soot/observability`      | Cost records and reports (M1, M5); routing log (M3); audit log (M5)    |
 | `@soot/model-registry`     | User model config, availability, selection, sourced pricing (M2)       |
 | `@soot/provider-adapters`  | `ModelClient` over the AI SDK, mocked-HTTP verified (M2)               |
 | `@soot/model-router`       | Per-task routing with policies and explanations, fixture-verified (M3) |
 | `@soot/escalation`         | Escalation, fallback, bounds, downgrade; mock-verified (M4)            |
+| `@soot/integrations`       | Worktrees, soot-run checks, merge-tree integration, reports (M5)       |
 | Everything else            | **Stub** (exports only its name and `IMPLEMENTATION_STATUS = 'stub'`)  |
 
 ### Supported providers
@@ -105,7 +106,9 @@ graph → concurrent mock execution → persisted results) runs in
 [`tests/m1-end-to-end.test.ts`](tests/m1-end-to-end.test.ts). Per-task routing of the spec's
 fixture prompts under each policy, with explanations, runs in
 [`tests/m3-routing-end-to-end.test.ts`](tests/m3-routing-end-to-end.test.ts) against a
-fictional registry. No savings are claimed. The
+fictional registry. Milestone 5 runs mock agents against real temporary git repositories,
+with soot running `node --test`, `tsc` and lint on each task's diff, in
+[`tests/m5-codebase-end-to-end.test.ts`](tests/m5-codebase-end-to-end.test.ts). No savings are claimed. The
 target behavior is described in [`docs/specs/build-spec.md`](docs/specs/build-spec.md);
 savings will only be reported from real benchmark data.
 

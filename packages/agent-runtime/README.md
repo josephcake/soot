@@ -1,6 +1,6 @@
 # @soot/agent-runtime
 
-> **Status: partial (Milestone 1 and Milestone 4 scope implemented).** There is **no real
+> **Status: partial (Milestone 1, 4 and 5 scope implemented).** There is **no real
 > agent runner** (no model or harness calls). The only runner is `MockAgentRunner`, a test
 > double.
 
@@ -38,6 +38,14 @@ With a `supervisor` (`AttemptSupervisor`; `@soot/escalation` provides `AdaptiveS
 - `previousAttemptRecords` continues persisted history after a restart.
 
 Without a supervisor the default `SINGLE_ATTEMPT` keeps the Milestone 1 behaviour.
+
+### Workspaces and approvals (Milestone 5)
+
+Runners may receive a `workspace` (worktree root and write scope) and `permissions`.
+`permissions.requestApproval` goes through an `ApprovalGate`: `UNATTENDED_APPROVALS` always
+answers `unavailable`; `InteractiveApprovalGate` waits for a person to answer `approved` or
+`denied` (cancellation → `unavailable`). soot never approves anything itself (ADR-018).
+`MockAgentRunner` scripts can write files into the workspace and request approval.
 
 `succeeded` means the agent reported success with a valid structured result. Checking
 acceptance criteria against real evidence is Milestone 5.

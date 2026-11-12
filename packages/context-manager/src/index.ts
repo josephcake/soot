@@ -2,8 +2,9 @@
  * @soot/context-manager
  *
  * Milestone 1: persisted execution state (SQLite via `node:sqlite`, under `SOOT_DATA_DIR`)
- * so an interrupted run resumes without re-running completed tasks. Per-task context
- * selection is a later milestone.
+ * so an interrupted run resumes without re-running completed tasks. Milestone 4: attempt
+ * history. Milestone 5: model outcome history (routing feedback) and untrusted-content
+ * handling for agent context (fencing, injection flags, permissions from trusted input only).
  */
 
 export const PACKAGE_NAME = '@soot/context-manager';
@@ -19,8 +20,20 @@ export {
   STATE_DB_FILE,
   openExecutionStore,
   type CreateRunInput,
+  type ModelOutcome,
   type OpenExecutionStoreOptions,
   type PersistedAttempt,
   type PersistedRun,
   type PersistedTaskState,
 } from './execution-store.js';
+export {
+  buildAgentContext,
+  fenceUntrusted,
+  renderAgentContext,
+  scanForInjection,
+  type AgentContextInput,
+  type AgentContextPacket,
+  type ContextPermissions,
+  type InjectionFlag,
+  type UntrustedBlock,
+} from './untrusted.js';

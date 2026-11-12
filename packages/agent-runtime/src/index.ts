@@ -5,7 +5,8 @@
  * dependency ordering, cancellation, result validation, resume support), and
  * `MockAgentRunner`, a scripted TEST DOUBLE. Milestone 4: multi-attempt execution driven by an
  * `AttemptSupervisor` (retries, reassignment with context transfer, attempt timeouts, retry
- * backoff that cancellation clears). No real model or harness runner exists yet.
+ * backoff that cancellation clears). Milestone 5: task workspaces (worktrees) and approval
+ * gates that never auto-approve. No real model or harness runner exists yet.
  */
 
 export const PACKAGE_NAME = '@soot/agent-runtime';
@@ -33,6 +34,18 @@ export {
   type ReviewContext,
   type ReviewDecision,
 } from './attempts.js';
+export {
+  APPROVAL_ACTIONS,
+  InteractiveApprovalGate,
+  UNATTENDED_APPROVALS,
+  type ApprovalAction,
+  type ApprovalDecision,
+  type ApprovalGate,
+  type ApprovalRequest,
+  type PendingApproval,
+  type TaskPermissions,
+  type TaskWorkspace,
+} from './permissions.js';
 export {
   MockAgentAbortError,
   MockProviderError,

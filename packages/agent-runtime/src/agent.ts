@@ -1,5 +1,6 @@
 import type { AgentResult, Task } from '@soot/task-graph';
 import type { Assignment, PriorAttempt } from './attempts.js';
+import type { TaskPermissions, TaskWorkspace } from './permissions.js';
 
 /**
  * What an agent receives for one attempt: its task (instructions, acceptance criteria,
@@ -15,6 +16,10 @@ export interface AgentTaskInput {
   readonly assignment?: Assignment | null;
   /** Earlier attempts of this task, oldest first. */
   readonly priorAttempts?: readonly PriorAttempt[];
+  /** Isolated worktree for write tasks (Milestone 5); absent for read-only tasks and mocks. */
+  readonly workspace?: TaskWorkspace;
+  /** Approval channel (Milestone 5). Runners must ask here instead of acting unapproved. */
+  readonly permissions?: TaskPermissions;
 }
 
 /**

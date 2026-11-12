@@ -1,7 +1,14 @@
 # @soot/observability
 
-> **Status: partial (Milestone 1 and 3 scope implemented).** Types and pure functions only. No
-> dashboard or UI (ADR-009); audit logs and reports come later.
+> **Status: partial (Milestone 1, 3 and 5 scope implemented).** Types and functions only. No
+> dashboard or UI (ADR-009).
+
+- `AuditLog` (M5): one redacted JSON Lines entry per event (worktrees, leases, attempts,
+  commands run or refused, approvals, verdicts, integration), file mode 0600. `redactSecrets`
+  masks key-like strings.
+- `buildCostReport` / `renderCostReport` (M5): per task, per attempt and by model, the planner
+  estimate and routed estimates next to reported actual usage, never mixed. Unknown stays
+  unknown.
 
 - Cost records (M1): planner/router estimates and reported actuals kept in distinct types.
 - `RoutingLog` (M3): one entry per routing decision (task, policy, selected model, reason,

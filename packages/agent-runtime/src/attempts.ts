@@ -1,4 +1,4 @@
-import type { AgentResult, Finding, Task } from '@soot/task-graph';
+import type { AgentResult, Complexity, Finding, Task } from '@soot/task-graph';
 
 /*
  * Attempt-level vocabulary for adaptive execution (Milestone 4). The scheduler owns the
@@ -46,6 +46,8 @@ export interface Assignment {
   readonly escalationLevel: number;
   /** Estimated cost of this attempt in USD (`null` = unknown). Never an actual. */
   readonly estimatedCostUsd: number | null;
+  /** Complexity tier the model was routed at (Milestone 5 outcome feedback), when known. */
+  readonly tier?: Complexity;
 }
 
 export type ReviewDecision =

@@ -10,7 +10,7 @@ every exit criterion is verified from real runs. Dates are recorded only when ve
 | M2        | Multi-Provider Model Connectivity | In Progress (partial; mocks only, M2-07 blocked)    | —               |
 | M3        | Intelligent Model Routing         | Completed (verified locally with fixture registry)  | 2026-11-12      |
 | M4        | Adaptive Execution                | Completed (verified locally with mock agents)       | 2026-11-12      |
-| M5        | Codebase Integration and Safety   | Not Started                                         | —               |
+| M5        | Codebase Integration and Safety   | Completed (verified locally; fixture repos, mocks)  | 2026-11-12      |
 | M6        | Universal Skill and CLI           | Not Started                                         | —               |
 | M7        | IDE Extensions                    | Not Started                                         | —               |
 
@@ -76,8 +76,9 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Deliverables:** filesystem integration; git integration; file-conflict detection; git worktree isolation; patch integration; test execution; final validation; task-level cost reporting.
 - **Dependencies:** M1, M4.
 - **Acceptance / exit criteria:** multiple tasks modify a real repository safely; conflicting changes are detected; integration failures are reported; relevant tests are executed.
-- **Status:** Not Started
-- **Completion date:** —
+- **Status:** Completed. Verified locally on real temporary git repositories with real `node --test`, `tsc` and lint commands run by soot itself; agents are mocks that write files, so no model or provider is called (ADR-025). A task is Verified only from soot-run evidence on its real diff. Real-model execution still depends on M2-07 (Blocked) and harness runners (M6).
+- **Evidence:** `tests/m5-codebase-end-to-end.test.ts` (12 tests: EC1–EC4, M5-05…M5-09), `packages/integrations` tests (worktrees, cleanup, merge-tree integration, scope, structured edits, command controls), `packages/observability/src/audit-cost-report.test.ts`, `packages/context-manager/src/untrusted.test.ts` and `execution-store.test.ts` (schema v3), `packages/agent-runtime/src/permissions.test.ts`.
+- **Completion date:** 2026-11-12
 
 ## M6 — Universal Skill and CLI
 

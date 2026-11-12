@@ -118,17 +118,24 @@ M1-05/M1-08 `packages/agent-runtime/src/{scheduler,mock-agent}.test.ts`; M1-07
 
 ## M5 — Codebase Integration and Safety
 
-| ID    | Description                                                                       | Priority | Milestone | Dependencies | Status      | Component                             | Acceptance criteria                                                             |
-| ----- | --------------------------------------------------------------------------------- | -------- | --------- | ------------ | ----------- | ------------------------------------- | ------------------------------------------------------------------------------- |
-| M5-01 | Git worktree isolation per writing task                                           | P0       | M5        | M1-05        | Not Started | packages/integrations                 | Parallel tasks write in separate worktrees of a fixture repo; cleanup verified. |
-| M5-02 | File-conflict detection across task diffs                                         | P0       | M5        | M5-01        | Not Started | packages/integrations                 | Overlapping edits detected and reported.                                        |
-| M5-03 | Patch integration into the main working tree                                      | P0       | M5        | M5-02        | Not Started | packages/integrations                 | Non-conflicting patches merged; conflicts surfaced, not dropped.                |
-| M5-04 | Validation runner (tests, typecheck, lint where available) against real diffs     | P0       | M5        | M5-03        | Not Started | packages/integrations                 | Completion requires evidence; failing validation marks task incomplete.         |
-| M5-05 | Honest consolidated report incl. incomplete work                                  | P1       | M5        | M5-04        | Not Started | packages/integrations, observability  | Report lists incomplete/failed tasks explicitly.                                |
-| M5-06 | Per-task and total cost display (estimate vs actual), including escalations       | P1       | M5        | M1-09, M2-01 | Not Started | packages/observability                | Totals match provider usage metadata in tests.                                  |
-| M5-07 | Capability benchmark feedback loop (record per-model task outcomes, feed routing) | P1       | M5        | M3-04, M5-04 | Not Started | packages/observability, model-router  | Outcomes stored locally and influence later routing (tested).                   |
-| M5-08 | Permission-aware execution, command controls, destructive-op approval, audit log  | P0       | M5        | M5-01        | Not Started | packages/agent-runtime, observability | Host harness permissions never bypassed; audit log written.                     |
-| M5-09 | Untrusted tool output / prompt-injection handling                                 | P1       | M5        | M5-08        | Not Started | packages/context-manager              | Injection fixtures do not escalate permissions.                                 |
+> Status: **Completed (verified locally on real fixture git repositories with mock agents)**,
+> 2026-11-12. soot runs the checks itself on each task's real diff; agent self-report is never
+> evidence (ADR-018, ADR-025). Real-model diffs depend on M2-07 (Blocked) and M6 runners.
+> Evidence: `tests/m5-codebase-end-to-end.test.ts`, `packages/integrations/src/*.test.ts`,
+> `packages/observability/src/audit-cost-report.test.ts`,
+> `packages/context-manager/src/untrusted.test.ts`, `packages/agent-runtime/src/permissions.test.ts`.
+
+| ID    | Description                                                                       | Priority | Milestone | Dependencies | Status    | Component                             | Acceptance criteria                                                             |
+| ----- | --------------------------------------------------------------------------------- | -------- | --------- | ------------ | --------- | ------------------------------------- | ------------------------------------------------------------------------------- |
+| M5-01 | Git worktree isolation per writing task                                           | P0       | M5        | M1-05        | Completed | packages/integrations                 | Parallel tasks write in separate worktrees of a fixture repo; cleanup verified. |
+| M5-02 | File-conflict detection across task diffs                                         | P0       | M5        | M5-01        | Completed | packages/integrations                 | Overlapping edits detected and reported.                                        |
+| M5-03 | Patch integration into the main working tree                                      | P0       | M5        | M5-02        | Completed | packages/integrations                 | Non-conflicting patches merged; conflicts surfaced, not dropped.                |
+| M5-04 | Validation runner (tests, typecheck, lint where available) against real diffs     | P0       | M5        | M5-03        | Completed | packages/integrations                 | Completion requires evidence; failing validation marks task incomplete.         |
+| M5-05 | Honest consolidated report incl. incomplete work                                  | P1       | M5        | M5-04        | Completed | packages/integrations, observability  | Report lists incomplete/failed tasks explicitly.                                |
+| M5-06 | Per-task and total cost display (estimate vs actual), including escalations       | P1       | M5        | M1-09, M2-01 | Completed | packages/observability                | Totals match provider usage metadata in tests.                                  |
+| M5-07 | Capability benchmark feedback loop (record per-model task outcomes, feed routing) | P1       | M5        | M3-04, M5-04 | Completed | packages/observability, model-router  | Outcomes stored locally and influence later routing (tested).                   |
+| M5-08 | Permission-aware execution, command controls, destructive-op approval, audit log  | P0       | M5        | M5-01        | Completed | packages/agent-runtime, observability | Host harness permissions never bypassed; audit log written.                     |
+| M5-09 | Untrusted tool output / prompt-injection handling                                 | P1       | M5        | M5-08        | Completed | packages/context-manager              | Injection fixtures do not escalate permissions.                                 |
 
 ## M6 — Universal Skill and CLI
 

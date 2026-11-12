@@ -9,10 +9,10 @@ to `.env` for local overrides. `.env` is git-ignored and must never be committed
 
 ## Orchestrator variables (read today by `parseEnv`)
 
-| Variable         | Default   | Values                                                        | Purpose                                                                             |
-| ---------------- | --------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `SOOT_LOG_LEVEL` | `info`    | `silent`, `error`, `warn`, `info`, `debug` (case-insensitive) | Engine log verbosity. Invalid values throw `EnvConfigError`.                        |
-| `SOOT_DATA_DIR`  | `~/.soot` | absolute or relative path (relative resolves against cwd)     | Local-first state: `soot.sqlite` (execution state, M1); later worktrees, audit log. |
+| Variable         | Default   | Values                                                        | Purpose                                                                                               |
+| ---------------- | --------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `SOOT_LOG_LEVEL` | `info`    | `silent`, `error`, `warn`, `info`, `debug` (case-insensitive) | Engine log verbosity. Invalid values throw `EnvConfigError`.                                          |
+| `SOOT_DATA_DIR`  | `~/.soot` | absolute or relative path (relative resolves against cwd)     | Local-first state: `soot.sqlite` (execution state, M1); `worktrees/<run>/`, `audit/<run>.jsonl` (M5). |
 
 Empty values are treated as unset.
 

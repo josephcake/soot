@@ -183,6 +183,7 @@ export class AdaptiveSupervisor implements AttemptSupervisor {
     type: AdaptiveEventType,
     c: CandidateAssessment,
     level: number,
+    tier: Complexity,
     reason: string,
     triggers: readonly Trigger[] = [],
   ): PlanDecision {
@@ -191,6 +192,7 @@ export class AdaptiveSupervisor implements AttemptSupervisor {
       reason,
       escalationLevel: level,
       estimatedCostUsd: c.estimate.costUsd,
+      tier,
     };
     this.#emit({ taskId: task.id, attempt, type, model: c.ref, reason, triggers });
     return { action: 'run', assignment };
@@ -208,7 +210,15 @@ export class AdaptiveSupervisor implements AttemptSupervisor {
       .map((r) => r.taskId);
     const { downgrade } = this.config;
     if (!downgrade.enabled || planners.length === 0) {
-      return this.#run(task, attempt, 'assign', baseChoice, 0, base.reason);
+      return this.#run(
+        task,
+        attempt,
+        'assign',
+        baseChoice,
+        0,
+        base.profile.complexity,
+        base.reason,
+      );
     }
     const from = `prerequisite ${planners.join(', ')} produced a plan`;
     const keep = (why: string) => {
@@ -226,6 +236,7 @@ export class AdaptiveSupervisor implements AttemptSupervisor {
         'assign',
         baseChoice,
         0,
+        base.profile.complexity,
         `${base.reason} (no downgrade: ${why})`,
       );
     };
@@ -251,6 +262,7 @@ export class AdaptiveSupervisor implements AttemptSupervisor {
       'downgrade',
       low,
       0,
+      lowered.profile.complexity,
       `downgraded: ${from}; routed as ${lowered.profile.complexity} instead of ${base.profile.complexity}, est. ${usd(baseCost)} → ${usd(lowCost)} (saves ${pct(savings)})`,
     );
   }
@@ -293,7 +305,7 @@ export class AdaptiveSupervisor implements AttemptSupervisor {
         const c = decision.candidates.find((x) => x.ref === model);
         if (c === undefined)
           return { action: 'stop', reason: 'previous model is no longer in the registry' };
-        return this.#run(task, attempt, 'retry', c, level, step.note);
+        return this.#run(task, attempt, 'retry', c, level, decision.profile.complexity, step.note);
       }
       case 'fallback': {
         if (step.provider !== null) failedProviders.add(step.provider);
@@ -307,7 +319,15 @@ export class AdaptiveSupervisor implements AttemptSupervisor {
             reason: `no fallback model available outside ${[...failedProviders].join(', ')}`,
           };
         }
-        return this.#run(task, attempt, 'fallback', c, level, `${step.note}: ${c.ref}`);
+        return this.#run(
+          task,
+          attempt,
+          'fallback',
+          c,
+          level,
+          decision.profile.complexity,
+          `${step.note}: ${c.ref}`,
+        );
       }
       case 'escalate': {
         const newLevel = level + 1;
@@ -327,7 +347,16 @@ export class AdaptiveSupervisor implements AttemptSupervisor {
         if (c === undefined)
           return { action: 'stop', reason: `no stronger model available (${step.note})` };
         const note = `${step.note} → ${c.ref} (${decision.profile.complexity} tier, p≈${(c.reliability.value ?? 0).toFixed(2)}${prevReliability === null ? '' : ` vs ${prevReliability.toFixed(2)}`})`;
-        return this.#run(task, attempt, 'escalate', c, newLevel, note, step.triggers);
+        return this.#run(
+          task,
+          attempt,
+          'escalate',
+          c,
+          newLevel,
+          decision.profile.complexity,
+          note,
+          step.triggers,
+        );
       }
     }
   }

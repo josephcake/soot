@@ -4,13 +4,23 @@ Last Updated: 2026-11-12
 
 ## Current Phase
 
-Milestone 4 — Adaptive Execution (completed, verified locally with mock agents); Milestone 2 In Progress (partial; M2-07 Blocked)
+Milestone 5 — Codebase Integration and Safety (completed, verified locally on fixture git repositories with mock agents); Milestone 2 In Progress (partial; M2-07 Blocked)
 
 ## Overall Progress
 
-4 / 8 milestones completed (M0, M1, M3, M4 verified locally; M2 in progress, partial; M5–M7 not started)
+5 / 8 milestones completed (M0, M1, M3, M4, M5 verified locally; M2 in progress, partial; M6–M7 not started)
 
 ## Current Status
+
+Milestone 5 is Completed and verified locally on real temporary git repositories, with real
+`node --test`, `tsc` and lint commands run by soot itself and mock agents that write files (no
+model is called). Each writing task runs in its own worktree under a write lease; soot reads the
+real diff, runs the checks, and marks a task Verified only from that evidence. Verified work is
+integrated serially with a merge-tree dry run; conflicts are surfaced with their branch kept;
+the user's working tree moves only by fast-forward after final validation and explicit
+approval. The consolidated report lists incomplete work first and shows cost estimates and
+actuals separately. Approvals are never automatic; everything is audited (ADR-025). This is
+not a finished product: harness runners are Milestone 6 and real providers wait on M2-07.
 
 Milestone 4 is Completed and verified locally with mock agents, the fictional routing registry
 and the spec's fixture prompts (§17 Tests 3 and 6). Failed or doubtful work escalates mid-flight
@@ -60,6 +70,16 @@ local only.
   - M4-04 downgrade after a `planReady` prerequisite, gated on a 30% saving; never high-risk work
   - M4-05 recovery from timeout, rate limit, outage, auth, crash, invalid output; attempt history in SQLite (schema v2); resume replays the same decisions
   - M4-06 cancellation of one task or the whole run, including pending retries
+- [x] Milestone 5 — Codebase Integration and Safety (M5-01…M5-09), `@soot/integrations` + `observability` + `context-manager` + `agent-runtime`:
+  - M5-01 worktree per writing task from a pinned base, reset on retry, cleanup verified
+  - M5-02 out-of-scope edits and overlapping diffs detected from real diffs
+  - M5-03 serial merge-tree integration; conflicts surfaced with branches kept
+  - M5-04 soot-run test/typecheck/lint/acceptance checks; failure marks the task incomplete
+  - M5-05 consolidated report listing incomplete and failed work first
+  - M5-06 per-task, per-attempt and total cost, estimates and actuals separate
+  - M5-07 soot verdicts stored per model and tier (schema v3) and fed back into routing
+  - M5-08 approval gates (interactive waits, unattended refuses), command controls, audit log
+  - M5-09 untrusted content fenced and scanned; injection grants no permissions
 
 ## In Progress
 
@@ -68,7 +88,6 @@ local only.
 
 ## Not Started
 
-- [ ] Milestone 5 — Codebase Integration and Safety (MVP-07, MVP-08)
 - [ ] Milestone 6 — Universal Skill and CLI
 - [ ] Milestone 7 — IDE Extensions
 
@@ -80,36 +99,41 @@ local only.
 ## Known Issues
 
 - Decomposition is fixture-only: prompts without a recorded fixture are refused (`NoFixtureError`).
-- Agents are mocks; "succeeded" means agent-reported success, not verified evidence (Milestone 5).
+- Agents are mocks. Since M5, "complete" means soot ran the checks on the task's real diff, but no real model has produced a diff yet.
+- No OS sandbox: worktrees isolate git state, not processes (TECHNICAL_DEBT.md).
 - Provider adapters are verified against mocked HTTP only. Real wire behaviour is unverified until M2-07.
-- Escalation triggers rely on agent self-report (`AgentResult.signals`); provider health and success history are in memory.
+- Escalation triggers still use agent signals, plus soot's own verification since M5. Provider health and run spend are in memory; model outcomes are persisted.
 - See `TECHNICAL_DEBT.md`.
 
 ## Next Actions
 
-1. Mochi: review Milestone 4. Decide whether to start Milestone 5 (codebase integration and safety: worktrees, patches, tests), which can proceed locally without providers.
+1. Mochi: review Milestone 5. Decide whether to start Milestone 6 (universal skill and CLI). Not started.
 2. Mochi: decide when and whether to run M2-07 with user-supplied keys. Real routing outcomes, model-backed evaluation and calibrated thresholds depend on it.
 3. Optional: run `pnpm vitest run packages/provider-adapters/src/local-endpoint.test.ts` with Ollama or LM Studio running to verify M2-03 live.
 
 ## MVP Readiness
 
-Not Ready (MVP-01, MVP-02, MVP-05 core in place with fixtures/mocks; MVP-03 partial (mocks only, real providers blocked); MVP-04 routing in place with heuristic evaluation; MVP-06 in place with mocks; MVP-07, -08 open)
+Not Ready (MVP-01, MVP-02, MVP-05 core in place with fixtures/mocks; MVP-03 partial (mocks only, real providers blocked); MVP-04 routing in place with heuristic evaluation; MVP-06 in place with mocks; MVP-07, -08 in place, verified on fixture repos with mock agents; no harness-facing surface until M6)
 
 ## Latest Validation
 
-Recorded 2026-11-12 ~01:59 PST from a real run of `bash scripts/ci.sh` in `/workspace/soot`, Node 24.22.1. The run covers install --frozen-lockfile, typecheck, lint, format:check, test and a clean build.
+Recorded 2026-11-12 ~02:28 PST from a real run of `bash scripts/ci.sh` in `/workspace/soot`, Node 24.22.1, git 2.47.3. The run covers install --frozen-lockfile, typecheck, lint, format:check, test and a clean build.
 
 - **Build:** pass. `tsc -b` built all 13 packages.
-- **Tests:** pass. 44 test files (43 passed, 1 skipped) and 340 tests (339 passed, 1 skipped, 0 failures), Vitest 5.1.0. The skipped test is the live local-endpoint test: no runtime was listening on 127.0.0.1:11434 or :1234.
+- **Tests:** pass. 50 test files (49 passed, 1 skipped) and 370 tests (369 passed, 1 skipped, 0 failures), Vitest 5.1.0. The skipped test is the live local-endpoint test: no runtime was listening on 127.0.0.1:11434 or :1234.
 - **Typecheck / lint / format:** pass.
-- **Network audit:** the full suite was re-run with a global `fetch` guard. The only real requests were the two localhost probes. No key-like environment variables were set.
-- **Milestone 4 exit criteria** (`tests/m4-adaptive-end-to-end.test.ts`, 13 tests, mock agents, fictional registry, spec fixture prompts):
-  - **EC1 escalation with context (Test 3):** `update-theme-color` fails on `alpha/test-small` reporting higher complexity and confidence 0.3, escalates once to `beta/test-mid` (medium tier), and the second attempt receives the first attempt's summary and findings. A "succeeded" result with unmet criteria is rejected and escalated too.
-  - **EC2 unrelated tasks:** the two Test 1 tasks in the same run each ran exactly once, and were still running when the escalation started.
-  - **EC3 bounds:** an always-failing task climbs `test-small ×2 → test-mid ×2 → test-large` and stops at "attempt limit reached (5/5)"; with more attempts allowed it stops at "escalation limit reached"; a $0.05 task budget stops escalation to `alpha/test-large`; a run budget caps the second task; an outage on every provider ends with "no fallback model available" after 2 calls.
-  - **EC4 downgrade:** after `investigate-race` reports `planReady`, `apply-race-fix` is routed as low instead of medium (`alpha/test-small`, est. $0.016 → $0.004625, saves 71%); the high-risk review is not downgraded; no plan means no downgrade; a 80% savings gate keeps the model.
-  - **EC5 recovery (Test 6):** in one 6-task run, an outage falls back from alpha to `beta/test-mid` and marks alpha down; a 40 ms retry-after is honoured on the same model; a hung attempt times out (aborted) and is retried; a crash and an invalid output are each retried once. 11 calls total; every attempt, failure and review is in SQLite; no `running` rows remain. A persistent rate limit falls back after 2 retries. After a simulated process death during a pending retry, a reopened store resumes at attempt 2 on the same model without re-running the completed task.
-  - **EC6 cancellation:** cancelling a task during a 30 s backoff ends it in under 1 s and skips its dependents; aborting a run during running attempts and a pending retry cancels everything, aborts both running mocks, and leaves no `running` rows. A scheduler test checks no live timer is left behind.
-  - **DeepSeek:** never assigned in any M4 scenario.
-- **Milestone 3, 2 and 1 evidence** is unchanged (`tests/m3-routing-end-to-end.test.ts`; `packages/provider-adapters`, `packages/model-registry`, `tests/credential-boundary.test.ts`; `tests/m1-end-to-end.test.ts`, `tests/resume-after-kill.test.ts`). M2-07 is Blocked.
+- **Network audit:** the full suite was re-run with a global `fetch` guard. The only real requests were the two localhost probes. No key-like environment variables were set; the secret-isolation test sets a fake one and checks it never appears.
+- **Mutation checks** (temporarily breaking the code, then restoring it): ignoring failing checks fails 6 M5 tests; auto-approving deletions fails 2; dropping conflicts silently fails 2; skipping the scope check fails 2.
+- **Milestone 5 exit criteria** (`tests/m5-codebase-end-to-end.test.ts`, 12 tests, real temporary git repos, mock agents):
+  - **EC1 safe parallel changes:** two Test 1 tasks run concurrently in separate worktrees outside the repo; the user's tree is untouched during the run; both are verified, integrated (`soot: integrate …` commits), validated again, approved, and fast-forwarded; only the main worktree remains afterwards.
+  - **EC2 conflicts detected:** an edit outside the write lease is caught from the real diff (`out-of-scope`) and reported as an overlap; a commit made by the user mid-run produces an integration conflict in `src/button.ts`, surfaced with the branch kept, while the other task integrates.
+  - **EC3 integration failures reported:** conflicts, refused approvals and a working tree left untouched are listed under `NOT COMPLETE` and `problems`.
+  - **EC4 evidence:** soot runs `node --test`, `tsc -p tsconfig.json` and the lint script on each task's commit. A type error with forged agent evidence ends as `failed-validation: typecheck failed (exit 2)`; a failing acceptance test is fed back and the task escalates `alpha/test-small` → `beta/test-mid` and is verified.
+  - **M5-06 cost:** totals match the mocks' reported usage across 4 attempts, by model, with estimates shown separately.
+  - **M5-07 routing feedback:** after two runs where the small model fails soot's acceptance test, the stored outcomes move Balanced routing from `alpha/test-small` to `beta/test-mid`; outcomes survive a reopen.
+  - **M5-08 permissions:** unattended deletion is refused (never auto-approved) and its dependent skipped while independent work continues; the interactive gate pauses until answered (approved proceeds, denied refused); destructive checks (`rm`, `git push`, a non-allowlisted interpreter) are refused and audited; a fake key in the environment never reaches checks, reports or the audit log.
+  - **M5-09 injection:** hostile check output and findings cause no approval requests and no scope change; the dependent that "followed" them fails out-of-scope; the flags are audited.
+  - **Cancellation:** aborting a run mid-flight aborts the agents, removes worktrees and leaves the tree clean.
+  - **DeepSeek:** never assigned.
+- **Milestone 4, 3, 2 and 1 evidence** is unchanged (`tests/m4-adaptive-end-to-end.test.ts`, `tests/m3-routing-end-to-end.test.ts`; `packages/provider-adapters`, `packages/model-registry`, `tests/credential-boundary.test.ts`; `tests/m1-end-to-end.test.ts`, `tests/resume-after-kill.test.ts`). M2-07 is Blocked.
 - **Hosted CI:** not run, because the repository is not published (ADR-006).

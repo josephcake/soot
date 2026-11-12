@@ -1,10 +1,13 @@
 import type { AgentResult, AgentSignals, Finding, ReportedUsage } from '@soot/task-graph';
 import { monotonicClock, type AgentRunner, type AgentTaskInput, type Clock } from './agent.js';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, resolve, sep } from 'node:path';
 import type { Assignment, PriorAttempt } from './attempts.js';
+import type { ApprovalAction, ApprovalDecision } from './permissions.js';
 
 /*
  * TEST DOUBLE. MockAgentRunner calls no model, reads no files, and makes no network
- * requests. It returns scripted results after scripted delays so the scheduler, state
+ * requests. It writes only scripted files inside the workspace soot gave it (Milestone 5). It returns scripted results after scripted delays so the scheduler, state
  * store, and end-to-end flow can be tested deterministically. Never present its output as
  * real agent work.
  */
@@ -30,7 +33,16 @@ export interface MockScript {
   /** Delay before settling, in ms. Default 0. Honors abort unless `outcome` is `hang`. */
   readonly delayMs?: number;
   readonly summary?: string;
-  readonly usage?: Partial<Pick<ReportedUsage, 'inputTokens' | 'outputTokens'>>;
+  /** Reported usage. `costUsd` stands in for provider usage metadata (fictional amounts). */
+  readonly usage?: Partial<Pick<ReportedUsage, 'inputTokens' | 'outputTokens' | 'costUsd'>>;
+  /**
+   * Files to write in the task workspace before settling (`null` deletes). Paths are relative
+   * to the workspace root; the double may write outside the declared scope (soot must catch
+   * that) but never outside the workspace root.
+   */
+  readonly writes?: Readonly<Record<string, string | null>>;
+  /** Ask for approval first; if not approved, return `blocked` without writing anything. */
+  readonly approval?: { readonly action: ApprovalAction; readonly detail: string };
   /** Self-assessment to report (confidence, complexity, tool errors, ...). */
   readonly signals?: AgentSignals;
   /** Findings to report instead of the default `[mock]` observation. */
@@ -58,6 +70,8 @@ export class MockProviderError extends Error {
 }
 
 export interface MockCall {
+  /** Answer to the scripted approval request, if any. */
+  approval: ApprovalDecision | null;
   readonly taskId: string;
   readonly attempt: number;
   readonly dependencyTaskIds: readonly string[];
@@ -125,15 +139,71 @@ export class MockAgentRunner implements AgentRunner {
       startedAt: this.#clock(),
       finishedAt: null,
       settledAs: null,
+      approval: null,
     };
     this.calls.push(call);
+
+    if (outcome === 'hang') return new Promise<never>(() => undefined);
+    if (script.approval !== undefined || script.writes !== undefined) {
+      return this.#prepare(input, script, call, signal).then(
+        (blocked) => blocked ?? this.#settle(input, script, outcome, call, signal),
+      );
+    }
+    return this.#settle(input, script, outcome, call, signal);
+  }
+
+  /** Approval and file writes; returns a `blocked` result when approval is not granted. */
+  async #prepare(
+    input: AgentTaskInput,
+    script: MockScript,
+    call: MockCall,
+    signal: AbortSignal,
+  ): Promise<AgentResult | null> {
+    if (script.approval !== undefined) {
+      const decision =
+        input.permissions === undefined
+          ? 'unavailable'
+          : await input.permissions.requestApproval(script.approval, signal);
+      call.approval = decision;
+      if (decision !== 'approved') {
+        call.finishedAt = this.#clock();
+        call.settledAs = 'resolved';
+        return {
+          ...this.#result(input, script, 'block', call),
+          summary: `[mock] approval ${decision} for ${script.approval.action}: ${script.approval.detail}`,
+        };
+      }
+    }
+    const root = input.workspace?.root;
+    if (script.writes !== undefined) {
+      if (root === undefined) throw new Error(`mock agent for "${input.task.id}" has no workspace`);
+      for (const [path, content] of Object.entries(script.writes)) {
+        const target = resolve(root, path);
+        if (isAbsolute(path) || !target.startsWith(root + sep)) {
+          throw new Error(`mock agent refuses to write outside its workspace: ${path}`);
+        }
+        if (content === null) rmSync(target, { force: true });
+        else {
+          mkdirSync(dirname(target), { recursive: true });
+          writeFileSync(target, content);
+        }
+      }
+    }
+    return null;
+  }
+
+  #settle(
+    input: AgentTaskInput,
+    script: MockScript,
+    outcome: Exclude<MockOutcome, 'hang'>,
+    call: MockCall,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const { task } = input;
     const settle = (as: NonNullable<MockCall['settledAs']>) => {
       call.finishedAt = this.#clock();
       call.settledAs = as;
     };
-
-    if (outcome === 'hang') return new Promise<never>(() => undefined);
-
     return new Promise<unknown>((resolve, reject) => {
       const onAbort = () => {
         clearTimeout(timer);
@@ -191,7 +261,7 @@ export class MockAgentRunner implements AgentRunner {
         inputTokens: script.usage?.inputTokens ?? 0,
         outputTokens: script.usage?.outputTokens ?? 0,
         durationMs: (call.finishedAt ?? call.startedAt) - call.startedAt,
-        costUsd: null,
+        costUsd: script.usage?.costUsd ?? null,
         model: input.assignment?.model ?? null,
       },
       ...(script.signals === undefined ? {} : { signals: script.signals }),

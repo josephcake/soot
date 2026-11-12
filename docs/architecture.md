@@ -1,6 +1,7 @@
 # Architecture and Repository Layout
 
-> **Current state (Milestones 1–3):** task-graph, planner (fixture decomposer only),
+> **Current state (Milestones 1–5):** integrations has the Milestone 5 scope (worktrees,
+> soot-run validation, serial integration, reports); escalation has Milestone 4. task-graph, planner (fixture decomposer only),
 > agent-runtime (scheduler + mock runner), context-manager (SQLite state), and observability
 > (cost records, routing log) have their Milestone 1 scope; model-registry and
 > provider-adapters have the Milestone 2 mockable scope; model-router has Milestone 3. The rest of the design below is the _plan_ from
@@ -68,6 +69,26 @@ journal.attemptFinished → soot.sqlite attempt_details (resume replays the same
 (`ProviderHealth`), `observability`, and `task-graph`. The scheduler does not depend on
 `escalation`; the supervisor is injected.
 
+## Milestone 5 codebase flow (implemented)
+
+```text
+runCodebaseWorkflow (integrations)
+   │ open repo: refuse dirty tree, pin base, audit log → SOOT_DATA_DIR/audit/<run>.jsonl
+   ▼
+Scheduler (+ optional AdaptiveSupervisor) ── runner = IsolatedTaskRunner(inner)
+   │  per attempt: lease write set → worktree soot/<run>/<task> from base (+ verified deps)
+   │               context packet: trusted task + fenced untrusted data; permissions from task
+   │               inner.run({workspace, permissions}) → commit → real diff
+   │               out-of-scope / no-changes / deletion approval → soot-run checks (argv, allowlist,
+   │               scrubbed env) → verified | failed-validation (→ supervisor retries/escalates)
+   ▼
+integrateSerially: merge-tree each verified task onto HEAD (dependency order); conflicts kept on branch
+   ▼
+final validation in a detached worktree → approval → fast-forward user's tree (else soot/<run>/integration)
+   ▼
+consolidated report (incomplete first, overlaps, integration, validation, cost) + model_outcomes → routing
+```
+
 ## Design summary (planned)
 
 A universal TypeScript orchestration core with thin adapters. The core never depends on a
@@ -124,8 +145,8 @@ and file-conflict management.
 │   ├── escalation/           # adaptive supervisor: triggers, escalation, bounds (M4)
 │   ├── provider-adapters/    # partial (M2) — ModelClient over AI SDK; Anthropic, OpenAI, OpenAI-compatible
 │   ├── harness-adapters/     # stub — Claude Code, Codex, MCP, etc. (M6)
-│   ├── integrations/         # stub — worktrees, conflict detection, validation (M5)
-│   └── observability/        # cost records (M1), routing explanation log (M3); audit log later
+│   ├── integrations/         # partial (M5) — worktrees, validation, integration, reports
+│   └── observability/        # cost records/reports (M1, M5), routing log (M3), audit log (M5)
 ├── docs/
 │   ├── architecture.md       # this file
 │   ├── configuration.md      # environment variables
@@ -148,13 +169,13 @@ and file-conflict management.
 | `packages/task-graph/`        | partial (M1)      | M1                   | Task/result contracts, JSON Schema, DAG          |
 | `packages/model-registry/`    | partial (M2)      | M2                   | User model config, availability, sourced pricing |
 | `packages/model-router/`      | partial (M3)      | M3                   | Per-task routing, cost/reliability policies      |
-| `packages/agent-runtime/`     | partial (M1, M4)  | M1                   | Scheduler, supervised attempts; MockAgentRunner  |
-| `packages/context-manager/`   | partial (M1, M4)  | M1                   | SQLite state + attempt history; context later    |
+| `packages/agent-runtime/`     | partial (M1, M5)  | M1                   | Scheduler, attempts, approvals; MockAgentRunner  |
+| `packages/context-manager/`   | partial (M1, M5)  | M1                   | SQLite state, outcomes; untrusted context        |
 | `packages/escalation/`        | partial (M4)      | M4                   | Escalation, fallback, bounds, downgrade rules    |
 | `packages/provider-adapters/` | partial (M2)      | M2                   | ModelClient over AI SDK; retries, fallback, keys |
 | `packages/harness-adapters/`  | stub              | M6                   | Harness adapters (Claude Code, Codex, MCP, …)    |
-| `packages/integrations/`      | stub              | M5                   | Worktrees, conflict detection, validation        |
-| `packages/observability/`     | partial (M1, M3)  | M1                   | Cost records; routing log; audit log later       |
+| `packages/integrations/`      | partial (M5)      | M5                   | Worktrees, conflict detection, validation        |
+| `packages/observability/`     | partial (M1, M5)  | M1                   | Cost records/reports; routing log; audit log     |
 
 ### Planned directories not created yet
 

@@ -181,7 +181,7 @@ describe('execution store: attempt history (Milestone 4)', () => {
     expect(run.attemptCounts.get('b')).toBe(2);
   });
 
-  it('migrates a v1 database in place and refuses unknown future versions', () => {
+  it('migrates a v1 database in place to v3 and refuses unknown future versions', () => {
     const dataDir = tempDir();
     const store = openExecutionStore({ dataDir });
     const runId = store.createRun({ intake, graph: buildTaskGraph([task('a')]) });
@@ -189,7 +189,7 @@ describe('execution store: attempt history (Milestone 4)', () => {
     // Turn it back into a v1 database: no attempt_details table, schema_version 1.
     const db = new DatabaseSync(join(dataDir, STATE_DB_FILE));
     db.exec(
-      `DROP TABLE attempt_details; UPDATE meta SET value = '1' WHERE key = 'schema_version';`,
+      `DROP TABLE attempt_details; DROP TABLE model_outcomes; UPDATE meta SET value = '1' WHERE key = 'schema_version';`,
     );
     db.close();
 
@@ -198,10 +198,10 @@ describe('execution store: attempt history (Milestone 4)', () => {
     migrated.close();
     const check = new DatabaseSync(join(dataDir, STATE_DB_FILE));
     expect(check.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get()).toEqual({
-      value: '2',
+      value: '3',
     });
-    check.exec(`UPDATE meta SET value = '3' WHERE key = 'schema_version';`);
+    check.exec(`UPDATE meta SET value = '4' WHERE key = 'schema_version';`);
     check.close();
-    expect(() => openExecutionStore({ dataDir })).toThrow(/Unsupported state schema version 3/);
+    expect(() => openExecutionStore({ dataDir })).toThrow(/Unsupported state schema version 4/);
   });
 });

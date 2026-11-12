@@ -19,23 +19,23 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 
 ## Code
 
-- **[Intentional] 3 of 13 workspace packages are still stubs** (`cli`, `harness-adapters`,
-  `integrations`).
+- **[Intentional] 2 of 13 workspace packages are still stubs** (`cli`, `harness-adapters`).
   Package boundaries are kept (ADR-019).
 - **[Intentional] Decomposition is fixture-only.** `FixtureDecomposer` matches recorded
   prompts and refuses others; there is no prompt analysis. Model-backed decomposition comes
   after Milestone 2. Fixture token estimates are placeholders, not measurements.
-- **[Intentional] Agents are mocks.** `MockAgentRunner` is the only runner. Scheduler
-  `succeeded` means agent-reported success with a valid result, not verified evidence; the
-  acceptance-criteria and evidence check is Milestone 5.
+- **[Intentional] Agents are mocks.** `MockAgentRunner` is the only runner; in Milestone 5 it
+  writes scripted files into the worktree it is given. Since M5, "complete" means soot ran the
+  configured checks on the task's real diff (ADR-025), but no real model has produced a diff.
+  Harness runners are Milestone 6; real providers depend on M2-07.
 - **[Intentional] Timeouts are opt-in.** Without `attemptTimeoutMs` a hung runner blocks its
   task until cancelled. Without a supervisor the scheduler runs one attempt per task.
 - **[Intentional] No orchestrator wiring module.** The intake → decompose → graph → schedule →
   store flow is wired in `tests/m1-end-to-end.test.ts`; a reusable entry point arrives with
   the CLI/skill (Milestone 6) or earlier if Milestone 5 needs it.
-- **[Intentional] Write conflicts use declared file sets only.** Conflicting unordered tasks
-  are serialized in declaration order; actual writes are not checked until worktrees and
-  leases (Milestone 5, ADR-019).
+- **[Intentional] Write conflicts are still planned from declared file sets.** Since M5 actual
+  writes are checked from the real diff (out-of-scope edits fail the task) and overlapping
+  diffs are reported, but scheduling itself uses only declared sets.
 - **[Intentional] JSON Schema omits cross-field rules** (no self-dependency, unique items,
   path segment rules). Only the TypeScript validators enforce them.
 - **[Intentional] Timing-based concurrency tests** use 150 ms mock delays and bounds of
@@ -83,11 +83,12 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   (after M2-07).
 - **[Intentional] Policy thresholds and the prior weight are untuned defaults.** Calibrate them
   from recorded history and benchmark runs (spec §17 Test 5, Milestone 6).
-- **[Intentional] Success history is in memory.** Nothing aggregates attempts from `soot.sqlite`
-  into `SuccessHistory` yet. Milestone 4 persists per-attempt history, but only mock agents
-  produce it; aggregate it once real attempts exist (after M2-07).
-- **[Intentional] The routing log is in memory** (text and JSON Lines export). Persisting it with
-  the run in `soot.sqlite` is part of the audit log (Milestone 5).
+- **[Intentional] Outcome history is persisted but wired by the caller.** Since M5,
+  soot-verified outcomes are stored in `soot.sqlite` (`model_outcomes`) and change routing via
+  `historyFromAttempts`; the glue from the store to the router lives in the caller (the M5 test
+  today, the CLI in M6). Only mock agents have produced outcomes so far.
+- **[Intentional] The routing log is in memory** (text and JSON Lines export). It is not yet
+  written into the M5 audit log.
 - **[Intentional] Latency is not part of routing** (spec §5 step 6). Availability is, through
   `ProviderHealth`.
 - **[Intentional] Routing is re-done per attempt** (Milestone 4), but never inside an attempt.
@@ -115,6 +116,23 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Intentional] Backoff timing tests use real timers** with short delays (tens of ms) and
   lower-bound assertions.
 
+## Codebase integration (Milestone 5)
+
+- **[Intentional] No OS sandbox.** Worktrees isolate git state, not processes. A runner that
+  writes outside its worktree is not visible in the diff. Real runners must be confined by the
+  host harness's permissions or a sandbox (M6+). Check commands also run unsandboxed.
+- **[Intentional] The command allowlist is per executable.** Allowing `node` allows any script
+  and arguments from configuration; only configuration (never agents) supplies commands.
+- **[Intentional] Injection detection is heuristic** (regex rules). It flags and audits; it does
+  not block. Safety comes from permissions never being derived from untrusted text.
+- **[Intentional] The audit log is a JSON Lines file per run**, not part of `soot.sqlite`, and is
+  not rotated or signed.
+- **[Intentional] Integration is all-or-skip per task.** A conflicting task is kept on its
+  branch; soot does not attempt automatic conflict resolution or rebase-and-retry.
+- **[Intentional] The fixture-repo tests use real git, `node --test` and `tsc`** with real
+  timers; they take ~25 s and need git ≥ 2.38 (`merge-tree --write-tree`).
+- **[Intentional] Provider health and run spend remain in memory** (unchanged from M4).
+
 ## Documentation / community
 
 - **[Intentional] No dedicated security or conduct contact address yet.** `SECURITY.md` and
@@ -127,7 +145,8 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 ## Security
 
 - Provider keys are handled only by `@soot/provider-adapters` (ADR-022). There is no real agent
-  execution yet. The state directory is created
+  execution yet; soot-run checks get a scrubbed environment without keys (ADR-025). Audit logs
+  are redacted and written with mode `0600`. The state directory is created
   with mode `0700`; `soot.sqlite` stores the original prompt and structured results in plain
   text (no encryption at rest). Security requirements from
   spec §13 are tracked as tasks in `TASKS.md`.
