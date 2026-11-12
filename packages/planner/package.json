@@ -1,0 +1,27 @@
+{
+  "name": "@intelligent-agent-router/planner",
+  "version": "0.0.0",
+  "private": true,
+  "description": "[Stub \u2014 Milestone 1] Prompt analyzer and task decomposer.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run --config ../../vitest.config.ts --project @intelligent-agent-router/planner"
+  }
+}

@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+pnpm-lock.yaml
+*.tsbuildinfo
+LICENSE
+# Joseph's original specs are kept verbatim.
+docs/specs/

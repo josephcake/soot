@@ -1,0 +1,47 @@
+import { readdirSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { defineConfig } from 'vitest/config';
+
+const repoRoot = fileURLToPath(new URL('.', import.meta.url));
+
+// One Vitest project per workspace package, plus repo-level tests in tests/.
+const workspaceProjects = ['apps', 'packages'].flatMap((group) =>
+  readdirSync(new URL(`./${group}/`, import.meta.url), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .filter((entry) =>
+      existsSync(new URL(`./${group}/${entry.name}/package.json`, import.meta.url)),
+    )
+    .map((entry) => ({
+      extends: true as const,
+      test: {
+        name: `@intelligent-agent-router/${entry.name}`,
+        root: `${repoRoot}${group}/${entry.name}`,
+        include: ['src/**/*.test.ts'],
+      },
+    })),
+);
+
+export default defineConfig({
+  resolve: {
+    // Resolve workspace packages to source so tests never depend on a stale dist/.
+    alias: [
+      {
+        find: /^@intelligent-agent-router\/(cli)$/,
+        replacement: `${repoRoot}apps/$1/src/index.ts`,
+      },
+      {
+        find: /^@intelligent-agent-router\/(.+)$/,
+        replacement: `${repoRoot}packages/$1/src/index.ts`,
+      },
+    ],
+  },
+  test: {
+    projects: [
+      ...workspaceProjects,
+      {
+        extends: true,
+        test: { name: 'repo', root: repoRoot, include: ['tests/**/*.test.ts'] },
+      },
+    ],
+  },
+});

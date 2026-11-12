@@ -1,0 +1,44 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/core"
+    },
+    {
+      "path": "./packages/planner"
+    },
+    {
+      "path": "./packages/task-graph"
+    },
+    {
+      "path": "./packages/model-registry"
+    },
+    {
+      "path": "./packages/model-router"
+    },
+    {
+      "path": "./packages/agent-runtime"
+    },
+    {
+      "path": "./packages/context-manager"
+    },
+    {
+      "path": "./packages/escalation"
+    },
+    {
+      "path": "./packages/provider-adapters"
+    },
+    {
+      "path": "./packages/harness-adapters"
+    },
+    {
+      "path": "./packages/integrations"
+    },
+    {
+      "path": "./packages/observability"
+    },
+    {
+      "path": "./apps/cli"
+    }
+  ]
+}

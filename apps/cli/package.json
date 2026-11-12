@@ -1,0 +1,30 @@
+{
+  "name": "@intelligent-agent-router/cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "[Stub \u2014 Milestone 6] Standalone `orchestrator` CLI (no commands implemented yet).",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run --config ../../vitest.config.ts --project @intelligent-agent-router/cli"
+  },
+  "dependencies": {
+    "@intelligent-agent-router/core": "workspace:*"
+  }
+}
