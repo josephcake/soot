@@ -2,19 +2,21 @@
   "name": "@soot/task-graph",
   "version": "0.0.0",
   "private": true,
-  "description": "[Stub \u2014 Milestone 1] Task schema, dependency graph, and scheduler.",
+  "description": "Task and agent-result contracts (validators + JSON Schema) and the dependency graph.",
   "license": "MIT",
   "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./schema/*": "./schema/*"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "schema"
   ],
   "engines": {
     "node": ">=24.11.0"
@@ -22,6 +24,10 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
-    "test": "vitest run --config ../../vitest.config.ts --project @soot/task-graph"
+    "test": "vitest run --config ../../vitest.config.ts --project @soot/task-graph",
+    "schema": "tsc -b && node scripts/write-schemas.mjs"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
   }
 }

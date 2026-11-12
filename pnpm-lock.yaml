@@ -42,9 +42,20 @@ importers:
         specifier: workspace:*
         version: link:../../packages/core
 
-  packages/agent-runtime: {}
+  packages/agent-runtime:
+    dependencies:
+      '@soot/task-graph':
+        specifier: workspace:*
+        version: link:../task-graph
 
-  packages/context-manager: {}
+  packages/context-manager:
+    dependencies:
+      '@soot/agent-runtime':
+        specifier: workspace:*
+        version: link:../agent-runtime
+      '@soot/task-graph':
+        specifier: workspace:*
+        version: link:../task-graph
 
   packages/core: {}
 
@@ -58,13 +69,28 @@ importers:
 
   packages/model-router: {}
 
-  packages/observability: {}
+  packages/observability:
+    dependencies:
+      '@soot/task-graph':
+        specifier: workspace:*
+        version: link:../task-graph
 
-  packages/planner: {}
+  packages/planner:
+    dependencies:
+      '@soot/task-graph':
+        specifier: workspace:*
+        version: link:../task-graph
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
 
   packages/provider-adapters: {}
 
-  packages/task-graph: {}
+  packages/task-graph:
+    dependencies:
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
 
 packages:
 
@@ -891,6 +917,9 @@ packages:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
 
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
+
 snapshots:
 
   '@cacheable/memory@2.2.0':
@@ -1593,3 +1622,5 @@ snapshots:
   word-wrap@1.2.5: {}
 
   yocto-queue@0.1.0: {}
+
+  zod@4.6.7: {}

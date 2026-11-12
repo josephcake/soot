@@ -1,8 +1,29 @@
 # Architecture and Repository Layout
 
-> **Current state (Milestone 0):** only the repository foundation exists. The component
-> design below is the _plan_ from [`specs/build-spec.md`](specs/build-spec.md) §14; each
-> package is a stub until its milestone is verified. See [`../ROADMAP.md`](../ROADMAP.md).
+> **Current state (Milestone 1):** task-graph, planner (fixture decomposer only),
+> agent-runtime (scheduler + mock runner), context-manager (SQLite state), and observability
+> (cost records) have their Milestone 1 scope. The rest of the design below is the _plan_ from
+> [`specs/build-spec.md`](specs/build-spec.md) §14 and ADR-019; other packages are stubs.
+> See [`../ROADMAP.md`](../ROADMAP.md).
+
+## Milestone 1 data flow (implemented)
+
+```text
+prompt + context ─► planner.createPromptIntake ─► planner.FixtureDecomposer
+                                                        │ tasks (TaskSchema)
+                                                        ▼
+                                         task-graph.buildTaskGraph (DAG, layers, conflicts)
+                                                        │
+                                                        ▼
+       context-manager.ExecutionStore ◄─journal── agent-runtime.Scheduler ──► AgentRunner
+       (soot.sqlite in SOOT_DATA_DIR)                   │                     (MockAgentRunner)
+                                                        ▼
+                                 RunReport + AgentResult (validated) ─► observability cost records
+```
+
+Package dependencies: `planner`, `agent-runtime`, and `observability` depend on `task-graph`;
+`context-manager` depends on `task-graph` and (types only) `agent-runtime`. `task-graph` depends
+only on `zod`. `core` has no workspace dependencies.
 
 ## Design summary (planned)
 
@@ -12,7 +33,7 @@ particular IDE, harness, or provider.
 ```text
  host harness / IDE / CLI ──► harness-adapters ──► core orchestrator
                                                     │
-     planner ─► task-graph ─► model-router ◄─ model-registry ◄─ provider-adapters (LiteLLM, local)
+     planner ─► task-graph ─► model-router ◄─ model-registry ◄─ provider-adapters (AI SDK, local)
                     │              │
                     ▼              ▼
              agent-runtime ◄── escalation        context-manager (per-task context, SQLite state)
@@ -51,24 +72,27 @@ and file-conflict management.
 │   └── cli/                  # stub — future `orchestrator` CLI (M6); depends on core
 ├── packages/
 │   ├── core/                 # foundation: package metadata + SOOT_* env parsing (real, tested)
-│   ├── planner/              # stub — prompt analysis, task decomposition (M1)
-│   ├── task-graph/           # stub — task schema, dependency graph, scheduler (M1)
+│   ├── planner/              # prompt intake, fixture decomposer (M1, partial)
+│   ├── task-graph/           # task/result contracts + JSON Schema, dependency graph (M1, partial)
 │   ├── model-registry/       # stub — model discovery, capability/pricing registry (M2)
 │   ├── model-router/         # stub — per-task routing, cost/reliability policies (M3)
-│   ├── agent-runtime/        # stub — parallel/sequential agent execution (M1)
-│   ├── context-manager/      # stub — per-task context, persisted state (M1)
+│   ├── agent-runtime/        # scheduler, mock agent runner (M1, partial)
+│   ├── context-manager/      # SQLite execution state (M1, partial); context selection later
 │   ├── escalation/           # stub — escalation/downgrade rules (M4)
-│   ├── provider-adapters/    # stub — provider abstraction, LiteLLM, local endpoints (M2)
+│   ├── provider-adapters/    # stub — provider abstraction, AI SDK, local endpoints (M2)
 │   ├── harness-adapters/     # stub — Claude Code, Codex, MCP, etc. (M6)
 │   ├── integrations/         # stub — worktrees, conflict detection, validation (M5)
-│   └── observability/        # stub — task-level cost, audit log (M1, expanded later)
+│   └── observability/        # task-level cost records (M1, partial); audit log later
 ├── docs/
 │   ├── architecture.md       # this file
 │   ├── configuration.md      # environment variables
 │   ├── development.md        # package conventions, scripts
 │   └── specs/                # original build + project-management specs (verbatim)
 └── tests/
-    └── repo-structure.test.ts  # guards: build graph, docs, env secrets, CI parity
+    ├── repo-structure.test.ts     # guards: build graph, docs, env secrets, CI parity
+    ├── m1-end-to-end.test.ts      # Milestone 1 exit criteria, end to end (mock agents)
+    ├── resume-after-kill.test.ts  # SIGKILL a run, resume from SQLite (builds packages first)
+    └── fixtures/crash-child.mjs   # child process for the kill test
 ```
 
 ### Workspace packages
@@ -77,17 +101,17 @@ and file-conflict management.
 | ----------------------------- | ----------------- | -------------------- | ------------------------------------------------ |
 | `apps/cli/`                   | stub              | M6                   | Future `orchestrator` CLI; depends on core       |
 | `packages/core/`              | foundation (real) | M0                   | Package metadata, `parseEnv` for `SOOT_*` vars   |
-| `packages/planner/`           | stub              | M1                   | Prompt analyzer, task decomposer                 |
-| `packages/task-graph/`        | stub              | M1                   | Task schema, dependency graph, scheduler         |
+| `packages/planner/`           | partial (M1)      | M1                   | Prompt intake; fixture decomposer (no model yet) |
+| `packages/task-graph/`        | partial (M1)      | M1                   | Task/result contracts, JSON Schema, DAG          |
 | `packages/model-registry/`    | stub              | M2                   | Model discovery, capability/pricing registry     |
 | `packages/model-router/`      | stub              | M3                   | Per-task routing, cost/reliability policies      |
-| `packages/agent-runtime/`     | stub              | M1                   | Agent execution engine                           |
-| `packages/context-manager/`   | stub              | M1                   | Per-task context, persisted workflow state       |
+| `packages/agent-runtime/`     | partial (M1)      | M1                   | Scheduler; MockAgentRunner test double           |
+| `packages/context-manager/`   | partial (M1)      | M1                   | SQLite execution state; context selection later  |
 | `packages/escalation/`        | stub              | M4                   | Escalation and downgrade rules                   |
-| `packages/provider-adapters/` | stub              | M2                   | Provider abstraction (LiteLLM-compatible, local) |
+| `packages/provider-adapters/` | stub              | M2                   | Provider abstraction (AI SDK, local)             |
 | `packages/harness-adapters/`  | stub              | M6                   | Harness adapters (Claude Code, Codex, MCP, …)    |
 | `packages/integrations/`      | stub              | M5                   | Worktrees, conflict detection, validation        |
-| `packages/observability/`     | stub              | M1                   | Task-level cost, audit log, reports              |
+| `packages/observability/`     | partial (M1)      | M1                   | Task-level cost records; audit log later         |
 
 ### Planned directories not created yet
 

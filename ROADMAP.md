@@ -6,7 +6,7 @@ every exit criterion is verified from real runs. Dates are recorded only when ve
 | Milestone | Title                             | Status                                              | Completion date |
 | --------- | --------------------------------- | --------------------------------------------------- | --------------- |
 | M0        | Repository Foundation             | Completed (verified locally; hosted CI not yet run) | 2026-11-12      |
-| M1        | Core Orchestration                | Not Started                                         | —               |
+| M1        | Core Orchestration                | Completed (verified locally with mock agents)       | 2026-11-12      |
 | M2        | Multi-Provider Model Connectivity | Not Started                                         | —               |
 | M3        | Intelligent Model Routing         | Not Started                                         | —               |
 | M4        | Adaptive Execution                | Not Started                                         | —               |
@@ -35,13 +35,14 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Deliverables:** prompt intake; task decomposition; task schema (JSON Schema); dependency graph; task scheduler; structured agent results; basic execution state (SQLite).
 - **Dependencies:** M0.
 - **Acceptance / exit criteria:** a single prompt is decomposed into multiple tasks; dependencies are represented correctly; independent tasks are scheduled concurrently (verified by timing/ordering, not assumed); results can be collected and inspected.
-- **Status:** Not Started
-- **Completion date:** —
+- **Status:** Completed (verified locally with mock agents; decomposition is fixture-backed)
+- **Completion date:** 2026-11-12
+- **Evidence:** `tests/m1-end-to-end.test.ts` (EC1–EC4), `tests/resume-after-kill.test.ts`, package tests; see `PROJECT_STATUS.md` → Latest Validation. Model-backed decomposition and real agents are later milestones.
 
 ## M2 — Multi-Provider Model Connectivity
 
 - **Objectives:** Invoke multiple models across providers through one abstraction, BYOK.
-- **Deliverables:** provider abstraction (LiteLLM or equivalent); Anthropic, OpenAI, Google, DeepSeek, OpenRouter integrations; local endpoints (Ollama/LM Studio); model registry; pricing and capability metadata.
+- **Deliverables:** provider abstraction (Vercel AI SDK in-process, ADR-019); Anthropic and OpenAI first (ADR-017), then Google, OpenRouter (DeepSeek listed in the registry but outside the default path, ADR-016); local endpoints (Ollama/LM Studio); model registry; pricing and capability metadata.
 - **Dependencies:** M0; M1 task schema.
 - **Acceptance / exit criteria:** at least two independent providers work with real API credentials; multiple models can be invoked; provider failures are handled; models can be selected dynamically.
 - **Note:** Real-credential verification is blocked until a user supplies their own keys (ADR-011). Mocked-provider tests are required regardless.

@@ -1,15 +1,26 @@
 /**
  * @soot/context-manager
  *
- * STUB: Per-task context selection and persisted workflow state.
- * Nothing is implemented here yet; planned for Milestone 1.
- * See ROADMAP.md and TASKS.md. Do not rely on this package.
+ * Milestone 1: persisted execution state (SQLite via `node:sqlite`, under `SOOT_DATA_DIR`)
+ * so an interrupted run resumes without re-running completed tasks. Per-task context
+ * selection is a later milestone.
  */
 
 export const PACKAGE_NAME = '@soot/context-manager';
 
-/** Implementation status of this package. Becomes 'implemented' only when real code lands. */
-export const IMPLEMENTATION_STATUS = 'stub' as const;
+/** `partial`: the Milestone 1 scope is implemented; later milestones extend it. */
+export const IMPLEMENTATION_STATUS = 'partial' as const;
 
-/** Milestone in which this package is scheduled to receive its first real implementation. */
+/** Milestone that delivered the first real implementation. */
 export const PLANNED_MILESTONE = 1;
+
+export {
+  ExecutionStore,
+  STATE_DB_FILE,
+  openExecutionStore,
+  type CreateRunInput,
+  type OpenExecutionStoreOptions,
+  type PersistedAttempt,
+  type PersistedRun,
+  type PersistedTaskState,
+} from './execution-store.js';

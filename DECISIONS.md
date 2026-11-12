@@ -69,7 +69,7 @@ the old one.
 ## ADR-007: Intended MVP stack (intent, not built)
 
 - **Date:** 2026-11-12
-- **Status:** Accepted as direction; **nothing below is implemented yet**
+- **Status:** Superseded in part by ADR-019 (provider layer: Vercel AI SDK in-process instead of LiteLLM; SQLite driver: `node:sqlite`). Remaining direction stands; **nothing below is implemented yet**
 - **Context:** Spec §14 and §20 suggest: TypeScript orchestration engine + LiteLLM + SQLite + git worktrees + universal agent skill, before IDE extensions.
 - **Decision:** Plan the MVP around that stack: TypeScript engine (packages/*); LiteLLM or an equivalent OpenAI-compatible gateway for provider connectivity rather than hand-written clients for every provider; SQLite for local state; git worktrees for isolation; a universal agent skill (plus CLI/MCP) as the first integration surface. IDE extensions come after (Milestone 7). Exact library choices (e.g. SQLite driver, LiteLLM proxy vs. SDK) will be confirmed against Lumen's pre-implementation research and recorded as new ADRs.
 - **Alternatives:** LangGraph or similar workflow engine (only if it adds value; avoid framework stacking), Postgres (contradicts local-first), building IDE extensions first (spec says not to).
@@ -141,3 +141,97 @@ the old one.
 - **Alternatives:** Keep `intelligent-agent-router` (rejected by Joseph); keep `IAR_*` env vars for compatibility (rejected: nothing was released, so there are no users to break).
 - **Consequences:** All package names, imports, docs, tests, and tracking files say `soot`. No published artifacts existed, so the rename had no external impact. License (MIT), pnpm TypeScript monorepo, box-only repo, mocks-until-BYOK, and the Lego-block UI rule are unchanged.
 - **Reversible:** Yes, cheaply until first publish.
+
+## ADR-014: License stays MIT (reconfirmed)
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Mochi, binding call on Lumen's research questions)
+- **Context:** Lumen's pre-implementation research asked whether the license should change.
+- **Decision:** No change. MIT as in ADR-005.
+- **Alternatives:** Apache-2.0 (see ADR-005).
+- **Consequences:** None; the tree already matches.
+- **Reversible:** As ADR-005.
+
+## ADR-015: soot may launch the user's own installed, signed-in CLIs
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Mochi). Not implemented (harness execution is Milestone 6).
+- **Context:** Harness CLIs (e.g. Claude Code, Codex) can run tasks on the user's machine using the user's own subscription or keys.
+- **Decision:** soot may launch CLIs the user has already installed and already signed in to, on the user's own machine, using only that local install and existing login. soot never offers or performs a login flow, never bundles proprietary agent SDKs, never bypasses the host's approval prompts, and never brands itself as the vendor's product.
+- **Alternatives:** Bundling vendor SDKs (rejected: licensing, lock-in); soot-managed logins (rejected: credential handling, BYOK/local-first).
+- **Consequences:** Harness adapters detect an existing install and session and fail clearly if absent. Proprietary SDKs, if ever used, are optional peer dependencies only (ADR-019).
+- **Reversible:** Only by a new decision from Mochi/Joseph.
+
+## ADR-016: DeepSeek excluded from the default MVP path pending data-residency review
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Mochi)
+- **Context:** Sending user code to DeepSeek's hosted API raises data-residency questions Joseph has not reviewed.
+- **Decision:** DeepSeek is not part of the default MVP routing path and is not used in any demo or test that would send code to its API, until Joseph reviews data residency. The model registry may still list DeepSeek models as metadata.
+- **Alternatives:** Include by default (rejected until review); drop entirely (unnecessary: listing is harmless).
+- **Consequences:** Default routing policies (M3) must exclude DeepSeek-hosted endpoints; any opt-in must be explicit.
+- **Reversible:** Yes, after Joseph's review.
+
+## ADR-017: First providers are Anthropic and OpenAI (Milestone 2), mocks until BYOK
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Mochi). Not implemented (Milestone 2).
+- **Context:** Milestone 2 needs two independent providers behind the provider abstraction.
+- **Decision:** Implement Anthropic and OpenAI first, behind the provider abstraction, tested with mocks. No real paid calls and no spending until Joseph provides BYOK keys (ADR-011).
+- **Alternatives:** Google, OpenRouter, or local runtimes first (later).
+- **Consequences:** Milestone 2's real-credential exit criterion stays blocked on BYOK keys.
+- **Reversible:** Yes.
+
+## ADR-018: Never auto-approve; pause for approval or refuse the task
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Mochi). Partially reflected in Milestone 1: the scheduler has no approval bypass; approval handling arrives with real runners.
+- **Context:** Headless agents and harness CLIs can ask for approval (destructive commands, file writes outside scope). Spec §13 forbids bypassing host permissions.
+- **Decision:** soot never auto-approves. When a user can answer, the task pauses until they approve or deny. When the run is unattended and no approval can be collected, that task is refused (it does not succeed); independent tasks may continue.
+- **Alternatives:** Auto-approve within a sandbox (rejected); fail the whole run (rejected: unrelated work is lost).
+- **Consequences:** Runners must surface approval requests as a distinct outcome. In Milestone 1 terms, a refused task ends as not-succeeded and its dependents are skipped while independent tasks continue, which the scheduler already does.
+- **Reversible:** Only by a new decision from Mochi/Joseph.
+
+## ADR-019: Architecture direction after Lumen's research
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Mochi). Supersedes the LiteLLM and SQLite-driver parts of ADR-007. Mostly not implemented yet.
+- **Context:** Lumen's research compared provider layers, state engines, harness protocols, and isolation strategies.
+- **Decision:**
+  - **Provider layer:** Vercel AI SDK in-process. LiteLLM is not a required dependency; an OpenAI-compatible endpoint may be supported later as an option.
+  - **Model registry:** thin (metadata + capabilities + pricing), no heavy framework.
+  - **State:** a SQLite-backed task state machine, not a workflow engine. Driver: Node's built-in `node:sqlite` (no native addon, no extra dependency). Used from Milestone 1 (`@soot/context-manager`).
+  - **Harness protocol:** ACP (Agent Client Protocol).
+  - **Isolation and integration:** write-scope leases; one git worktree per write task from a pinned base commit; soot runs the tests itself for evidence; merges go through a single queue.
+  - **Not adopted for M1–M5:** the experimental AI SDK harness packages.
+  - **Proprietary SDKs:** optional peer dependencies only, never bundled.
+  - **Repository layout:** keep the current monorepo packages; do not collapse packages just to reduce their number.
+- **Alternatives:** LiteLLM proxy/SDK (extra runtime, Python dependency); LangGraph or similar workflow engine (framework stacking); `better-sqlite3` (native addon); MCP as the only harness protocol (still usable for tools).
+- **Consequences:** Milestone 1 declared file sets (`files.read`/`files.write`) and the scheduler's conflict serialization are the precursor of write-scope leases (M5). The provider abstraction in M2 wraps the AI SDK; tests use mocks.
+- **Reversible:** Component by component, via new ADRs.
+
+## ADR-020: Minimal soot-owned API executor for trivial tasks only
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Mochi). Not implemented (after Milestone 2).
+- **Context:** Some tasks (e.g. change a CSS value) are too small to justify launching a full harness.
+- **Decision:** soot may run a minimal executor for trivial, tightly scoped tasks: the model returns structured edits, and soot applies them in the task's worktree under the same leases, worktrees, and evidence tests as any other task. No general shell access and a tight file allowlist (the task's declared write set). This is not a competing coding assistant.
+- **Alternatives:** Always delegate to a harness (heavier for trivial edits); a general-purpose agent loop (rejected: competes with harnesses, larger attack surface).
+- **Consequences:** The executor's output must be an `AgentResult` like any runner's; edits outside the declared write set are rejected.
+- **Reversible:** Yes.
+
+## ADR-021: Milestone 1 implementation choices
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Sweed, under ADR-012: smaller extensible option)
+- **Context:** Milestone 1 needed a task contract with JSON Schema, a graph engine, a scheduler, persisted state, and cost records, with mocks only.
+- **Decision:**
+  - **Contracts:** `zod` 4 is the single source for runtime validation and JSON Schema (`z.toJSONSchema`, draft 2020-12). Generated schemas are committed in `packages/task-graph/schema/` and a test fails if they drift. Objects are strict; agent-result text is length-capped so transcripts cannot enter shared state. `zod` is the only new runtime dependency (no transitive dependencies).
+  - **File conflicts:** tasks the planner left unordered whose declared files overlap (write/write or read/write; a trailing `/` marks a directory) are serialized in declaration order with recorded implicit edges, never run concurrently. This is the Milestone 1 precursor of write-scope leases (ADR-019).
+  - **Scheduler:** in-process, bounded concurrency, declaration-order start. `succeeded` means the agent reported success with a valid result; evidence-based verification is Milestone 5. A non-succeeded task skips its transitive dependents; independent tasks continue (matches ADR-018's refusal semantics). No retries or escalation in M1 (Milestone 4). Cancellation does not wait for runners that ignore the abort.
+  - **State:** `node:sqlite` (built into Node ≥ 22.13; no native addon), one file `soot.sqlite` in `SOOT_DATA_DIR`, WAL + `synchronous = FULL`, synchronous journal writes from the scheduler. Attempts left `running` by a dead process are closed as `interrupted` on restart and re-run with the next attempt number.
+  - **Cost records:** estimates and actuals use distinct branded types; unknown costs stay `null`.
+  - **Labels:** packages with real Milestone 1 code export `IMPLEMENTATION_STATUS = 'partial'`; the mock runner's `kind` is `mock-test-double` and its results are prefixed `[mock]`.
+- **Alternatives:** hand-written validators plus a hand-written JSON Schema (two sources that drift); Ajv (validation only, schema still hand-written); `better-sqlite3` (native build); failing graph construction on file conflicts instead of serializing (forces the planner to order everything).
+- **Consequences:** Packages build and test independently; the kill/restart test builds the packages and runs them in a child process.
+- **Reversible:** Yes, each part independently.

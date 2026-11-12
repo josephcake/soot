@@ -2,7 +2,7 @@
   "name": "@soot/observability",
   "version": "0.0.0",
   "private": true,
-  "description": "[Stub \u2014 Milestone 1] Task-level cost tracking, audit log, and execution reporting.",
+  "description": "Per-task usage/cost records with planner estimates and reported actuals kept strictly separate. No dashboard.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -23,5 +23,8 @@
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "test": "vitest run --config ../../vitest.config.ts --project @soot/observability"
+  },
+  "dependencies": {
+    "@soot/task-graph": "workspace:*"
   }
 }

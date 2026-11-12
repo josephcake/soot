@@ -2,12 +2,13 @@
 
 _Named after the soot sprites, the black dust bunnies from Studio Ghibli. Formerly `intelligent-agent-router`._
 
-> **Status: Milestone 0 — repository foundation only.**
-> There is **no working orchestration yet**: no prompt decomposition, no model routing, no
-> provider connectivity, no CLI commands, no agent skill, and no IDE extension. Every package
-> under `packages/` and `apps/` except a small piece of `core` is an explicitly labeled stub.
-> This README describes the goal and the current, real state. It will be updated as each
-> milestone is verified. See [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for the live status.
+> **Status: Milestone 1 — core orchestration, with mock agents only.**
+> The engine can take one prompt, decompose it **from recorded fixtures** (there is no
+> model-backed decomposition), build a dependency graph, run independent tasks concurrently
+> with **mock agents** (a test double; no model is called), persist state in SQLite, and
+> resume after a crash. There is **no model routing, no provider connectivity, no CLI
+> command, no agent skill, and no IDE extension** yet. See
+> [`PROJECT_STATUS.md`](PROJECT_STATUS.md) for the live status.
 
 ## What this project is for
 
@@ -50,12 +51,17 @@ These are recorded in [`DECISIONS.md`](DECISIONS.md).
 | ESLint + Prettier          | Lint and format check pass                                            |
 | Vitest                     | Unit + repository-structure tests run                                 |
 | `@soot/core`               | Exports package metadata and `parseEnv()` for `SOOT_*` vars           |
+| `@soot/task-graph`         | Task + agent-result contracts (JSON Schema), dependency graph (M1)    |
+| `@soot/planner`            | Immutable prompt intake; fixture-backed decomposer only (M1)          |
+| `@soot/agent-runtime`      | Concurrent scheduler + `MockAgentRunner` test double (M1)             |
+| `@soot/context-manager`    | SQLite execution state, resume after kill (M1)                        |
+| `@soot/observability`      | Per-task estimate vs actual cost records, no UI (M1)                  |
 | Everything else            | **Stub** (exports only its name and `IMPLEMENTATION_STATUS = 'stub'`) |
 
 ### Supported providers
 
-**None yet.** Provider connectivity (planned via LiteLLM or an equivalent, plus local
-endpoints such as Ollama) is Milestone 2.
+**None yet.** Provider connectivity is Milestone 2: Anthropic and OpenAI first, through the
+Vercel AI SDK in-process (ADR-017, ADR-019), tested with mocks until you bring your own keys.
 
 ### Supported harnesses
 
@@ -81,7 +87,9 @@ any code. Details: [`docs/configuration.md`](docs/configuration.md). Never commi
 
 ## Example execution and cost optimization
 
-Not available yet. There is nothing to run end to end, and no savings are claimed. The
+No user-facing command exists yet. The Milestone 1 flow (prompt → fixture decomposition →
+graph → concurrent mock execution → persisted results) runs in
+[`tests/m1-end-to-end.test.ts`](tests/m1-end-to-end.test.ts). No savings are claimed. The
 target behavior is described in [`docs/specs/build-spec.md`](docs/specs/build-spec.md);
 savings will only be reported from real benchmark data.
 

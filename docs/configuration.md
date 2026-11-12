@@ -3,17 +3,22 @@
 Configuration is read from environment variables. `.env.example` lists every variable; copy it
 to `.env` for local overrides. `.env` is git-ignored and must never be committed.
 
-> Milestone 0: nothing loads `.env` automatically yet. Variables are read only by
-> `parseEnv(process.env)` from `@soot/core`, which no runtime calls yet.
+> Nothing loads `.env` automatically yet. Variables are read only by
+> `parseEnv(process.env)` from `@soot/core`. No CLI exists yet (Milestone 6); callers pass
+> `parseEnv(process.env).dataDir` to `openExecutionStore` from `@soot/context-manager`.
 
 ## Orchestrator variables (read today by `parseEnv`)
 
-| Variable         | Default   | Values                                                        | Purpose                                                              |
-| ---------------- | --------- | ------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `SOOT_LOG_LEVEL` | `info`    | `silent`, `error`, `warn`, `info`, `debug` (case-insensitive) | Engine log verbosity. Invalid values throw `EnvConfigError`.         |
-| `SOOT_DATA_DIR`  | `~/.soot` | absolute or relative path (relative resolves against cwd)     | Local-first state directory: future SQLite DB, worktrees, audit log. |
+| Variable         | Default   | Values                                                        | Purpose                                                                             |
+| ---------------- | --------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `SOOT_LOG_LEVEL` | `info`    | `silent`, `error`, `warn`, `info`, `debug` (case-insensitive) | Engine log verbosity. Invalid values throw `EnvConfigError`.                        |
+| `SOOT_DATA_DIR`  | `~/.soot` | absolute or relative path (relative resolves against cwd)     | Local-first state: `soot.sqlite` (execution state, M1); later worktrees, audit log. |
 
 Empty values are treated as unset.
+
+The state directory is created with mode `0700` if missing. `soot.sqlite` holds runs (the
+exact original prompt, the task graph) and per-task attempts with their validated structured
+results. It never holds credentials or agent transcripts.
 
 ## Provider credentials (reserved, not read)
 

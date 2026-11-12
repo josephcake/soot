@@ -2,7 +2,7 @@
   "name": "@soot/agent-runtime",
   "version": "0.0.0",
   "private": true,
-  "description": "[Stub \u2014 Milestone 1] Agent execution engine (parallel/sequential execution, isolation).",
+  "description": "AgentRunner interface, graph Scheduler (bounded concurrency, dependencies, cancellation, resume), and MockAgentRunner test double.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -23,5 +23,8 @@
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "test": "vitest run --config ../../vitest.config.ts --project @soot/agent-runtime"
+  },
+  "dependencies": {
+    "@soot/task-graph": "workspace:*"
   }
 }

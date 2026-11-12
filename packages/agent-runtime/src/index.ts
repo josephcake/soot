@@ -1,15 +1,35 @@
 /**
  * @soot/agent-runtime
  *
- * STUB: Agent execution engine (parallel/sequential execution, isolation).
- * Nothing is implemented here yet; planned for Milestone 1.
- * See ROADMAP.md and TASKS.md. Do not rely on this package.
+ * Milestone 1: the `AgentRunner` interface, the graph `Scheduler` (bounded concurrency,
+ * dependency ordering, cancellation, result validation, resume support), and
+ * `MockAgentRunner`, a scripted TEST DOUBLE. No real model or harness runner exists yet.
  */
 
 export const PACKAGE_NAME = '@soot/agent-runtime';
 
-/** Implementation status of this package. Becomes 'implemented' only when real code lands. */
-export const IMPLEMENTATION_STATUS = 'stub' as const;
+/** `partial`: the Milestone 1 scope is implemented; later milestones extend it. */
+export const IMPLEMENTATION_STATUS = 'partial' as const;
 
-/** Milestone in which this package is scheduled to receive its first real implementation. */
+/** Milestone that delivered the first real implementation. */
 export const PLANNED_MILESTONE = 1;
+
+export { monotonicClock, type AgentRunner, type AgentTaskInput, type Clock } from './agent.js';
+export {
+  MockAgentAbortError,
+  MockAgentRunner,
+  type MockAgentRunnerOptions,
+  type MockCall,
+  type MockOutcome,
+  type MockScript,
+} from './mock-agent.js';
+export {
+  Scheduler,
+  runTaskGraph,
+  type ExecutionJournal,
+  type RunReport,
+  type SchedulerEvent,
+  type SchedulerOptions,
+  type TaskFinalState,
+  type TaskOutcome,
+} from './scheduler.js';

@@ -1,15 +1,31 @@
 /**
  * @soot/observability
  *
- * STUB: Task-level cost tracking, audit log, and execution reporting.
- * Nothing is implemented here yet; planned for Milestone 1.
- * See ROADMAP.md and TASKS.md. Do not rely on this package.
+ * Milestone 1: per-task usage/cost records that keep planner estimates and reported actuals
+ * strictly separate. No dashboard or UI (ADR-009); audit logs and reports come later.
  */
 
 export const PACKAGE_NAME = '@soot/observability';
 
-/** Implementation status of this package. Becomes 'implemented' only when real code lands. */
-export const IMPLEMENTATION_STATUS = 'stub' as const;
+/** `partial`: the Milestone 1 scope is implemented; later milestones extend it. */
+export const IMPLEMENTATION_STATUS = 'partial' as const;
 
-/** Milestone in which this package is scheduled to receive its first real implementation. */
+/** Milestone that delivered the first real implementation. */
 export const PLANNED_MILESTONE = 1;
+
+export {
+  actualUsd,
+  createCostRecord,
+  estimatedUsd,
+  recordAttempt,
+  summarizeCosts,
+  taskActualTotals,
+  type ActualTotals,
+  type ActualUsd,
+  type AttemptActual,
+  type CostEstimate,
+  type CostSummary,
+  type EstimateTotals,
+  type EstimatedUsd,
+  type TaskCostRecord,
+} from './cost.js';

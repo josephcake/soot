@@ -14,14 +14,38 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Intentional] TypeScript pinned to 6.0.x**, not 7.x, because typescript-eslint 8 supports
   `typescript <6.1`. Revisit when typescript-eslint supports TS 7.
 - **[Intentional] No git hooks.** Contributors run `pnpm run ci` manually.
-- **[Intentional] No coverage reporting or thresholds yet.** Add with Milestone 1 code.
+- **[Intentional] No coverage reporting or thresholds yet.** Still open after Milestone 1.
 - **[Intentional] No release/versioning tooling** (e.g. changesets). Packages are `private`, `0.0.0`.
 
 ## Code
 
-- **[Intentional] 12 of 13 workspace packages are stubs** exporting only `PACKAGE_NAME`,
-  `IMPLEMENTATION_STATUS = 'stub'`, and `PLANNED_MILESTONE`. Their package boundaries follow
-  spec §15 and may be merged or split once Milestone 1 design settles (record in DECISIONS.md).
+- **[Intentional] 7 of 13 workspace packages are still stubs** (`cli`, `model-registry`,
+  `model-router`, `escalation`, `provider-adapters`, `harness-adapters`, `integrations`).
+  Package boundaries are kept (ADR-019).
+- **[Intentional] Decomposition is fixture-only.** `FixtureDecomposer` matches recorded
+  prompts and refuses others; there is no prompt analysis. Model-backed decomposition comes
+  after Milestone 2. Fixture token estimates are placeholders, not measurements.
+- **[Intentional] Agents are mocks.** `MockAgentRunner` is the only runner. Scheduler
+  `succeeded` means agent-reported success with a valid result, not verified evidence; the
+  acceptance-criteria and evidence check is Milestone 5.
+- **[Intentional] No retries, timeouts, or escalation in the scheduler** (Milestone 4). A hung
+  runner blocks its task until cancelled.
+- **[Intentional] No orchestrator wiring module.** The intake → decompose → graph → schedule →
+  store flow is wired in `tests/m1-end-to-end.test.ts`; a reusable entry point arrives with
+  the CLI/skill (Milestone 6) or earlier if Milestone 5 needs it.
+- **[Intentional] Write conflicts use declared file sets only.** Conflicting unordered tasks
+  are serialized in declaration order; actual writes are not checked until worktrees and
+  leases (Milestone 5, ADR-019).
+- **[Intentional] JSON Schema omits cross-field rules** (no self-dependency, unique items,
+  path segment rules). Only the TypeScript validators enforce them.
+- **[Intentional] Timing-based concurrency tests** use 150 ms mock delays and bounds of
+  roughly 2× the delay. Very slow CI machines could make them flaky; widen bounds before
+  weakening the overlap assertions.
+- **[Intentional] The kill/restart test builds all packages** (`tsc -b`) in `beforeAll`
+  because the child process runs the built output.
+- **[Intentional] SQLite schema has no migrations yet** (version 1; other versions are
+  refused). Scheduler timestamps in `RunReport` are process-monotonic; persisted times are
+  wall-clock ISO strings.
 - **[Intentional] `parseEnv` is not called by any runtime yet** and nothing loads `.env`
   files; it exists to fix the config contract for local-first state (`SOOT_DATA_DIR`).
 - **[Intentional] Vitest projects are discovered by directory scan** in `vitest.config.ts`,
@@ -39,7 +63,9 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 
 ## Security
 
-- None in code yet (no credential handling, no agent execution). Security requirements from
+- No credential handling and no real agent execution yet. The state directory is created
+  with mode `0700`; `soot.sqlite` stores the original prompt and structured results in plain
+  text (no encryption at rest). Security requirements from
   spec §13 are tracked as tasks in `TASKS.md`.
 
 ## UI

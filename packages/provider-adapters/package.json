@@ -2,7 +2,7 @@
   "name": "@soot/provider-adapters",
   "version": "0.0.0",
   "private": true,
-  "description": "[Stub \u2014 Milestone 2] Provider abstraction (LiteLLM-compatible and local endpoints).",
+  "description": "[Stub \u2014 Milestone 2] Provider abstraction (Vercel AI SDK in-process and local endpoints; ADR-019).",
   "license": "MIT",
   "type": "module",
   "exports": {

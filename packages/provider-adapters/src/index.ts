@@ -1,7 +1,7 @@
 /**
  * @soot/provider-adapters
  *
- * STUB: Provider abstraction (LiteLLM-compatible and local endpoints).
+ * STUB: Provider abstraction (Vercel AI SDK in-process and local endpoints; ADR-019).
  * Nothing is implemented here yet; planned for Milestone 2.
  * See ROADMAP.md and TASKS.md. Do not rely on this package.
  */

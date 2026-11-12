@@ -2,7 +2,7 @@
   "name": "@soot/planner",
   "version": "0.0.0",
   "private": true,
-  "description": "[Stub \u2014 Milestone 1] Prompt analyzer and task decomposer.",
+  "description": "Prompt intake and the Decomposer interface with a deterministic fixture-backed implementation (no model-backed decomposition yet).",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -23,5 +23,9 @@
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "test": "vitest run --config ../../vitest.config.ts --project @soot/planner"
+  },
+  "dependencies": {
+    "@soot/task-graph": "workspace:*",
+    "zod": "^4.6.7"
   }
 }

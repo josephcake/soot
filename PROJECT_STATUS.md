@@ -4,28 +4,30 @@ Last Updated: 2026-11-12
 
 ## Current Phase
 
-Milestone 0 — Repository Foundation
+Milestone 1 — Core Orchestration (completed); Milestone 2 not started
 
 ## Overall Progress
 
-1 / 8 milestones completed (M0 verified locally; M1–M7 not started)
+2 / 8 milestones completed (M0 and M1 verified locally; M2–M7 not started)
 
 ## Current Status
 
-Completed (Milestone 0). Project renamed to `soot` (ADR-013); repo at `/workspace/soot`. Milestone 1 approved by Mochi; feature work not started yet.
+Completed (Milestone 1), verified with mock agents and fixture-backed decomposition. Project
+name `soot` (ADR-013); repo at `/workspace/soot`, local only. Milestone 2 has not been started
+and needs a go-ahead from Mochi.
 
 ## Completed
 
-- [x] Local git repository (no remote), specs committed verbatim (M0-01)
-- [x] pnpm 10 workspace: `apps/cli` + 12 `packages/*` (M0-02)
-- [x] Strict TypeScript 6 with project references; no-emit typecheck (M0-03)
-- [x] ESLint 10 (type-checked, zero warnings) + Prettier 3 (M0-04)
-- [x] Vitest 5: per-package and repository guard tests (M0-05)
-- [x] Environment configuration: `.env.example`, `parseEnv`, `docs/configuration.md` (M0-06)
-- [x] Basic docs incl. repository layout in `docs/architecture.md` (M0-07)
-- [x] CI: `.github/workflows/ci.yml` + `scripts/ci.sh`, passing locally (M0-08)
-- [x] MIT license (M0-09)
-- [x] Tracking files (M0-10)
+- [x] Milestone 0 — Repository Foundation (M0-01…M0-10)
+- [x] M1-01 Task schema + JSON Schema contract (`@soot/task-graph`)
+- [x] M1-02 Prompt intake, byte-for-byte prompt preservation (`@soot/planner`)
+- [x] M1-03 Decomposer interface + deterministic fixture decomposer (spec §3, §17 Tests 1, 2, 4)
+- [x] M1-04 Dependency graph: DAG, cycles, layers, file-conflict serialization, revision
+- [x] M1-05 Scheduler: bounded concurrency, dependency ordering, cancellation (`@soot/agent-runtime`)
+- [x] M1-06 Structured agent result schema, validated by the scheduler
+- [x] M1-07 SQLite execution state under `SOOT_DATA_DIR`; resume after SIGKILL (`@soot/context-manager`)
+- [x] M1-08 Mock agent runner (labeled test double)
+- [x] M1-09 Per-task cost records, estimates vs actuals separated (`@soot/observability`)
 
 ## In Progress
 
@@ -33,8 +35,7 @@ Completed (Milestone 0). Project renamed to `soot` (ADR-013); repo at `/workspac
 
 ## Not Started
 
-- [ ] Milestone 1 — Core Orchestration (MVP-01, MVP-02, MVP-05)
-- [ ] Milestone 2 — Multi-Provider Model Connectivity (MVP-03)
+- [ ] Milestone 2 — Multi-Provider Model Connectivity (MVP-03): Anthropic + OpenAI via AI SDK, mocks until BYOK (ADR-017, ADR-019)
 - [ ] Milestone 3 — Intelligent Model Routing (MVP-04)
 - [ ] Milestone 4 — Adaptive Execution (MVP-06)
 - [ ] Milestone 5 — Codebase Integration and Safety (MVP-07, MVP-08)
@@ -43,32 +44,38 @@ Completed (Milestone 0). Project renamed to `soot` (ADR-013); repo at `/workspac
 
 ## Blockers
 
-- Hosted GitHub Actions CI cannot run until the repository is published (ADR-006; Mochi decides). Not a Milestone 0 blocker: the same checks are verified locally.
-- Future: Milestone 2's real-provider exit criterion needs user-supplied (BYOK) keys (ADR-011).
+- Hosted GitHub Actions CI cannot run until the repository is published (ADR-006; Mochi decides). Not a milestone blocker: the same checks are verified locally.
+- Milestone 2's real-provider exit criterion needs user-supplied (BYOK) keys (ADR-011, ADR-017).
 
 ## Known Issues
 
-- 12 of 13 workspace packages are stubs (by design for Milestone 0).
-- No dedicated security/conduct contact address yet.
+- Decomposition is fixture-only: prompts without a recorded fixture are refused (`NoFixtureError`).
+- Agents are mocks; "succeeded" means agent-reported success, not verified evidence (Milestone 5).
+- No retries or escalation yet (Milestone 4).
 - See `TECHNICAL_DEBT.md`.
 
 ## Next Actions
 
-1. Mochi: review Milestone 0 and decide on publishing (enables M0-11 hosted CI run).
-2. Fold Lumen's pre-implementation research into ADRs (provider layer, SQLite driver, harness surfaces).
-3. Start Milestone 1 when approved: M1-01 task schema, then M1-04 dependency graph.
+1. Mochi: review Milestone 1 and decide whether to start Milestone 2.
+2. Fold Lumen's research (`/workspace/research/lumen/2026-11-12-soot.md`) into M2 task details when it lands.
+3. Milestone 2 start (when approved): M2-01 provider abstraction interface + mocked provider.
 
 ## MVP Readiness
 
-Not Ready
+Not Ready (MVP-01, MVP-02, MVP-05 core in place with fixtures/mocks; MVP-03, -04, -06, -07, -08 open)
 
 ## Latest Validation
 
-Recorded 2026-11-12 ~00:45 PST from real runs of `bash scripts/ci.sh` (install --frozen-lockfile → typecheck → lint → format:check → test → clean build):
+Recorded 2026-11-12 ~01:08 PST from real runs of `bash scripts/ci.sh` (install --frozen-lockfile → typecheck → lint → format:check → test → clean build) in `/workspace/soot` and on fresh clones under Node 24.22.1 and Node 26.13.1:
 
-- Build: pass — `tsc -b` built all 13 packages (13 `dist/index.js` present). Node 24.22.1 and Node 26.13.1, pnpm 10.34.6, on fresh clones and in the working copy.
-- Tests: pass — 15 test files, 72 tests, 0 failures (Vitest 5.1.0). Mutation checks confirmed tests fail when a package name drifts or `.env.example` gains a key value.
-- Typecheck / lint / format: pass — `tsc -p tsconfig.typecheck.json`, `eslint . --max-warnings=0`, `prettier --check .`.
-- Hosted CI: not run — repository not published (ADR-006). Workflow file is present but unverified on GitHub.
-- Integration: not applicable (no orchestration yet).
+- Build: pass — `tsc -b` built all 13 packages.
+- Tests: pass — 27 test files, 162 tests, 0 failures (Vitest 5.1.0); full suite repeated 3 more times without failure.
+- Typecheck / lint / format: pass.
+- Milestone 1 exit criteria (`tests/m1-end-to-end.test.ts`):
+  - EC1: spec §17 Test 1 prompt → 2 tasks (`update-page-title`, `update-button-color`) from the fixture decomposer.
+  - EC2: Test 1 graph has one layer and no implicit edges; Test 4 graph has `implement-feature` as the sole prerequisite of `add-feature-tests` and `security-review`.
+  - EC3: with 150 ms mock delays, both Test 1 tasks started before either finished, peak concurrency 2, wall time < 285 ms; in Test 4 both dependents started after the implementation finished and overlapped each other.
+  - EC4: validated results available from the `RunReport` and from `soot.sqlite` (identical), original prompt and SHA-256 persisted, cost summary computed.
+- Resume: `tests/resume-after-kill.test.ts` SIGKILLs a child running the built packages mid-run; restart re-ran only the interrupted task (attempt 2) and its dependent.
+- Hosted CI: not run — repository not published (ADR-006).
 - Real provider execution: none — no provider code exists; no keys used (ADR-011).
