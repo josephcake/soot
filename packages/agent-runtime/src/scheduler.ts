@@ -1,5 +1,14 @@
 import { validateAgentResult, type AgentResult, type Task, type TaskGraph } from '@soot/task-graph';
 import { monotonicClock, type AgentRunner, type Clock } from './agent.js';
+import {
+  SINGLE_ATTEMPT,
+  classifyError,
+  toPriorAttempt,
+  type Assignment,
+  type AttemptFailure,
+  type AttemptRecord,
+  type AttemptSupervisor,
+} from './attempts.js';
 
 export type TaskFinalState = 'succeeded' | 'failed' | 'cancelled' | 'skipped';
 
@@ -18,6 +27,8 @@ export interface TaskOutcome {
   readonly finishedAt: number | null;
   /** True when the outcome was restored from a previous run instead of executed. */
   readonly resumed: boolean;
+  /** Every attempt of this task, oldest first (including earlier runs' attempts when seeded). */
+  readonly attempts: readonly AttemptRecord[];
 }
 
 export type SchedulerEvent =
@@ -25,6 +36,14 @@ export type SchedulerEvent =
       readonly type: 'task-started';
       readonly taskId: string;
       readonly attempt: number;
+      readonly assignment: Assignment | null;
+      readonly at: number;
+    }
+  | {
+      /** An attempt ended and the supervisor reviewed it (accept, retry, or fail). */
+      readonly type: 'attempt-finished';
+      readonly taskId: string;
+      readonly record: AttemptRecord;
       readonly at: number;
     }
   | {
@@ -44,7 +63,10 @@ export interface ExecutionJournal {
     readonly taskId: string;
     readonly attempt: number;
     readonly at: number;
+    readonly assignment?: Assignment | null;
   }): void;
+  /** Every reviewed attempt, before the task's final `taskFinished` (Milestone 4). */
+  attemptFinished?(record: AttemptRecord): void;
   taskFinished(outcome: TaskOutcome): void;
 }
 
@@ -61,6 +83,15 @@ export interface SchedulerOptions {
   /** Attempts already started per task in earlier runs; new attempts continue the count. */
   readonly previousAttempts?: ReadonlyMap<string, number>;
   readonly onEvent?: (event: SchedulerEvent) => void;
+  /**
+   * Decides the model for each attempt and whether to accept, retry, or fail it
+   * (Milestone 4, e.g. @soot/escalation). Default: one attempt per task.
+   */
+  readonly supervisor?: AttemptSupervisor;
+  /** Abort an attempt that runs longer than this and record it as a `timeout` failure. */
+  readonly attemptTimeoutMs?: number;
+  /** Reviewed attempts from earlier runs (e.g. loaded from the state store), per task. */
+  readonly previousAttemptRecords?: ReadonlyMap<string, readonly AttemptRecord[]>;
 }
 
 export interface RunReport {
@@ -78,6 +109,9 @@ interface Running {
   readonly controller: AbortController;
   readonly attempt: number;
   readonly startedAt: number;
+  readonly assignment: Assignment;
+  timedOut: boolean;
+  timer: ReturnType<typeof setTimeout> | undefined;
 }
 
 /**
@@ -95,6 +129,10 @@ export class Scheduler {
   readonly #byId: ReadonlyMap<string, Task>;
   readonly #outcomes = new Map<string, TaskOutcome>();
   readonly #running = new Map<string, Running>();
+  /** Tasks waiting for a scheduled retry (backoff); they hold no concurrency slot. */
+  readonly #waiting = new Map<string, ReturnType<typeof setTimeout>>();
+  readonly #history = new Map<string, AttemptRecord[]>();
+  readonly #supervisor: AttemptSupervisor;
   readonly #events: SchedulerEvent[] = [];
   #runCancelled = false;
   #maxObserved = 0;
@@ -112,6 +150,10 @@ export class Scheduler {
     this.#clock = options.clock ?? monotonicClock;
     this.#options = options;
     this.#byId = new Map(graph.tasks.map((t) => [t.id, t]));
+    this.#supervisor = options.supervisor ?? SINGLE_ATTEMPT;
+    for (const [taskId, records] of options.previousAttemptRecords ?? []) {
+      this.#history.set(taskId, [...records]);
+    }
   }
 
   /** Cancel one task (and skip its dependents), or the whole run when no id is given. */
@@ -147,6 +189,7 @@ export class Scheduler {
         startedAt: null,
         finishedAt: null,
         resumed: true,
+        attempts: [...(this.#history.get(taskId) ?? [])],
       });
     }
     if (signal?.aborted === true) this.#cancelRun();
@@ -198,14 +241,25 @@ export class Scheduler {
     if (this.#outcomes.has(taskId)) return;
     const running = this.#running.get(taskId);
     this.#running.delete(taskId);
-    running?.controller.abort();
+    if (running !== undefined) {
+      clearTimeout(running.timer);
+      running.controller.abort();
+    }
+    const waiting = this.#waiting.get(taskId);
+    if (waiting !== undefined) {
+      clearTimeout(waiting);
+      this.#waiting.delete(taskId);
+    }
+    const history = this.#history.get(taskId) ?? [];
+    const last = history.at(-1);
     this.#record({
       taskId,
       ...end,
-      attempt: running?.attempt ?? null,
-      startedAt: running?.startedAt ?? null,
+      attempt: running?.attempt ?? last?.attempt ?? null,
+      startedAt: history[0]?.startedAt ?? running?.startedAt ?? null,
       finishedAt: this.#clock(),
       resumed: false,
+      attempts: [...history],
     });
     if (end.state !== 'succeeded' && !this.#runCancelled) this.#skipDependents(taskId);
   }
@@ -233,7 +287,8 @@ export class Scheduler {
   }
 
   #isReady(task: Task): boolean {
-    if (this.#outcomes.has(task.id) || this.#running.has(task.id)) return false;
+    if (this.#outcomes.has(task.id) || this.#running.has(task.id) || this.#waiting.has(task.id))
+      return false;
     return (this.#graph.prerequisites.get(task.id) ?? []).every(
       (dep) => this.#outcomes.get(dep)?.state === 'succeeded',
     );
@@ -250,7 +305,7 @@ export class Scheduler {
       const wake = this.#wake;
       this.#wake = undefined;
       wake?.();
-    } else if (this.#running.size === 0 && this.#wake) {
+    } else if (this.#running.size === 0 && this.#waiting.size === 0 && this.#wake) {
       // Nothing running and nothing startable: every remaining task must be blocked by a
       // prerequisite that cannot succeed. Graphs are acyclic, so this is unreachable;
       // guard anyway so a bug cannot hang the run.
@@ -267,77 +322,223 @@ export class Scheduler {
     }
   }
 
-  #start(task: Task): void {
-    const attempt = (this.#options.previousAttempts?.get(task.id) ?? 0) + 1;
-    const controller = new AbortController();
-    const startedAt = this.#clock();
-    this.#running.set(task.id, { controller, attempt, startedAt });
-    this.#maxObserved = Math.max(this.#maxObserved, this.#running.size);
-    this.#options.journal?.taskStarted({ taskId: task.id, attempt, at: startedAt });
-    this.#emit({ type: 'task-started', taskId: task.id, attempt, at: startedAt });
+  #nextAttempt(taskId: string): number {
+    const fromHistory = this.#history.get(taskId)?.at(-1)?.attempt ?? 0;
+    return Math.max(this.#options.previousAttempts?.get(taskId) ?? 0, fromHistory) + 1;
+  }
 
+  #start(task: Task): void {
+    const history = this.#history.get(task.id) ?? [];
+    const attempt = this.#nextAttempt(task.id);
     const dependencyResults = (this.#graph.prerequisites.get(task.id) ?? []).flatMap((dep) => {
       const result = this.#outcomes.get(dep)?.result;
       return result ? [result] : [];
     });
+    const plan = this.#supervisor.plan({ task, attempt, history, dependencyResults });
+    if (plan.action === 'stop') {
+      const last = history.at(-1);
+      this.#finish(task.id, {
+        state: 'failed',
+        result: last?.result ?? null,
+        error: plan.reason,
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    const startedAt = this.#clock();
+    const running: Running = {
+      controller,
+      attempt,
+      startedAt,
+      assignment: plan.assignment,
+      timedOut: false,
+      timer: undefined,
+    };
+    this.#running.set(task.id, running);
+    this.#maxObserved = Math.max(this.#maxObserved, this.#running.size);
+    this.#options.journal?.taskStarted({
+      taskId: task.id,
+      attempt,
+      at: startedAt,
+      assignment: plan.assignment,
+    });
+    this.#emit({
+      type: 'task-started',
+      taskId: task.id,
+      attempt,
+      assignment: plan.assignment,
+      at: startedAt,
+    });
+    const timeoutMs = this.#options.attemptTimeoutMs;
+    if (timeoutMs !== undefined) {
+      running.timer = setTimeout(() => {
+        running.timedOut = true;
+        this.#endAttempt(task, controller, null, {
+          kind: 'timeout',
+          message: `attempt timed out after ${timeoutMs} ms`,
+          provider: null,
+          retryAfterMs: null,
+        });
+        controller.abort();
+      }, timeoutMs);
+    }
 
     let promise: Promise<unknown>;
     try {
-      promise = this.#runner.run({ task, attempt, dependencyResults }, controller.signal);
+      promise = this.#runner.run(
+        {
+          task,
+          attempt,
+          dependencyResults,
+          assignment: plan.assignment,
+          priorAttempts: history.map(toPriorAttempt),
+        },
+        controller.signal,
+      );
     } catch (error) {
       promise = Promise.reject(error instanceof Error ? error : new Error(String(error)));
     }
     promise.then(
       (raw) => {
-        this.#settle(task.id, controller, raw);
+        this.#settle(task, controller, raw);
       },
       (error: unknown) => {
-        if (this.#running.get(task.id)?.controller !== controller) return;
-        this.#finish(task.id, {
-          state: 'failed',
-          result: null,
-          error: `agent error: ${error instanceof Error ? error.message : String(error)}`,
-        });
-        this.#pump();
+        this.#endAttempt(task, controller, null, classifyError(error));
       },
     );
   }
 
-  #settle(taskId: string, controller: AbortController, raw: unknown): void {
-    const running = this.#running.get(taskId);
-    // Ignore late results from attempts that were cancelled or already finished.
+  #settle(task: Task, controller: AbortController, raw: unknown): void {
+    const running = this.#running.get(task.id);
+    // Ignore late results from attempts that were cancelled, timed out, or already finished.
     if (running?.controller !== controller) return;
+    const invalid = (message: string): AttemptFailure => ({
+      kind: 'invalid-output',
+      message,
+      provider: null,
+      retryAfterMs: null,
+    });
     const checked = validateAgentResult(raw);
     if (!checked.ok) {
       const detail = checked.issues
         .map((i) => `${i.path === '' ? '(root)' : i.path}: ${i.message}`)
         .join('; ');
-      this.#finish(taskId, {
-        state: 'failed',
-        result: null,
-        error: `invalid agent result: ${detail}`,
-      });
-    } else if (checked.value.taskId !== taskId || checked.value.attempt !== running.attempt) {
-      this.#finish(taskId, {
-        state: 'failed',
-        result: null,
-        error: `agent result is for ${checked.value.taskId}#${checked.value.attempt}, expected ${taskId}#${running.attempt}`,
-      });
-    } else {
-      const result = checked.value;
-      const state: TaskFinalState =
-        result.status === 'succeeded'
-          ? 'succeeded'
-          : result.status === 'cancelled'
-            ? 'cancelled'
-            : 'failed';
-      this.#finish(taskId, {
-        state,
+      this.#endAttempt(task, controller, null, invalid(`invalid agent result: ${detail}`));
+      return;
+    }
+    const result = checked.value;
+    if (result.taskId !== task.id || result.attempt !== running.attempt) {
+      this.#endAttempt(
+        task,
+        controller,
+        null,
+        invalid(
+          `agent result is for ${result.taskId}#${result.attempt}, expected ${task.id}#${running.attempt}`,
+        ),
+      );
+      return;
+    }
+    const failure: AttemptFailure | null =
+      result.status === 'succeeded'
+        ? null
+        : {
+            kind:
+              result.status === 'failed'
+                ? 'reported-failure'
+                : result.status === 'blocked'
+                  ? 'blocked'
+                  : 'cancelled',
+            message: `agent reported ${result.status}`,
+            provider: null,
+            retryAfterMs: null,
+          };
+    this.#endAttempt(task, controller, result, failure);
+  }
+
+  /** Review a finished attempt and accept it, schedule a retry, or fail the task. */
+  #endAttempt(
+    task: Task,
+    controller: AbortController,
+    result: AgentResult | null,
+    failure: AttemptFailure | null,
+  ): void {
+    const running = this.#running.get(task.id);
+    if (running?.controller !== controller) return;
+    clearTimeout(running.timer);
+    this.#running.delete(task.id);
+    const history = this.#history.get(task.id) ?? [];
+    const base: AttemptRecord = {
+      taskId: task.id,
+      attempt: running.attempt,
+      assignment: running.assignment,
+      result,
+      failure,
+      review: null,
+      startedAt: running.startedAt,
+      finishedAt: this.#clock(),
+    };
+    let review = this.#supervisor.review({ task, record: base, history });
+    if (review.action === 'accept' && failure !== null) {
+      review = { action: 'fail', reason: failure.message };
+    }
+    const record: AttemptRecord = {
+      ...base,
+      review,
+      failure:
+        failure ??
+        (review.action === 'accept'
+          ? null
+          : {
+              kind: 'rejected',
+              message: review.action === 'retry' ? review.note : review.reason,
+              provider: null,
+              retryAfterMs: null,
+            }),
+    };
+    this.#history.set(task.id, [...history, record]);
+    this.#options.journal?.attemptFinished?.(record);
+    this.#emit({ type: 'attempt-finished', taskId: task.id, record, at: record.finishedAt ?? 0 });
+
+    if (review.action === 'accept') {
+      this.#finishAttempted(task.id, running, { state: 'succeeded', result, error: null });
+    } else if (review.action === 'fail') {
+      this.#finishAttempted(task.id, running, {
+        state: record.failure?.kind === 'cancelled' ? 'cancelled' : 'failed',
         result,
-        error: state === 'succeeded' ? null : `agent reported ${result.status}`,
+        error: review.reason,
       });
+    } else if (!this.#runCancelled) {
+      const timer = setTimeout(
+        () => {
+          this.#waiting.delete(task.id);
+          this.#pump();
+        },
+        Math.max(0, review.delayMs),
+      );
+      this.#waiting.set(task.id, timer);
     }
     this.#pump();
+  }
+
+  /** Finish a task whose last attempt has already been removed from `#running`. */
+  #finishAttempted(
+    taskId: string,
+    running: Running,
+    end: Pick<TaskOutcome, 'state' | 'result' | 'error'>,
+  ): void {
+    if (this.#outcomes.has(taskId)) return;
+    const history = this.#history.get(taskId) ?? [];
+    this.#record({
+      taskId,
+      ...end,
+      attempt: running.attempt,
+      startedAt: history[0]?.startedAt ?? running.startedAt,
+      finishedAt: this.#clock(),
+      resumed: false,
+      attempts: [...history],
+    });
+    if (end.state !== 'succeeded' && !this.#runCancelled) this.#skipDependents(taskId);
   }
 }
 

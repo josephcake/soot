@@ -165,9 +165,36 @@ export const SPEC_TEST_4_FIXTURE: DecompositionFixture = {
   ],
 };
 
+/**
+ * Build spec §17 Test 3 — runtime escalation: one task the planner believes is simple. The
+ * escalation itself is scripted in tests (mock agents); this fixture is only the plan.
+ */
+export const SPEC_TEST_3_FIXTURE: DecompositionFixture = {
+  id: 'build-spec-17-test-3',
+  prompt: 'Update the theme color.',
+  tasks: [
+    {
+      id: 'update-theme-color',
+      title: 'Update theme color',
+      instructions:
+        'Change the primary theme color to the requested value wherever the theme defines it.',
+      acceptanceCriteria: [
+        'Components using the primary theme color render the new color.',
+        'No unrelated theme tokens change.',
+      ],
+      requiredCapabilities: ['code-edit', 'css'],
+      complexity: 'low',
+      estimate: estimate(3000, 400),
+      files: { read: ['src/theme/'], write: ['src/theme/tokens.css'] },
+      dependsOn: [],
+    },
+  ],
+};
+
 export const SPEC_FIXTURES: readonly DecompositionFixture[] = [
   SPEC_SECTION_3_FIXTURE,
   SPEC_TEST_1_FIXTURE,
   SPEC_TEST_2_FIXTURE,
+  SPEC_TEST_3_FIXTURE,
   SPEC_TEST_4_FIXTURE,
 ];

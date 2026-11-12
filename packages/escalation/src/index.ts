@@ -1,15 +1,39 @@
 /**
  * @soot/escalation
  *
- * STUB: Runtime escalation and downgrade decisions.
- * Nothing is implemented here yet; planned for Milestone 4.
- * See ROADMAP.md and TASKS.md. Do not rely on this package.
+ * Milestone 4: adaptive execution decisions for the agent-runtime Scheduler. Detects
+ * escalation triggers, reassigns tasks to stronger models with context transfer, falls back
+ * across providers on outages and persistent rate limits, downgrades work after a plan, and
+ * bounds retries, escalations, and spend. Verified with mock agents and a fictional registry.
  */
 
 export const PACKAGE_NAME = '@soot/escalation';
 
-/** Implementation status of this package. Becomes 'implemented' only when real code lands. */
-export const IMPLEMENTATION_STATUS = 'stub' as const;
+/** `partial`: the Milestone 4 scope is implemented with mocks; real agents come later. */
+export const IMPLEMENTATION_STATUS = 'partial' as const;
 
-/** Milestone in which this package is scheduled to receive its first real implementation. */
+/** Milestone that delivered the first real implementation. */
 export const PLANNED_MILESTONE = 4;
+
+export {
+  DEFAULT_ESCALATION_CONFIG,
+  EscalationConfigSchema,
+  escalationConfig,
+  type EscalationConfig,
+  type EscalationConfigInput,
+} from './config.js';
+export {
+  backoffDelay,
+  detectTriggers,
+  escalationLevel,
+  nextStep,
+  type NextStep,
+  type Trigger,
+  type TriggerKind,
+} from './decide.js';
+export {
+  AdaptiveSupervisor,
+  type AdaptiveEvent,
+  type AdaptiveEventType,
+  type AdaptiveSupervisorOptions,
+} from './supervisor.js';

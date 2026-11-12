@@ -3,6 +3,30 @@
 All notable changes are recorded here by milestone. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). No versions have been released.
 
+## [Unreleased] — Milestone 4: Adaptive execution (verified locally 2026-11-12, mocks)
+
+### Added
+
+- `@soot/escalation`: `AdaptiveSupervisor` and pure decision helpers:
+  - trigger detection: repeated failure, unexpected complexity, unmet criteria, low confidence,
+    tool errors, token blowup, invalid output, crash
+  - escalation to an untried, more reliable model via `@soot/model-router`, one tier up
+  - provider fallback on outage, auth failure, and persistent rate limits, with health marking
+  - bounded retries with retry-after/exponential backoff, attempt and escalation limits, task
+    and run budgets
+  - downgrade of dependents after a plan or investigation, only when the saving is worth a
+    switch, never for high-risk work
+  - an explainable event for every decision
+- `@soot/agent-runtime`: `AttemptSupervisor` hook, per-attempt records, per-attempt timeouts,
+  retry timers that hold no concurrency slot, assignment and `priorAttempts` (context
+  transfer) passed to runners, failure classification, cancellation of waiting retries.
+  `MockAgentRunner` gains `provider-error`, scripted `signals` and `findings`, and `scriptFor`.
+- `@soot/task-graph`: optional `signals` on `AgentResult` (JSON Schema regenerated).
+- `@soot/context-manager`: schema v2 (`attempt_details`, migrated in place from v1);
+  `loadRun` returns `attemptRecords` for resuming with history.
+- `@soot/planner`: spec §17 Test 3 fixture.
+- `tests/m4-adaptive-end-to-end.test.ts` checks exit criteria EC1–EC6. ADR-024.
+
 ## [Unreleased] — Milestone 3: Intelligent model routing (verified locally 2026-11-12, fixtures)
 
 ### Added

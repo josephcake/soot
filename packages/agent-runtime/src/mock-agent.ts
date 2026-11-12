@@ -1,5 +1,6 @@
-import type { AgentResult, ReportedUsage } from '@soot/task-graph';
+import type { AgentResult, AgentSignals, Finding, ReportedUsage } from '@soot/task-graph';
 import { monotonicClock, type AgentRunner, type AgentTaskInput, type Clock } from './agent.js';
+import type { Assignment, PriorAttempt } from './attempts.js';
 
 /*
  * TEST DOUBLE. MockAgentRunner calls no model, reads no files, and makes no network
@@ -20,7 +21,9 @@ export type MockOutcome =
   /** Return an object that violates `AgentResultSchema`. */
   | 'invalid'
   /** Never settle and ignore abort signals (a hung agent). */
-  | 'hang';
+  | 'hang'
+  /** Reject with a provider-style error (`error` below), e.g. a rate limit or outage. */
+  | 'provider-error';
 
 export interface MockScript {
   readonly outcome?: MockOutcome;
@@ -28,12 +31,40 @@ export interface MockScript {
   readonly delayMs?: number;
   readonly summary?: string;
   readonly usage?: Partial<Pick<ReportedUsage, 'inputTokens' | 'outputTokens'>>;
+  /** Self-assessment to report (confidence, complexity, tool errors, ...). */
+  readonly signals?: AgentSignals;
+  /** Findings to report instead of the default `[mock]` observation. */
+  readonly findings?: readonly Finding[];
+  /** For `provider-error`: the error's kind, provider, and retry-after. */
+  readonly error?: {
+    readonly kind: 'rate-limited' | 'unavailable' | 'timeout' | 'auth' | 'invalid-output';
+    readonly provider?: string;
+    readonly retryAfterMs?: number;
+  };
+}
+
+/** Provider-shaped error thrown by the mock (recognised structurally, like `ProviderError`). */
+export class MockProviderError extends Error {
+  readonly kind: string;
+  readonly provider: string | null;
+  readonly retryAfterMs: number | null;
+  constructor(kind: string, provider: string | null, retryAfterMs: number | null) {
+    super(`[mock] ${kind}${provider === null ? '' : ` from ${provider}`} (scripted)`);
+    this.name = 'MockProviderError';
+    this.kind = kind;
+    this.provider = provider;
+    this.retryAfterMs = retryAfterMs;
+  }
 }
 
 export interface MockCall {
   readonly taskId: string;
   readonly attempt: number;
   readonly dependencyTaskIds: readonly string[];
+  /** Model the scheduler assigned to this attempt, if any. */
+  readonly assignment: Assignment | null;
+  /** Context transferred from earlier attempts of the same task. */
+  readonly priorAttempts: readonly PriorAttempt[];
   readonly startedAt: number;
   finishedAt: number | null;
   settledAs: 'resolved' | 'rejected' | 'aborted' | null;
@@ -51,6 +82,8 @@ export interface MockAgentRunnerOptions {
   readonly scripts?: Readonly<Record<string, MockScript | readonly MockScript[]>>;
   /** Script for tasks without an entry. Default: succeed immediately. */
   readonly defaultScript?: MockScript;
+  /** Script chosen from the full input (e.g. by assigned model); takes precedence when it returns one. */
+  readonly scriptFor?: (input: AgentTaskInput) => MockScript | undefined;
   readonly clock?: Clock;
 }
 
@@ -81,12 +114,14 @@ export class MockAgentRunner implements AgentRunner {
 
   run(input: AgentTaskInput, signal: AbortSignal): Promise<unknown> {
     const { task, attempt } = input;
-    const script = this.#scriptFor(task.id, attempt);
+    const script = this.#options.scriptFor?.(input) ?? this.#scriptFor(task.id, attempt);
     const outcome = script.outcome ?? 'succeed';
     const call: MockCall = {
       taskId: task.id,
       attempt,
       dependencyTaskIds: input.dependencyResults.map((r) => r.taskId),
+      assignment: input.assignment ?? null,
+      priorAttempts: input.priorAttempts ?? [],
       startedAt: this.#clock(),
       finishedAt: null,
       settledAs: null,
@@ -107,6 +142,17 @@ export class MockAgentRunner implements AgentRunner {
       };
       const timer = setTimeout(() => {
         signal.removeEventListener('abort', onAbort);
+        if (outcome === 'provider-error') {
+          settle('rejected');
+          reject(
+            new MockProviderError(
+              script.error?.kind ?? 'unavailable',
+              script.error?.provider ?? null,
+              script.error?.retryAfterMs ?? null,
+            ),
+          );
+          return;
+        }
         if (outcome === 'throw') {
           settle('rejected');
           reject(new Error(`mock agent for "${task.id}" crashed (scripted)`));
@@ -136,9 +182,9 @@ export class MockAgentRunner implements AgentRunner {
       attempt: input.attempt,
       status,
       summary: script.summary ?? `[mock] ${status}: ${input.task.title}`,
-      findings: [
-        { kind: 'observation', message: '[mock] scripted result; no real work was performed.' },
-      ],
+      findings: script.findings
+        ? [...script.findings]
+        : [{ kind: 'observation', message: '[mock] scripted result; no real work was performed.' }],
       patch: null,
       evidence: [],
       usage: {
@@ -146,8 +192,9 @@ export class MockAgentRunner implements AgentRunner {
         outputTokens: script.usage?.outputTokens ?? 0,
         durationMs: (call.finishedAt ?? call.startedAt) - call.startedAt,
         costUsd: null,
-        model: null,
+        model: input.assignment?.model ?? null,
       },
+      ...(script.signals === undefined ? {} : { signals: script.signals }),
     };
   }
 }

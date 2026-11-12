@@ -1,19 +1,25 @@
 import type { AgentResult, Task } from '@soot/task-graph';
+import type { Assignment, PriorAttempt } from './attempts.js';
 
 /**
  * What an agent receives for one attempt: its task (instructions, acceptance criteria,
- * declared files) and the structured results of its prerequisites. It deliberately does NOT
- * receive the original prompt or other agents' transcripts (build spec §7, §10).
+ * declared files), the structured results of its prerequisites, its model assignment, and
+ * the structured findings of earlier attempts of the same task (context transfer, M4-02).
+ * It deliberately does NOT receive the original prompt or any transcripts (build spec §7, §10).
  */
 export interface AgentTaskInput {
   readonly task: Task;
   readonly attempt: number;
   readonly dependencyResults: readonly AgentResult[];
+  /** Model chosen for this attempt; absent when no supervisor assigns models. */
+  readonly assignment?: Assignment | null;
+  /** Earlier attempts of this task, oldest first. */
+  readonly priorAttempts?: readonly PriorAttempt[];
 }
 
 /**
  * Executes one task attempt. Real runners (model-backed, harness-backed) arrive in later
- * milestones; Milestone 1 ships only `MockAgentRunner`.
+ * milestones; Milestones 1–4 ship only `MockAgentRunner`.
  *
  * The return value is `unknown` on purpose: the scheduler validates it against
  * `AgentResultSchema` and treats anything invalid as a failed attempt.

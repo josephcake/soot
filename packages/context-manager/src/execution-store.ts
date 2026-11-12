@@ -2,7 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { ExecutionJournal, TaskFinalState, TaskOutcome } from '@soot/agent-runtime';
+import type {
+  Assignment,
+  AttemptFailure,
+  AttemptRecord,
+  ExecutionJournal,
+  ReviewDecision,
+  TaskFinalState,
+  TaskOutcome,
+} from '@soot/agent-runtime';
 import {
   parseAgentResult,
   parseTask,
@@ -13,13 +21,15 @@ import {
 
 /** File name of the state database inside `SOOT_DATA_DIR`. */
 export const STATE_DB_FILE = 'soot.sqlite';
-const SCHEMA_VERSION = 1;
+/** v2 (Milestone 4) adds `attempt_details`; v1 databases are migrated in place. */
+const SCHEMA_VERSION = 2;
 
 /**
- * Per-task state as persisted. `running`: started with no recorded finish (the process may
+ * Per-attempt state as persisted. `running`: started with no recorded finish (the process may
  * have died). `interrupted`: a `running` attempt that `recoverInterrupted` closed on restart.
+ * `retried`: the attempt ended and the supervisor scheduled another attempt (Milestone 4).
  */
-export type PersistedTaskState = 'running' | 'interrupted' | TaskFinalState;
+export type PersistedTaskState = 'running' | 'interrupted' | 'retried' | TaskFinalState;
 
 export interface PersistedAttempt {
   readonly taskId: string;
@@ -30,6 +40,10 @@ export interface PersistedAttempt {
   readonly finishedAt: string | null;
   readonly result: AgentResult | null;
   readonly error: string | null;
+  /** Model assignment, failure, and review (Milestone 4); `null` for unreviewed attempts. */
+  readonly assignment: Assignment | null;
+  readonly failure: AttemptFailure | null;
+  readonly review: ReviewDecision | null;
 }
 
 export interface PersistedRun {
@@ -45,6 +59,11 @@ export interface PersistedRun {
   readonly completed: ReadonlyMap<string, AgentResult>;
   /** Highest attempt number started per task: pass as `previousAttempts`. */
   readonly attemptCounts: ReadonlyMap<string, number>;
+  /**
+   * Reviewed attempts per task, oldest first: pass as `previousAttemptRecords` so retry and
+   * escalation limits, budgets, and context transfer continue across restarts.
+   */
+  readonly attemptRecords: ReadonlyMap<string, readonly AttemptRecord[]>;
 }
 
 export interface CreateRunInput {
@@ -75,6 +94,9 @@ interface AttemptRow {
   finished_at: string | null;
   result_json: string | null;
   error: string | null;
+  assignment_json: string | null;
+  failure_json: string | null;
+  review_json: string | null;
 }
 
 /**
@@ -118,6 +140,15 @@ export class ExecutionStore {
         error TEXT,
         PRIMARY KEY (run_id, task_id, attempt)
       );
+      CREATE TABLE IF NOT EXISTS attempt_details (
+        run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+        task_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        assignment_json TEXT,
+        failure_json TEXT,
+        review_json TEXT,
+        PRIMARY KEY (run_id, task_id, attempt)
+      );
     `);
     const version = this.#db
       .prepare('SELECT value FROM meta WHERE key = ?')
@@ -126,6 +157,11 @@ export class ExecutionStore {
       this.#db
         .prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
         .run('schema_version', String(SCHEMA_VERSION));
+    } else if (Number(version.value) === 1) {
+      // v1 → v2: the only change is the new attempt_details table, created above.
+      this.#db
+        .prepare('UPDATE meta SET value = ? WHERE key = ?')
+        .run(String(SCHEMA_VERSION), 'schema_version');
     } else if (Number(version.value) !== SCHEMA_VERSION) {
       throw new Error(`Unsupported state schema version ${version.value} in ${this.path}`);
     }
@@ -180,9 +216,39 @@ export class ExecutionStore {
     const finishUnstarted = this.#db.prepare(
       `INSERT OR REPLACE INTO task_attempts (run_id, task_id, attempt, state, finished_at, error) VALUES (?, ?, 0, ?, ?, ?)`,
     );
+    const details = this.#db.prepare(
+      'INSERT OR REPLACE INTO attempt_details (run_id, task_id, attempt, assignment_json, failure_json, review_json) VALUES (?, ?, ?, ?, ?, ?)',
+    );
+    const finishAttempt = this.#db.prepare(
+      'UPDATE task_attempts SET state = ?, finished_at = ?, result_json = ?, error = ? WHERE run_id = ? AND task_id = ? AND attempt = ?',
+    );
+    const json = (value: unknown) =>
+      value === null || value === undefined ? null : JSON.stringify(value);
     return {
-      taskStarted: ({ taskId, attempt }) => {
+      taskStarted: ({ taskId, attempt, assignment }) => {
         start.run(runId, taskId, attempt, this.#now().toISOString());
+        details.run(runId, taskId, attempt, json(assignment), null, null);
+      },
+      attemptFinished: (record: AttemptRecord) => {
+        details.run(
+          runId,
+          record.taskId,
+          record.attempt,
+          json(record.assignment),
+          json(record.failure),
+          json(record.review),
+        );
+        if (record.review?.action === 'retry') {
+          finishAttempt.run(
+            'retried',
+            this.#now().toISOString(),
+            record.result === null ? null : JSON.stringify(parseAgentResult(record.result)),
+            record.failure?.message ?? null,
+            runId,
+            record.taskId,
+            record.attempt,
+          );
+        }
       },
       taskFinished: (outcome: TaskOutcome) => {
         const at = this.#now().toISOString();
@@ -225,7 +291,11 @@ export class ExecutionStore {
     const row = this.#requireRun(runId);
     const tasks = (JSON.parse(row.tasks_json) as unknown[]).map(parseTask);
     const rows = this.#db
-      .prepare('SELECT * FROM task_attempts WHERE run_id = ? ORDER BY task_id, attempt')
+      .prepare(
+        `SELECT a.*, d.assignment_json, d.failure_json, d.review_json FROM task_attempts a
+         LEFT JOIN attempt_details d USING (run_id, task_id, attempt)
+         WHERE a.run_id = ? ORDER BY a.task_id, a.attempt`,
+      )
       .all(runId) as unknown as AttemptRow[];
     const attempts = rows.map((r): PersistedAttempt => ({
       taskId: r.task_id,
@@ -235,7 +305,27 @@ export class ExecutionStore {
       finishedAt: r.finished_at,
       result: r.result_json === null ? null : parseAgentResult(JSON.parse(r.result_json)),
       error: r.error,
+      assignment: r.assignment_json === null ? null : (JSON.parse(r.assignment_json) as Assignment),
+      failure: r.failure_json === null ? null : (JSON.parse(r.failure_json) as AttemptFailure),
+      review: r.review_json === null ? null : (JSON.parse(r.review_json) as ReviewDecision),
     }));
+    const attemptRecords = new Map<string, AttemptRecord[]>();
+    for (const a of attempts) {
+      if (a.review === null) continue; // only reviewed attempts count towards limits and context
+      const list = attemptRecords.get(a.taskId) ?? [];
+      list.push({
+        taskId: a.taskId,
+        attempt: a.attempt,
+        assignment: a.assignment,
+        result: a.result,
+        failure: a.failure,
+        review: a.review,
+        // Monotonic timestamps do not survive a restart.
+        startedAt: null,
+        finishedAt: null,
+      });
+      attemptRecords.set(a.taskId, list);
+    }
     const completed = new Map<string, AgentResult>();
     const attemptCounts = new Map<string, number>();
     for (const a of attempts) {
@@ -253,6 +343,7 @@ export class ExecutionStore {
       attempts,
       completed,
       attemptCounts,
+      attemptRecords,
     };
   }
 

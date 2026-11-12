@@ -40,6 +40,7 @@ export {
 export {
   AGENT_RESULT_STATUSES,
   AgentResultSchema,
+  AgentSignalsSchema,
   AgentResultStatusSchema,
   EvidenceSchema,
   FindingSchema,
@@ -50,6 +51,7 @@ export {
   parseAgentResult,
   validateAgentResult,
   type AgentResult,
+  type AgentSignals,
   type AgentResultStatus,
   type Evidence,
   type Finding,

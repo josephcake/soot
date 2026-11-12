@@ -151,6 +151,37 @@
       },
       "required": ["inputTokens", "outputTokens", "durationMs", "costUsd", "model"],
       "additionalProperties": false
+    },
+    "signals": {
+      "type": "object",
+      "properties": {
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "complexity": {
+          "type": "string",
+          "enum": ["lower", "as-expected", "higher"]
+        },
+        "toolErrors": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unmetCriteria": {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "planReady": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "required": ["taskId", "attempt", "status", "summary", "findings", "patch", "evidence", "usage"],

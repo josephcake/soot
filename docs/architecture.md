@@ -46,6 +46,28 @@ Package dependencies: `planner`, `agent-runtime`, and `observability` depend on 
 `context-manager` depends on `task-graph` and (types only) `agent-runtime`. `task-graph` depends
 only on `zod`. `core` has no workspace dependencies.
 
+## Milestone 4 adaptive execution flow (implemented)
+
+```text
+Scheduler (agent-runtime) ── per task ──►  supervisor.plan(task, attempt, history, deps)
+   │                                           │  AdaptiveSupervisor (escalation):
+   │                                           │  first attempt: route (+ downgrade if a dep is planReady)
+   │                                           │  later: nextStep(history) → retry-same / fallback / escalate
+   │                                           │  budgets → run {assignment} | stop {reason}
+   ▼                                           ▼
+runner.run({task, assignment, priorAttempts, dependencyResults}, signal)   ← timeout aborts
+   │
+   ▼
+validate result → AttemptRecord {assignment, result, failure} → supervisor.review
+   │                                   accept │ retry {delayMs} (timer, no slot held) │ fail
+   ▼
+journal.attemptFinished → soot.sqlite attempt_details (resume replays the same decisions)
+```
+
+`escalation` depends on `agent-runtime` (types), `model-router`, `model-registry`
+(`ProviderHealth`), `observability`, and `task-graph`. The scheduler does not depend on
+`escalation`; the supervisor is injected.
+
 ## Design summary (planned)
 
 A universal TypeScript orchestration core with thin adapters. The core never depends on a
@@ -99,7 +121,7 @@ and file-conflict management.
 │   ├── model-router/         # partial (M3) — per-task routing, policies, explanations
 │   ├── agent-runtime/        # scheduler, mock agent runner (M1, partial)
 │   ├── context-manager/      # SQLite execution state (M1, partial); context selection later
-│   ├── escalation/           # stub — escalation/downgrade rules (M4)
+│   ├── escalation/           # adaptive supervisor: triggers, escalation, bounds (M4)
 │   ├── provider-adapters/    # partial (M2) — ModelClient over AI SDK; Anthropic, OpenAI, OpenAI-compatible
 │   ├── harness-adapters/     # stub — Claude Code, Codex, MCP, etc. (M6)
 │   ├── integrations/         # stub — worktrees, conflict detection, validation (M5)
@@ -126,9 +148,9 @@ and file-conflict management.
 | `packages/task-graph/`        | partial (M1)      | M1                   | Task/result contracts, JSON Schema, DAG          |
 | `packages/model-registry/`    | partial (M2)      | M2                   | User model config, availability, sourced pricing |
 | `packages/model-router/`      | partial (M3)      | M3                   | Per-task routing, cost/reliability policies      |
-| `packages/agent-runtime/`     | partial (M1)      | M1                   | Scheduler; MockAgentRunner test double           |
-| `packages/context-manager/`   | partial (M1)      | M1                   | SQLite execution state; context selection later  |
-| `packages/escalation/`        | stub              | M4                   | Escalation and downgrade rules                   |
+| `packages/agent-runtime/`     | partial (M1, M4)  | M1                   | Scheduler, supervised attempts; MockAgentRunner  |
+| `packages/context-manager/`   | partial (M1, M4)  | M1                   | SQLite state + attempt history; context later    |
+| `packages/escalation/`        | partial (M4)      | M4                   | Escalation, fallback, bounds, downgrade rules    |
 | `packages/provider-adapters/` | partial (M2)      | M2                   | ModelClient over AI SDK; retries, fallback, keys |
 | `packages/harness-adapters/`  | stub              | M6                   | Harness adapters (Claude Code, Codex, MCP, …)    |
 | `packages/integrations/`      | stub              | M5                   | Worktrees, conflict detection, validation        |

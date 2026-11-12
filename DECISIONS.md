@@ -281,3 +281,27 @@ the old one.
 - **Alternatives:** a single quality score per model (cannot express "fine for CSS, unreliable for debugging"); ranking without thresholds (cannot meet "cheapest above a reliability threshold"); LLM-based complexity scoring now (needs real providers, M2-07); built-in benchmark priors (would be guesses or go stale).
 - **Consequences:** Routing quality depends on the user's priors until history accumulates. The fixture registry in tests is fictional. Latency is not considered yet.
 - **Reversible:** Yes. The evaluator, policy presets and blending formula are each isolated.
+
+## ADR-024: Milestone 4 implementation choices (adaptive execution, mocks only)
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Sweed, under ADR-012: smaller extensible option)
+- **Context:** Milestone 4 must escalate failing or doubtful work to a stronger model mid-flight with its findings, leave unrelated tasks alone, bound every loop, downgrade after planning, recover from provider failures, and cancel cleanly (build spec §6, §17 Tests 3 and 6). Real providers are unavailable (M2-07 Blocked), so everything is verified with mock agents and the fictional routing registry.
+- **Decision:**
+  - **Mechanics vs decisions.** The `@soot/agent-runtime` Scheduler owns mechanics: attempts, per-attempt timeouts (`attemptTimeoutMs`), retry timers, cancellation, and journaling. A pluggable `AttemptSupervisor` (`plan` before each attempt, `review` after it) owns decisions. `SINGLE_ATTEMPT` is the default and keeps Milestone 1 behaviour. `@soot/escalation`'s `AdaptiveSupervisor` is the real one. Waiting retries hold no concurrency slot.
+  - **Decisions are pure and replayable.** `nextStep(task, record, earlier, config)` derives the next step from attempt history alone, so `plan` can recompute after a restart what `review` decided before it. History (assignment, failure, review per attempt) is persisted in `soot.sqlite` (schema v2, `attempt_details`, in-place v1→v2 migration) and fed back via `previousAttemptRecords`, so limits and context survive restarts.
+  - **Signals come from the agent's structured result.** `AgentResult.signals` (optional) carries `confidence`, `complexity` (`higher` = harder than planned), `toolErrors`, `unmetCriteria`, and `planReady`. Triggers: repeated failure, unexpected complexity, unmet criteria, low confidence (< 0.6), tool errors (≥ 3), token blowup (> 3× planned), invalid output, crash. A "succeeded" result with low confidence or unmet criteria is not accepted (recorded as `rejected`) and escalates.
+  - **Failure policy.**
+    - Rate limit / timeout: retry the same model after `retry-after` or exponential backoff (1 s doubling, 30 s cap), up to 2 times, then fall back to another provider and mark the provider rate-limited for its cooldown.
+    - Outage / auth: fall back to another provider immediately; mark provider health.
+    - Reported failure, invalid output, crash: escalate at once if a strong trigger fired (complexity, unmet criteria, confidence, tool errors, token blowup); otherwise retry the same model once, then escalate as repeated failure.
+    - Blocked: fail (needs human input; another model would not help). Never auto-approve (ADR-018).
+  - **Escalation = re-route one tier up.** Each escalation raises the routing complexity by one level and routes through `@soot/model-router` with the run's policy and health, then picks the first usable candidate that is untried, not on a failed provider, and strictly more reliable at the new tier than the previous model. If none qualifies at the threshold, a below-threshold stronger model may be used; otherwise the task stops with a reason. DeepSeek stays excluded by the registry.
+  - **Context transfer** passes `priorAttempts` (attempt, model, outcome, summary, structured findings, failure message, the supervisor's note) to the next attempt. Never transcripts or credentials.
+  - **Bounds:** max 5 attempts per task, max 2 escalations, optional per-task and per-run USD budgets. Spend counts reported actual cost, else the routed estimate; in-flight attempts reserve their estimate so concurrent tasks cannot overspend the run budget. An attempt whose cost cannot be estimated is refused when a budget is set.
+  - **Downgrade** applies when a task starts and a prerequisite result has `signals.planReady`: route one tier lower and switch only if the model differs and the estimate drops by ≥ 30%. High-risk work (ADR-023) is never downgraded. Every skip is recorded with its reason.
+  - **Explainability:** every assign, retry, fallback, escalate, downgrade, downgrade-skipped, accept, fail, and stop is an `AdaptiveEvent` with a readable reason; each attempt's assignment reason is persisted.
+  - **Defaults are choices, not measurements.** All thresholds are in `EscalationConfigSchema`.
+- **Alternatives:** escalation inside the scheduler (mixes policy into mechanics, hard to test); restarting the whole run on failure (violates "unrelated tasks not restarted"); LLM-judged confidence (needs real providers, M2-07); mid-attempt model switching (needs a streaming agent loop; deferred).
+- **Consequences:** Trigger quality depends on agents reporting honest signals until Milestone 5 verifies evidence. Provider health and success history remain in memory. Downgrade happens only at task start.
+- **Reversible:** Yes. The supervisor is an interface; thresholds are config.

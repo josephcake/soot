@@ -38,5 +38,6 @@ export {
   SPEC_SECTION_3_FIXTURE,
   SPEC_TEST_1_FIXTURE,
   SPEC_TEST_2_FIXTURE,
+  SPEC_TEST_3_FIXTURE,
   SPEC_TEST_4_FIXTURE,
 } from './spec-fixtures.js';

@@ -59,7 +59,26 @@ importers:
 
   packages/core: {}
 
-  packages/escalation: {}
+  packages/escalation:
+    dependencies:
+      '@soot/agent-runtime':
+        specifier: workspace:*
+        version: link:../agent-runtime
+      '@soot/model-registry':
+        specifier: workspace:*
+        version: link:../model-registry
+      '@soot/model-router':
+        specifier: workspace:*
+        version: link:../model-router
+      '@soot/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@soot/task-graph':
+        specifier: workspace:*
+        version: link:../task-graph
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
 
   packages/harness-adapters: {}
 

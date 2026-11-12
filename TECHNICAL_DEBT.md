@@ -19,8 +19,8 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 
 ## Code
 
-- **[Intentional] 7 of 13 workspace packages are still stubs** (`cli`, `model-registry`,
-  `model-router`, `escalation`, `provider-adapters`, `harness-adapters`, `integrations`).
+- **[Intentional] 3 of 13 workspace packages are still stubs** (`cli`, `harness-adapters`,
+  `integrations`).
   Package boundaries are kept (ADR-019).
 - **[Intentional] Decomposition is fixture-only.** `FixtureDecomposer` matches recorded
   prompts and refuses others; there is no prompt analysis. Model-backed decomposition comes
@@ -28,8 +28,8 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Intentional] Agents are mocks.** `MockAgentRunner` is the only runner. Scheduler
   `succeeded` means agent-reported success with a valid result, not verified evidence; the
   acceptance-criteria and evidence check is Milestone 5.
-- **[Intentional] No retries, timeouts, or escalation in the scheduler** (Milestone 4). A hung
-  runner blocks its task until cancelled.
+- **[Intentional] Timeouts are opt-in.** Without `attemptTimeoutMs` a hung runner blocks its
+  task until cancelled. Without a supervisor the scheduler runs one attempt per task.
 - **[Intentional] No orchestrator wiring module.** The intake → decompose → graph → schedule →
   store flow is wired in `tests/m1-end-to-end.test.ts`; a reusable entry point arrives with
   the CLI/skill (Milestone 6) or earlier if Milestone 5 needs it.
@@ -43,8 +43,8 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   weakening the overlap assertions.
 - **[Intentional] The kill/restart test builds all packages** (`tsc -b`) in `beforeAll`
   because the child process runs the built output.
-- **[Intentional] SQLite schema has no migrations yet** (version 1; other versions are
-  refused). Scheduler timestamps in `RunReport` are process-monotonic; persisted times are
+- **[Intentional] SQLite migrations are hand-written** (v1→v2 in place; unknown versions are
+  refused). There is no migration framework. Scheduler timestamps in `RunReport` are process-monotonic; persisted times are
   wall-clock ISO strings.
 - **[Intentional] `parseEnv` is not called by any runtime yet** and nothing loads `.env`
   files; it exists to fix the config contract for local-first state (`SOOT_DATA_DIR`).
@@ -58,7 +58,8 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   against mocked HTTP shaped from SDK and provider documentation. Wire-format drift will only
   show up with user-supplied keys (ADR-011).
 - **[Intentional] Provider health is in memory.** Cooldowns reset when the process restarts.
-  Persist them in `soot.sqlite` when long-running orchestration needs it (Milestone 4).
+  Milestone 4 marks health from attempt failures, but still in memory: a restarted run can
+  retry a provider that was down. Persist health in `soot.sqlite` when runs get long.
 - **[Intentional] OpenAI uses Chat Completions, not the Responses API** (ADR-022). Responses-only
   features (built-in tools, reasoning summaries) are unavailable until an adapter is added.
 - **[Intentional] Pricing is flat per million tokens.** There are no long-context tiers,
@@ -83,18 +84,36 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Intentional] Policy thresholds and the prior weight are untuned defaults.** Calibrate them
   from recorded history and benchmark runs (spec §17 Test 5, Milestone 6).
 - **[Intentional] Success history is in memory.** Nothing aggregates attempts from `soot.sqlite`
-  into `SuccessHistory` yet. Wire this up when real attempts exist (Milestone 4).
+  into `SuccessHistory` yet. Milestone 4 persists per-attempt history, but only mock agents
+  produce it; aggregate it once real attempts exist (after M2-07).
 - **[Intentional] The routing log is in memory** (text and JSON Lines export). Persisting it with
   the run in `soot.sqlite` is part of the audit log (Milestone 5).
 - **[Intentional] Latency is not part of routing** (spec §5 step 6). Availability is, through
   `ProviderHealth`.
-- **[Intentional] Routing is done once per task.** Re-evaluation during execution (escalation
-  and downgrade) is Milestone 4.
+- **[Intentional] Routing is re-done per attempt** (Milestone 4), but never inside an attempt.
 - **[Intentional] Routed estimates are not yet written back automatically** into cost records.
   `tests/m3-routing-end-to-end.test.ts` shows the wiring by hand. The runtime will do it when
   real execution lands.
 - **[Intentional] The router tests use a fictional registry.** Its prices and reliability priors
   describe no real model.
+
+## Adaptive execution (Milestone 4)
+
+- **[Intentional] Triggers rely on agent self-report** (`AgentResult.signals`: confidence,
+  complexity, unmet criteria, tool errors). A dishonest or miscalibrated agent can avoid or
+  cause escalation. Milestone 5 checks acceptance criteria against evidence.
+- **[Intentional] Downgrade happens only at task start**, for dependents of `planReady` work.
+  Switching models in the middle of an attempt needs a streaming agent loop.
+- **[Intentional] Escalation and budget thresholds are untuned defaults** (ADR-024). Calibrate
+  them from real runs after M2-07.
+- **[Intentional] Spend uses routed estimates** when the runner reports no actual cost (mocks
+  always do). Real costs depend on M2-07.
+- **[Intentional] Run-budget spend lives in the supervisor's memory**; on resume it is rebuilt
+  per task from persisted attempt history only as each task is planned again.
+- **[Intentional] Latency is not a trigger.** Slow attempts are handled only by
+  `attemptTimeoutMs`.
+- **[Intentional] Backoff timing tests use real timers** with short delays (tens of ms) and
+  lower-bound assertions.
 
 ## Documentation / community
 

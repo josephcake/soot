@@ -9,7 +9,7 @@ every exit criterion is verified from real runs. Dates are recorded only when ve
 | M1        | Core Orchestration                | Completed (verified locally with mock agents)       | 2026-11-12      |
 | M2        | Multi-Provider Model Connectivity | In Progress (partial; mocks only, M2-07 blocked)    | —               |
 | M3        | Intelligent Model Routing         | Completed (verified locally with fixture registry)  | 2026-11-12      |
-| M4        | Adaptive Execution                | Not Started                                         | —               |
+| M4        | Adaptive Execution                | Completed (verified locally with mock agents)       | 2026-11-12      |
 | M5        | Codebase Integration and Safety   | Not Started                                         | —               |
 | M6        | Universal Skill and CLI           | Not Started                                         | —               |
 | M7        | IDE Extensions                    | Not Started                                         | —               |
@@ -66,8 +66,9 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Deliverables:** execution monitoring; escalation and downgrade rules; retry management; context transfer; failure recovery; task cancellation.
 - **Dependencies:** M1, M3.
 - **Acceptance / exit criteria:** a task can be escalated during execution; previous findings are preserved; unrelated completed tasks are not restarted; escalation loops are bounded.
-- **Status:** Not Started
-- **Completion date:** —
+- **Status:** Completed. Verified locally with mock agents, the fictional routing registry and the spec's fixture prompts (§17 Tests 3 and 6), without network access or keys. Triggers rely on agents' structured self-report until Milestone 5 checks evidence (ADR-024). Escalated tasks cannot run on real providers until M2-07 (Blocked).
+- **Evidence:** `tests/m4-adaptive-end-to-end.test.ts` (EC1–EC6), `packages/escalation` tests (M4-01…M4-04), `packages/agent-runtime/src/scheduler-attempts.test.ts` (M4-05, M4-06), `packages/context-manager/src/execution-store.test.ts` (attempt history, schema v2).
+- **Completion date:** 2026-11-12
 
 ## M5 — Codebase Integration and Safety
 

@@ -1,8 +1,9 @@
 import { mkdtempSync, rmSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MockAgentRunner, runTaskGraph } from '@soot/agent-runtime';
+import { MockAgentRunner, runTaskGraph, type AttemptSupervisor } from '@soot/agent-runtime';
 import { buildTaskGraph, type Task } from '@soot/task-graph';
 import { STATE_DB_FILE, openExecutionStore } from './index.js';
 
@@ -117,5 +118,90 @@ describe('execution store (M1-07)', () => {
     }).toThrow(/Unknown run/);
     expect(() => store.loadRun('nope')).toThrow(/Unknown run/);
     store.close();
+  });
+});
+
+describe('execution store: attempt history (Milestone 4)', () => {
+  /** Retries every failure once on a named model, then gives up. */
+  const retryOnce: AttemptSupervisor = {
+    plan: ({ attempt }) => ({
+      action: 'run',
+      assignment: {
+        model: attempt === 1 ? 'alpha/first' : 'beta/second',
+        reason: `attempt ${String(attempt)}`,
+        escalationLevel: attempt - 1,
+        estimatedCostUsd: 0.01,
+      },
+    }),
+    review: ({ record, history }) =>
+      record.failure === null
+        ? { action: 'accept' }
+        : history.length === 0
+          ? { action: 'retry', delayMs: 0, note: 'escalate once' }
+          : { action: 'fail', reason: 'gave up' },
+  };
+
+  it('persists assignment, failure, and review per attempt and loads them as attempt records', async () => {
+    const dataDir = tempDir();
+    const graph = buildTaskGraph([task('a'), task('b')]);
+    const store = openExecutionStore({ dataDir });
+    const runId = store.createRun({ intake, graph });
+    const report = await runTaskGraph(graph, {
+      runner: new MockAgentRunner({
+        scripts: { a: [{ outcome: 'invalid' }, {}], b: { outcome: 'fail' } },
+      }),
+      journal: store.journal(runId),
+      supervisor: retryOnce,
+    });
+    expect(report.outcomes.get('a')?.state).toBe('succeeded');
+    expect(report.outcomes.get('b')?.state).toBe('failed');
+    store.close();
+
+    const reopened = openExecutionStore({ dataDir });
+    const run = reopened.loadRun(runId);
+    reopened.close();
+    const rows = run.attempts.filter((r) => r.taskId === 'a');
+    expect(rows.map((r) => [r.attempt, r.state])).toEqual([
+      [1, 'retried'],
+      [2, 'succeeded'],
+    ]);
+    const a = run.attemptRecords.get('a') ?? [];
+    expect(
+      a.map((r) => [r.attempt, r.assignment?.model, r.failure?.kind ?? null, r.review]),
+    ).toEqual([
+      [1, 'alpha/first', 'invalid-output', { action: 'retry', delayMs: 0, note: 'escalate once' }],
+      [2, 'beta/second', null, { action: 'accept' }],
+    ]);
+    const b = run.attemptRecords.get('b') ?? [];
+    expect(b.map((r) => [r.failure?.kind, r.review?.action])).toEqual([
+      ['reported-failure', 'retry'],
+      ['reported-failure', 'fail'],
+    ]);
+    expect(b[0]?.result?.status).toBe('failed');
+    expect(run.attemptCounts.get('b')).toBe(2);
+  });
+
+  it('migrates a v1 database in place and refuses unknown future versions', () => {
+    const dataDir = tempDir();
+    const store = openExecutionStore({ dataDir });
+    const runId = store.createRun({ intake, graph: buildTaskGraph([task('a')]) });
+    store.close();
+    // Turn it back into a v1 database: no attempt_details table, schema_version 1.
+    const db = new DatabaseSync(join(dataDir, STATE_DB_FILE));
+    db.exec(
+      `DROP TABLE attempt_details; UPDATE meta SET value = '1' WHERE key = 'schema_version';`,
+    );
+    db.close();
+
+    const migrated = openExecutionStore({ dataDir });
+    expect(migrated.loadRun(runId).attemptRecords.size).toBe(0);
+    migrated.close();
+    const check = new DatabaseSync(join(dataDir, STATE_DB_FILE));
+    expect(check.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get()).toEqual({
+      value: '2',
+    });
+    check.exec(`UPDATE meta SET value = '3' WHERE key = 'schema_version';`);
+    check.close();
+    expect(() => openExecutionStore({ dataDir })).toThrow(/Unsupported state schema version 3/);
   });
 });

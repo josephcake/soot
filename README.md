@@ -57,12 +57,13 @@ These are recorded in [`DECISIONS.md`](DECISIONS.md).
 | `@soot/core`               | Exports package metadata and `parseEnv()` for `SOOT_*` vars            |
 | `@soot/task-graph`         | Task + agent-result contracts (JSON Schema), dependency graph (M1)     |
 | `@soot/planner`            | Immutable prompt intake; fixture-backed decomposer only (M1)           |
-| `@soot/agent-runtime`      | Concurrent scheduler + `MockAgentRunner` test double (M1)              |
-| `@soot/context-manager`    | SQLite execution state, resume after kill (M1)                         |
+| `@soot/agent-runtime`      | Concurrent scheduler + `MockAgentRunner`; supervised attempts (M1, M4) |
+| `@soot/context-manager`    | SQLite execution state and attempt history, resume after kill (M1, M4) |
 | `@soot/observability`      | Estimate vs actual cost records (M1); routing explanation log (M3)     |
 | `@soot/model-registry`     | User model config, availability, selection, sourced pricing (M2)       |
 | `@soot/provider-adapters`  | `ModelClient` over the AI SDK, mocked-HTTP verified (M2)               |
 | `@soot/model-router`       | Per-task routing with policies and explanations, fixture-verified (M3) |
+| `@soot/escalation`         | Escalation, fallback, bounds, downgrade; mock-verified (M4)            |
 | Everything else            | **Stub** (exports only its name and `IMPLEMENTATION_STATUS = 'stub'`)  |
 
 ### Supported providers

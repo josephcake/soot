@@ -101,14 +101,20 @@ M1-05/M1-08 `packages/agent-runtime/src/{scheduler,mock-agent}.test.ts`; M1-07
 
 ## M4 — Adaptive Execution
 
-| ID    | Description                                                                                                | Priority | Milestone | Dependencies | Status      | Component                            | Acceptance criteria                                                    |
-| ----- | ---------------------------------------------------------------------------------------------------------- | -------- | --------- | ------------ | ----------- | ------------------------------------ | ---------------------------------------------------------------------- |
-| M4-01 | Escalation trigger detection (repeated failure, unmet criteria, low confidence, tool errors, token blowup) | P0       | M4        | M1-05, M3-04 | Not Started | packages/escalation                  | Simulated failures trigger escalation (spec §17 Test 3).               |
-| M4-02 | Reassignment with context transfer (findings preserved)                                                    | P0       | M4        | M4-01, M1-07 | Not Started | packages/escalation, context-manager | Escalated task receives prior findings; unrelated tasks not restarted. |
-| M4-03 | Bounded retries, escalation limits, budget constraints                                                     | P0       | M4        | M4-01        | Not Started | packages/escalation                  | Loop bound enforced in tests.                                          |
-| M4-04 | Downgrade rules after plan/investigation completes                                                         | P1       | M4        | M4-02        | Not Started | packages/escalation                  | Downgrade observed in scripted scenario; avoids needless switching.    |
-| M4-05 | Failure recovery: timeout, rate limit, outage, invalid output (spec §17 Test 6)                            | P1       | M4        | M2-05, M4-03 | Not Started | packages/agent-runtime               | Each failure simulated; state preserved; workflow resumes.             |
-| M4-06 | Task and workflow cancellation                                                                             | P1       | M4        | M1-05        | Not Started | packages/agent-runtime               | Cancel one task / whole run; no orphaned work.                         |
+> Status: **Completed (verified locally with mock agents and a fictional registry)**,
+> 2026-11-12. Signals come from agent self-report until Milestone 5 checks evidence (ADR-024).
+> Running escalated tasks on real providers still depends on M2-07 (Blocked). Evidence:
+> `packages/escalation/src/*.test.ts`, `packages/agent-runtime/src/scheduler-attempts.test.ts`,
+> `packages/context-manager/src/execution-store.test.ts`, `tests/m4-adaptive-end-to-end.test.ts`.
+
+| ID    | Description                                                                                                | Priority | Milestone | Dependencies | Status    | Component                            | Acceptance criteria                                                    |
+| ----- | ---------------------------------------------------------------------------------------------------------- | -------- | --------- | ------------ | --------- | ------------------------------------ | ---------------------------------------------------------------------- |
+| M4-01 | Escalation trigger detection (repeated failure, unmet criteria, low confidence, tool errors, token blowup) | P0       | M4        | M1-05, M3-04 | Completed | packages/escalation                  | Simulated failures trigger escalation (spec §17 Test 3).               |
+| M4-02 | Reassignment with context transfer (findings preserved)                                                    | P0       | M4        | M4-01, M1-07 | Completed | packages/escalation, context-manager | Escalated task receives prior findings; unrelated tasks not restarted. |
+| M4-03 | Bounded retries, escalation limits, budget constraints                                                     | P0       | M4        | M4-01        | Completed | packages/escalation                  | Loop bound enforced in tests.                                          |
+| M4-04 | Downgrade rules after plan/investigation completes                                                         | P1       | M4        | M4-02        | Completed | packages/escalation                  | Downgrade observed in scripted scenario; avoids needless switching.    |
+| M4-05 | Failure recovery: timeout, rate limit, outage, invalid output (spec §17 Test 6)                            | P1       | M4        | M2-05, M4-03 | Completed | packages/agent-runtime               | Each failure simulated; state preserved; workflow resumes.             |
+| M4-06 | Task and workflow cancellation                                                                             | P1       | M4        | M1-05        | Completed | packages/agent-runtime               | Cancel one task / whole run; no orphaned work.                         |
 
 ## M5 — Codebase Integration and Safety
 

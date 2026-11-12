@@ -65,6 +65,25 @@ export const ReportedUsageSchema = z
   })
   .strict();
 
+/**
+ * Optional self-assessment an agent may report (Milestone 4). These are agent CLAIMS used to
+ * decide escalation and downgrade; they are never treated as verified evidence.
+ */
+export const AgentSignalsSchema = z
+  .object({
+    /** Agent's confidence in its result, 0..1. */
+    confidence: z.number().min(0).max(1).optional(),
+    /** How the work compares with the plan's complexity estimate. */
+    complexity: z.enum(['lower', 'as-expected', 'higher']).optional(),
+    /** Tool invocations that failed during the attempt. */
+    toolErrors: z.int().nonnegative().optional(),
+    /** Acceptance criteria the agent knows are NOT met (verbatim or paraphrased). */
+    unmetCriteria: z.array(shortText).max(RESULT_LIST_LIMIT).optional(),
+    /** The attempt produced a clear plan or finished its investigation (downgrade signal). */
+    planReady: z.boolean().optional(),
+  })
+  .strict();
+
 export const AgentResultSchema = z
   .object({
     taskId: TaskIdSchema,
@@ -75,9 +94,11 @@ export const AgentResultSchema = z
     patch: PatchRefSchema.nullable(),
     evidence: z.array(EvidenceSchema).max(RESULT_LIST_LIMIT),
     usage: ReportedUsageSchema,
+    signals: AgentSignalsSchema.optional(),
   })
   .strict();
 
+export type AgentSignals = z.infer<typeof AgentSignalsSchema>;
 export type AgentResult = z.infer<typeof AgentResultSchema>;
 export type Finding = z.infer<typeof FindingSchema>;
 export type PatchRef = z.infer<typeof PatchRefSchema>;

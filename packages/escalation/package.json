@@ -2,7 +2,7 @@
   "name": "@soot/escalation",
   "version": "0.0.0",
   "private": true,
-  "description": "[Stub \u2014 Milestone 4] Runtime escalation and downgrade decisions.",
+  "description": "Adaptive execution decisions: escalation triggers, reassignment with context transfer, bounded retries and budgets, downgrades, failure recovery.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -23,5 +23,13 @@
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "test": "vitest run --config ../../vitest.config.ts --project @soot/escalation"
+  },
+  "dependencies": {
+    "@soot/agent-runtime": "workspace:*",
+    "@soot/model-registry": "workspace:*",
+    "@soot/model-router": "workspace:*",
+    "@soot/observability": "workspace:*",
+    "@soot/task-graph": "workspace:*",
+    "zod": "^4.6.7"
   }
 }
