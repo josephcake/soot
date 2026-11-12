@@ -2,6 +2,8 @@ import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 import { parseArgs } from 'node:util';
 import { createLogger } from '@soot/core';
+// Type only (erased at build): the dashboard module itself is loaded lazily in `soot dashboard`.
+import type * as Dashboard from '@soot/dashboard';
 import type { CommandOutput } from '@soot/harness-adapters';
 import { interactiveApprovals, unattendedApprovals } from './approvals.js';
 import { SootEngine, runtimeFromEnv, type AgentMode } from './engine.js';
@@ -18,6 +20,8 @@ export interface CliIo {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly cwd: string;
   readonly signal?: AbortSignal;
+  /** `soot dashboard --open` only; defaults to the platform's browser opener. */
+  readonly openUrl?: (url: string) => void;
 }
 
 export const USAGE = `soot ${VERSION} — task-level orchestration for coding harnesses
@@ -31,6 +35,7 @@ Usage:
   soot stop <run-id> [--task <task-id>]
   soot mcp [--agent mock --mock-script <file> | --agent acp]   MCP server on stdio (unattended)
   soot install-skill [--target <dir>] [--harness agents,claude,grok] [--force]
+  soot dashboard [--port <n>] [--open]   optional local dashboard on 127.0.0.1 (default port 8787)
 
 Global options:
   --config <file>   project config (default <repo>/soot.config.json)
@@ -44,6 +49,10 @@ Agents: --agent mock runs a scripted test double (no model is called). --agent a
 task through the ACP agent command configured as "acpAgent" in soot.config.json (generic ACP
 driver; no harness is verified). Decomposition uses recorded fixtures only. soot never approves anything for you: with --interactive (or a terminal)
 it asks; otherwise approval-needing work is refused.
+
+Dashboard: off unless you run "soot dashboard". It binds 127.0.0.1 only, fails if the port is
+taken (no other port is tried), is read-only, and opens a browser only with --open. Every
+other command is headless and never loads it.
 
 Exit codes: 0 ok / run complete, 1 error, 2 run incomplete, 3 run cancelled.`;
 
@@ -60,6 +69,8 @@ const OPTIONS = {
   target: { type: 'string' },
   harness: { type: 'string' },
   force: { type: 'boolean' },
+  port: { type: 'string' },
+  open: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
   version: { type: 'boolean' },
 } as const;
@@ -112,6 +123,8 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
   }
   const asJson = values.json === true;
   try {
+    if (command !== 'dashboard' && (values.port !== undefined || values.open !== undefined))
+      throw new UsageError('--port and --open are only for soot dashboard');
     // SOOT_DATA_DIR / SOOT_LOG_LEVEL (parseEnv). With --json, log lines are off so stdout and
     // stderr stay machine-readable; otherwise they go to stderr at SOOT_LOG_LEVEL.
     const runtime = runtimeFromEnv(io.env, io.cwd, values['data-dir']);
@@ -208,6 +221,64 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
         case 'mcp': {
           const { serveMcpStdio } = await import('./mcp.js');
           await serveMcpStdio(engine);
+          return 0;
+        }
+        case 'dashboard': {
+          if (rest.length > 0) throw new UsageError('dashboard takes no arguments');
+          // The optional dashboard is loaded here and only here (ADR-031).
+          let dashboard: typeof Dashboard;
+          try {
+            dashboard = await import('@soot/dashboard');
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ERR_MODULE_NOT_FOUND') throw error;
+            throw new Error(
+              'the optional @soot/dashboard package is not installed (headless commands do not need it)',
+              { cause: error },
+            );
+          }
+          let port: number;
+          try {
+            port = dashboard.parsePort(values.port);
+          } catch (error) {
+            throw new UsageError((error as Error).message);
+          }
+          const server = await dashboard.startDashboard({ source: engine, port });
+          print(
+            io,
+            {
+              ok: true,
+              text: `soot dashboard: ${server.url} (127.0.0.1 only, read-only; Ctrl-C stops it)`,
+              data: {
+                url: server.url,
+                address: server.address.address,
+                family: server.address.family,
+                port: server.address.port,
+              },
+            },
+            asJson,
+          );
+          if (values.open === true) {
+            if (io.openUrl !== undefined) io.openUrl(server.url);
+            else {
+              const { openInBrowser } = await import('./open-url.js');
+              openInBrowser(server.url, (line) => {
+                io.stderr(`${line}\n`);
+              });
+            }
+          }
+          await new Promise<void>((done) => {
+            if (io.signal === undefined) return;
+            if (io.signal.aborted) done();
+            else
+              io.signal.addEventListener(
+                'abort',
+                () => {
+                  done();
+                },
+                { once: true },
+              );
+          });
+          await server.close();
           return 0;
         }
         default:

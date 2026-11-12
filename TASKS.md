@@ -217,6 +217,31 @@ M7 notes (2026-11-12, ADR-029):
   cancels one task through the scheduler; its dependents are skipped and other tasks continue.
   Runs started from the IDE are unattended: approvals are refused, never given.
 
+## Optional local dashboard (cross-cutting, ADR-031)
+
+A new optional local surface, not a milestone. This row does not change any milestone status.
+
+| ID   | Description                                                                                   | Priority | Milestone | Dependencies | Status      | Component                | Acceptance criteria                                                                                                                           |
+| ---- | --------------------------------------------------------------------------------------------- | -------- | --------- | ------------ | ----------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-01 | `soot dashboard`: simple local page + read-only JSON API for spec §12 fields                  | P3       | — (cross) | M6-01        | Implemented | apps/dashboard, apps/cli | Binds 127.0.0.1 only (tested on the socket); opt-in, lazy-loaded; headless commands never load it; unknowns stay null.                        |
+| D-02 | Dashboard charts: usage by model/task/runner; prompt → task → model assignment view           | P3       | — (cross) | D-01         | Implemented | apps/dashboard, apps/cli | Estimates and actuals in separate charts; unknown shown as unknown; transitions shown per task.                                               |
+| D-03 | Dashboard palette (black/orange/cream) and more chart types (donut, meter, stacked, timeline) | P3       | — (cross) | D-02         | Implemented | apps/dashboard           | Zero slices omitted; null rate n/a with no fill; estimates and actuals never share a chart; no zero-length bar for an unknown or running end. |
+
+Dashboard notes (2026-11-12):
+
+- **D-01:** Implemented and tested locally against mock runs only (no real model has produced
+  data). Not run by anyone in a desktop browser session; a headless Chrome screenshot of a mock
+  run was checked on the build box. Tests: `apps/dashboard/src/view.test.ts`,
+  `apps/dashboard/src/server.test.ts`, `tests/dashboard.test.ts`.
+- **D-02:** chart blocks on the same page and API (ADR-031 amendment), CSS bars and plain DOM.
+  Mock runs only; checked by tests (including the page script against a fake DOM) and a
+  headless Chrome screenshot of an escalated mock run. Tests: `apps/dashboard/src/charts.test.ts`,
+  `apps/dashboard/src/ui.test.ts`, `apps/dashboard/src/view.test.ts`, `tests/dashboard.test.ts`.
+- **D-03:** palette and chart types per the ADR-031 amendment; page script only, no API or
+  dependency change. Mock runs only; checked by `apps/dashboard/src/ui.test.ts` (fake DOM) and a
+  headless Chrome screenshot of an escalated mock run. Not looked at in a desktop browser by
+  anyone yet.
+
 ## Engine hardening (cross-cutting, ADR-030)
 
 Prepares the engine for real keys or a real harness; nothing here uses either. These rows do

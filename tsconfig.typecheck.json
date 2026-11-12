@@ -8,6 +8,7 @@
     "sourceMap": false,
     "paths": {
       "@soot/cli": ["./apps/cli/src/index.ts"],
+      "@soot/dashboard": ["./apps/dashboard/src/index.ts"],
       "@soot/*": ["./packages/*/src/index.ts"]
     }
   },

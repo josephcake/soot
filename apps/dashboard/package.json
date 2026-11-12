@@ -1,0 +1,27 @@
+{
+  "name": "@soot/dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Optional local dashboard for soot (ADR-031): a small static page and a read-only JSON API on 127.0.0.1, started only by `soot dashboard`.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run --config ../../vitest.config.ts --project @soot/dashboard"
+  }
+}

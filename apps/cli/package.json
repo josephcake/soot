@@ -2,7 +2,7 @@
   "name": "@soot/cli",
   "version": "0.0.0",
   "private": true,
-  "description": "soot command-line interface: run, models, status, config, cost, stop, mcp, install-skill (Milestone 6, fixture-backed).",
+  "description": "soot command-line interface: run, models, status, config, cost, stop, mcp, install-skill, dashboard (optional) (Milestone 6, fixture-backed).",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -43,6 +43,15 @@
     "soot": "./dist/bin.js"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "2.4.0"
+    "@modelcontextprotocol/client": "2.4.0",
+    "@soot/dashboard": "workspace:*"
+  },
+  "peerDependencies": {
+    "@soot/dashboard": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@soot/dashboard": {
+      "optional": true
+    }
   }
 }

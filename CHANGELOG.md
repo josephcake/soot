@@ -5,6 +5,44 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Changed (dashboard palette and chart types, ADR-031 amendment, TASKS D-03; no milestone status change)
+
+- Palette: near-black page and blocks, orange `#ff7a1a` accent, cream `#e8dcc8` highlights and
+  hatched estimates, warm-gray notes, redder-orange errors. Yellow and blue are gone.
+- New chart types from the existing payload: outcome pixel donut and success-rate meter, stacked
+  input/output token bars (planned and reported apart), estimate-only and actual-only cost
+  charts, an attempt timeline, validation counts by status, a transition count chart, and
+  estimated/actual USD share donuts in each usage block. Cost by model is folded into the usage
+  by model block with its numbers as text. No API or dependency change.
+- Tests: more `apps/dashboard/src/ui.test.ts` cases (zero slices left out, null rate n/a with no
+  fill, estimates and actuals apart, no finished bar for a running or unknown end).
+
+### Added (dashboard charts, ADR-031 amendment; no milestone status change)
+
+- Usage charts by model, task and runner (estimated USD, actual USD, planner tokens, reported
+  tokens as separate CSS bar charts; unknown written as "unknown", never a bar) and an
+  assignment view (prompt → tasks → model chain with retry/fallback/escalate/downgrade). Same
+  run API, no chart library, no new dependencies.
+- `DashboardRun` adds `agent`, `usage` and `assignment`; `soot status <run>` adds task
+  `title`/`instructions` and run `agent`/`agentLabel`.
+- Tests: `apps/dashboard/src/charts.test.ts`, `ui.test.ts` (page blocks against a fake DOM),
+  more cases in `view.test.ts`, and an escalation run in `tests/dashboard.test.ts`.
+
+### Added (optional local dashboard, ADR-031; no milestone status change)
+
+- `@soot/dashboard` (`apps/dashboard`): a static block page and a read-only JSON API
+  (`/api/runs`, `/api/runs/<id>`) on Node's `http`, bound to 127.0.0.1 only, showing the spec
+  §12 fields from the engine's own status and cost data. No framework, no dependencies, no
+  outbound requests, no savings claimed.
+- `soot dashboard [--port <n>] [--open]`: default port 8787, fails if the port is taken, opens a
+  browser only with `--open`, stops on Ctrl-C. Loaded lazily by that command only; headless
+  commands never load it.
+- `soot status <run>` data adds run `createdAt`, attempt `startedAt`/`finishedAt`, per-task
+  `checks`, `finalValidation` and `problems` (additive).
+- Tests: `apps/dashboard/src/{view,server}.test.ts`, `tests/dashboard.test.ts` (built binary:
+  127.0.0.1-only listen checked on the socket and in `/proc/net/tcp`; taken port fails; headless
+  commands and `soot mcp` run with the dashboard made unloadable and never listen).
+
 ### Fixed (docs)
 
 - Stale tracking claims after ADR-030: attempt timeouts are no longer described as opt-in,

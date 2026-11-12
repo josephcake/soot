@@ -44,6 +44,16 @@ provider that was down and rebuilds its budget; routed estimates go into cost re
 automatically and every routing decision is in the run's audit log; attempts default to a
 30-minute timeout. The unpublished `.vsix` has an unverified sideload note.
 
+Optional local dashboard (ADR-031, TASKS D-01, no milestone status change): `soot dashboard`
+serves a simple block page and a read-only JSON API on 127.0.0.1 only (default port 8787,
+`--port`, fails if the port is taken, browser only with `--open`). It shows the spec §12 fields
+from the engine's own status and cost data, keeps unknown costs unknown, and claims no savings
+(no benchmark data). Headless soot never loads it. Data so far comes from mock runs only.
+Chart blocks (D-02) show usage by model, task and runner, with estimates and actuals in
+separate charts, and an assignment view from the prompt to each task's model chain.
+D-03 restyles it black/orange/cream and adds an outcome donut, success-rate meter, stacked token
+bars, an attempt timeline and validation counts (page script only, no API change).
+
 Milestone 5 is Completed and verified locally on real temporary git repositories, with real
 `node --test`, `tsc` and lint commands run by soot itself and mock agents that write files (no
 model is called). Each writing task runs in its own worktree under a write lease; soot reads the
@@ -154,10 +164,10 @@ Not Ready (MVP-01, MVP-02, MVP-05 core in place with fixtures/mocks; MVP-03 part
 
 ## Latest Validation
 
-Recorded 2026-11-12 ~04:04 PST from a real run of `bash scripts/ci.sh` in `/workspace/soot`, Node 24.22.1, git 2.47.3. The run covers install --frozen-lockfile, typecheck, lint, format:check, test and a clean build.
+Recorded 2026-11-12 ~12:42 PST from a real run of `bash scripts/ci.sh` in `/workspace/soot`, Node 24.22.1, git 2.47.3. The run covers install --frozen-lockfile, typecheck, lint, format:check, test and a clean build.
 
-- **Build:** pass. `tsc -b` built all 14 workspace packages (13 + `apps/vscode-extension`).
-- **Tests:** pass. 64 test files (63 passed, 1 skipped) and 459 tests (458 passed, 1 skipped, 0 failures), Vitest 5.1.0. The skipped test is the live local-endpoint test: no runtime was listening on 127.0.0.1:11434 or :1234.
+- **Build:** pass. `tsc -b` built all 15 workspace packages (12 under `packages/`, plus `apps/cli`, `apps/vscode-extension` and `apps/dashboard`).
+- **Tests:** pass. 69 test files (68 passed, 1 skipped) and 492 tests (491 passed, 1 skipped, 0 failures), Vitest 5.1.0. The skipped test is the live local-endpoint test: no runtime was listening on 127.0.0.1:11434 or :1234.
 - **Typecheck / lint / format:** pass.
-- **Network audit:** the in-process suite was re-run with a global `fetch` guard; the only real requests were the two localhost probes. Subprocess tests (`soot stop`, `soot mcp`, the env/log-level/health/audit/cost CLI tests in `tests/hardening-cli.test.ts`, and the mock ACP agent processes spawned by `soot run --agent acp`) run built soot code that does not depend on the provider adapters. The only ACP agent ever spawned is soot's own mock (`node .../mock-agent-bin.js`); no vendor binary was run. No key-like environment variables were set.
+- **Network audit:** the in-process suite was re-run with a global `fetch` guard; the only real requests were the two localhost probes and the dashboard tests' requests to their own 127.0.0.1 server. Subprocess tests (`soot stop`, `soot mcp`, the env/log-level/health/audit/cost CLI tests in `tests/hardening-cli.test.ts`, and the mock ACP agent processes spawned by `soot run --agent acp`) run built soot code that does not depend on the provider adapters. The only ACP agent ever spawned is soot's own mock (`node .../mock-agent-bin.js`); no vendor binary was run. No key-like environment variables were set.
 - **Quick start:** `docs/installation.md` reproduced step by step from a fresh `git clone` of this repo in `/tmp` (demo runs: unattended INCOMPLETE exit 2, interactive `y` COMPLETE exit 0 with fast-forward, Test 4 shape INCOMPLETE with the review unverified, skill installed into a temp dir).

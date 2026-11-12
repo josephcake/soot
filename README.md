@@ -46,24 +46,25 @@ These are recorded in [`DECISIONS.md`](DECISIONS.md).
 
 ## Current functionality (verified)
 
-| Area                       | Status                                                                 |
-| -------------------------- | ---------------------------------------------------------------------- |
-| pnpm monorepo, 13 packages | Builds with `tsc -b` (project references)                              |
-| Strict TypeScript          | Typecheck passes                                                       |
-| ESLint + Prettier          | Lint and format check pass                                             |
-| Vitest                     | Unit + repository-structure tests run                                  |
-| `@soot/core`               | Exports package metadata and `parseEnv()` for `SOOT_*` vars            |
-| `@soot/task-graph`         | Task + agent-result contracts (JSON Schema), dependency graph (M1)     |
-| `@soot/planner`            | Immutable prompt intake; fixture-backed decomposer only (M1)           |
-| `@soot/agent-runtime`      | Concurrent scheduler + `MockAgentRunner`; supervised attempts (M1, M4) |
-| `@soot/context-manager`    | SQLite execution state and attempt history, resume after kill (M1, M4) |
-| `@soot/observability`      | Cost records and reports (M1, M5); routing log (M3); audit log (M5)    |
-| `@soot/model-registry`     | User model config, availability, selection, sourced pricing (M2)       |
-| `@soot/provider-adapters`  | `ModelClient` over the AI SDK, mocked-HTTP verified (M2)               |
-| `@soot/model-router`       | Per-task routing with policies and explanations, fixture-verified (M3) |
-| `@soot/escalation`         | Escalation, fallback, bounds, downgrade; mock-verified (M4)            |
-| `@soot/integrations`       | Worktrees, soot-run checks, merge-tree integration, reports (M5)       |
-| Everything else            | **Stub** (exports only its name and `IMPLEMENTATION_STATUS = 'stub'`)  |
+| Area                                  | Status                                                                 |
+| ------------------------------------- | ---------------------------------------------------------------------- |
+| pnpm monorepo, 15 packages            | Builds with `tsc -b` (project references)                              |
+| Strict TypeScript                     | Typecheck passes                                                       |
+| ESLint + Prettier                     | Lint and format check pass                                             |
+| Vitest                                | Unit + repository-structure tests run                                  |
+| `@soot/core`                          | Exports package metadata and `parseEnv()` for `SOOT_*` vars            |
+| `@soot/task-graph`                    | Task + agent-result contracts (JSON Schema), dependency graph (M1)     |
+| `@soot/planner`                       | Immutable prompt intake; fixture-backed decomposer only (M1)           |
+| `@soot/agent-runtime`                 | Concurrent scheduler + `MockAgentRunner`; supervised attempts (M1, M4) |
+| `@soot/context-manager`               | SQLite execution state and attempt history, resume after kill (M1, M4) |
+| `@soot/observability`                 | Cost records and reports (M1, M5); routing log (M3); audit log (M5)    |
+| `@soot/model-registry`                | User model config, availability, selection, sourced pricing (M2)       |
+| `@soot/provider-adapters`             | `ModelClient` over the AI SDK, mocked-HTTP verified (M2)               |
+| `@soot/model-router`                  | Per-task routing with policies and explanations, fixture-verified (M3) |
+| `@soot/escalation`                    | Escalation, fallback, bounds, downgrade; mock-verified (M4)            |
+| `@soot/integrations`                  | Worktrees, soot-run checks, merge-tree integration, reports (M5)       |
+| `@soot/cli`, `@soot/harness-adapters` | `soot` CLI, MCP server, generic ACP driver (M6, partial)               |
+| `@soot/dashboard`                     | Optional local dashboard, `soot dashboard`, 127.0.0.1 only (ADR-031)   |
 
 ### Supported providers
 
@@ -89,6 +90,14 @@ and shows the task graph, active agents, models, escalations, failures and cost 
 with cancel-task and stop-run. It is tested with a fake editor API and the mock agent only and
 **has not been run in VS Code or Cursor**. Windsurf, Kilo Code and Copilot are not claimed. No
 compatibility is claimed until tested.
+
+### Local dashboard (optional)
+
+soot is headless by default. `soot dashboard` starts an optional read-only page on
+`http://127.0.0.1:8787` (127.0.0.1 only; `--port <n>` to change it; `--open` to open a browser)
+with each run's prompt, task graph, models, transitions, tokens, estimated and actual cost,
+duration, outcomes and validation. Unknown costs stay unknown and no savings are claimed. No
+other command starts or loads it ([`apps/dashboard`](apps/dashboard/README.md), ADR-031).
 
 ## Try it (no keys)
 

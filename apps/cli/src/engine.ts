@@ -471,12 +471,19 @@ export class SootEngine implements OrchestrationService {
     );
   }
 
-  #savedReport(runId: string): { report: ConsolidatedReport; decisions: string[] } | null {
+  #savedReport(runId: string): {
+    report: ConsolidatedReport;
+    decisions: string[];
+    agent?: string;
+    agentLabel?: string;
+  } | null {
     const path = this.#reportPath(runId);
     if (!existsSync(path)) return null;
     return JSON.parse(readFileSync(path, 'utf8')) as {
       report: ConsolidatedReport;
       decisions: string[];
+      agent?: string;
+      agentLabel?: string;
     };
   }
 
@@ -521,6 +528,9 @@ export class SootEngine implements OrchestrationService {
         const verdict = saved?.report.tasks.find((r) => r.taskId === t.id);
         return {
           taskId: t.id,
+          // The planner's text for this part of the prompt (validated task, not agent output).
+          title: t.title,
+          instructions: t.instructions,
           complexity: t.complexity,
           dependsOn: [...t.dependsOn],
           state: last?.state ?? 'pending',
@@ -529,6 +539,8 @@ export class SootEngine implements OrchestrationService {
           verdict: verdict?.verdict ?? null,
           complete: verdict?.complete ?? false,
           reason: verdict?.reason ?? null,
+          // soot-run checks on the task's diff (saved report); empty until the run has a report.
+          checks: (verdict?.checks ?? []).map((c) => ({ ...c })),
           attemptDetails: attempts.map((a) => ({
             attempt: a.attempt,
             state: a.state,
@@ -538,6 +550,8 @@ export class SootEngine implements OrchestrationService {
             actualCostUsd: a.result?.usage.costUsd ?? null,
             failure: a.failure?.kind ?? null,
             error: a.error,
+            startedAt: a.startedAt,
+            finishedAt: a.finishedAt,
           })),
         };
       });
@@ -561,9 +575,25 @@ export class SootEngine implements OrchestrationService {
           state,
           running,
           prompt: run.originalPrompt,
+          createdAt: run.createdAt,
           tasks,
           events: this.#events(runId),
           reportStatus: saved?.report.status ?? null,
+          // The runner that ran every task (saved report); null until the run has a report.
+          agent: saved?.agent ?? null,
+          agentLabel: saved?.agentLabel ?? null,
+          // Run-level final validation from the saved report (output tails left out); null
+          // until the run has a report or when no final validation ran.
+          finalValidation:
+            saved?.report.finalValidation?.map((c) => ({
+              name: c.name,
+              kind: c.kind,
+              status: c.status,
+              required: c.required,
+              exitCode: c.exitCode,
+              durationMs: c.durationMs,
+            })) ?? null,
+          problems: saved === null ? [] : [...saved.report.problems],
         }) as Record<string, JsonValue>,
       });
     } finally {

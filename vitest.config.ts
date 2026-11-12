@@ -31,7 +31,7 @@ export default defineConfig({
         replacement: `${repoRoot}apps/vscode-extension/src/test-support/fake-vscode.ts`,
       },
       {
-        find: /^@soot\/(cli)$/,
+        find: /^@soot\/(cli|dashboard)$/,
         replacement: `${repoRoot}apps/$1/src/index.ts`,
       },
       {

@@ -72,6 +72,15 @@ Bring your own keys, read only by the provider adapters from environment variabl
   reason, until, error detail) and per-attempt spend in plain text (no encryption at rest); the
   state directory is created with mode 0700. No credential is stored.
 
+## Local dashboard (optional)
+
+`soot dashboard` (ADR-031) is off unless you run it. It binds 127.0.0.1 only, verifies the
+bound address, answers only `GET`/`HEAD` with `Host: 127.0.0.1:<port>` or `localhost:<port>`
+(other hosts get 421, against DNS rebinding), and sends a strict Content-Security-Policy. It
+reads the engine's status and cost data, makes no outbound requests, calls no provider and reads
+no keys or environment. It has no login: anyone who can reach 127.0.0.1 on this machine (other
+local users or processes) can read run prompts and results while it runs. Stop it with Ctrl-C.
+
 ## Known limits
 
 - **No OS sandbox.** Worktrees isolate git state, not processes. A runner that writes outside

@@ -18,6 +18,10 @@ Engine hardening (ADR-030: env-driven runtime, persisted provider health and spe
 routing, default attempt timeout) is tracked in TASKS.md (H-01…H-05) and changes no milestone
 status.
 
+The optional local dashboard (ADR-031: `soot dashboard`, 127.0.0.1 only, read-only, headless
+stays the default) is tracked in TASKS.md (D-01, charts D-02, palette and chart types D-03) and changes no milestone status. The
+elaborate web dashboard stays deferred (FUTURE_FEATURES.md).
+
 The MVP (MVP-01…MVP-08) is reached at the end of M5 for the engine and M6 for the first
 harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-009.
 

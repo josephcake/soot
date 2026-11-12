@@ -227,5 +227,30 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 
 ## UI
 
-- **[Intentional] The only UI is the extension's text blocks** (ADR-009, ADR-029): a tree and a
-  plain-text board. No webview or dashboard; polish is not debt.
+- **[Intentional] UI is text blocks only** (ADR-009, ADR-029, ADR-031): the extension's tree and
+  plain-text board, and the optional local `soot dashboard` page. No webview in the extension, no
+  SPA framework, no elaborate dashboard; polish is not debt.
+
+## Local dashboard (ADR-031)
+
+- **[Intentional] No login on the dashboard.** It binds 127.0.0.1 and rejects foreign `Host`
+  headers, but any local user or process that can reach 127.0.0.1 can read prompts and results
+  while it runs.
+- **[Intentional] It polls** (`/api/runs/<id>` every 1.5 s while a run is running); each request
+  opens `soot.sqlite` through the engine's `status`/`cost`. No push updates.
+- **[Intentional] Duration is wall clock from run creation to the last attempt finish** (from
+  saved timestamps). Per-check durations are shown only for final validation.
+- **[Intentional] The runner is run-level** (the saved report's agent label): one runner runs
+  every task in a run, so "by runner" is one row per run, not a per-task bot identity. It is
+  unknown until the run has a saved report.
+- **[Intentional] "Estimated tokens" by model or runner repeat the task's planner tokens per
+  attempt;** they are planning inputs, not measurements. Charts scale each to its own largest
+  known value, so bar lengths are comparable only within one chart.
+- **[Intentional] The donuts are an 11×11 pixel grid,** so a slice under about 1% may get no
+  cell; the legend always carries the exact value and percent. The attempt timeline uses one
+  axis per run (from run creation to the latest known time), so very short attempts in a long
+  run get a minimum-width bar.
+- **[Intentional] Only mock runs have produced its data.** Costs there are fictional; real
+  numbers depend on M2-07 and harness runners. No savings are shown (no benchmark data).
+- **[Intentional] Checked only by tests and a headless Chrome screenshot on the build box**, not
+  by a person in a desktop browser; no browser matrix.

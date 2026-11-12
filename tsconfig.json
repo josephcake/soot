@@ -38,6 +38,9 @@
       "path": "./packages/observability"
     },
     {
+      "path": "./apps/dashboard"
+    },
+    {
       "path": "./apps/cli"
     },
     {

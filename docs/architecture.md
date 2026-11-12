@@ -146,7 +146,8 @@ and file-conflict management.
 ├── scripts/ci.sh             # local CI, same steps as the workflow
 ├── apps/
 │   ├── cli/                  # partial — `soot` CLI and SootEngine (M6)
-│   └── vscode-extension/     # partial — thin VS Code / Cursor view over the CLI (M7, ADR-029)
+│   ├── vscode-extension/     # partial — thin VS Code / Cursor view over the CLI (M7, ADR-029)
+│   └── dashboard/            # optional local dashboard, `soot dashboard`, 127.0.0.1 only (ADR-031)
 ├── packages/
 │   ├── core/                 # foundation: package metadata, SOOT_* env parsing, logger (real, tested)
 │   ├── planner/              # prompt intake, fixture decomposer (M1, partial)
@@ -178,6 +179,7 @@ and file-conflict management.
 | ----------------------------- | ----------------- | -------------------- | ----------------------------------------------------- |
 | `apps/cli/`                   | partial           | M6                   | `soot` CLI, SootEngine, config, skill installer       |
 | `apps/vscode-extension/`      | partial (M7)      | M7                   | Editor view over the CLI; no orchestration            |
+| `apps/dashboard/`             | optional          | — (ADR-031)          | Local read-only page + JSON API over status/cost      |
 | `packages/core/`              | foundation (real) | M0                   | Package metadata, `parseEnv`, leveled logger          |
 | `packages/planner/`           | partial (M1)      | M1                   | Prompt intake; fixture decomposer (no model yet)      |
 | `packages/task-graph/`        | partial (M1)      | M1                   | Task/result contracts, JSON Schema, DAG               |
