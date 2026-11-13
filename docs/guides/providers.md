@@ -46,11 +46,19 @@ your registry as an OpenAI-compatible provider and put your own key in `DEEPSEEK
     {
       "provider": "deepseek",
       "modelId": "deepseek-chat",
-      "capabilities": { "tools": true, "structuredOutput": true }
+      "capabilities": { "tools": true, "structuredOutput": true },
+      "structuredOutputMode": "json_object"
     }
   ]
 }
 ```
+
+Set `structuredOutputMode` to `"json_object"` when the endpoint accepts JSON mode
+(`response_format: { "type": "json_object" }`) but not strict `json_schema` structured
+outputs (ADR-036). soot still mentions JSON and the expected `{ "tasks": [...] }` shape in
+the decomposer prompt, parses the JSON, and validates it against the task schema; there is
+no partial graph. The mode is vendor-neutral and can also be set on a provider as a default.
+The default, if you omit it, is `"json_schema"`.
 
 It is then selected, routed and callable like any other provider, and can be named as the
 decomposer model (`deepseek/deepseek-chat`). Fill in pricing, context window and reliability

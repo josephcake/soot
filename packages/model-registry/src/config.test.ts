@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { TEST_CONFIG } from './test-fixtures.js';
-import { RegistryConfigError, loadRegistryConfigFile, parseRegistryConfig } from './index.js';
+import {
+  RegistryConfigError,
+  loadRegistryConfigFile,
+  parseRegistryConfig,
+  structuredOutputMode,
+} from './index.js';
 
 const issuesOf = (input: unknown): string[] => {
   try {
@@ -139,5 +144,74 @@ describe('reliability priors', () => {
       high: null,
       source: 'team eval',
     });
+  });
+});
+
+describe('structuredOutputMode (ADR-036)', () => {
+  const base = {
+    version: 1 as const,
+    providers: [{ id: 'p', kind: 'openai-compatible' as const, baseURL: 'http://127.0.0.1:1/v1' }],
+  };
+
+  const resolvedMode = (config: ReturnType<typeof parseRegistryConfig>) => {
+    const provider = config.providers[0];
+    const model = config.models[0];
+    if (provider === undefined || model === undefined) {
+      throw new Error('expected a provider and a model');
+    }
+    return structuredOutputMode(provider, model);
+  };
+
+  it('defaults to json_schema when neither the model nor the provider sets a mode', () => {
+    const config = parseRegistryConfig({ ...base, models: [{ provider: 'p', modelId: 'm' }] });
+    expect(config.models[0]?.structuredOutputMode).toBeUndefined();
+    expect(config.providers[0]?.structuredOutputMode).toBeUndefined();
+    expect(resolvedMode(config)).toBe('json_schema');
+  });
+
+  it('accepts json_object on a model or a provider, and the model wins', () => {
+    const modelSet = parseRegistryConfig({
+      ...base,
+      models: [{ provider: 'p', modelId: 'm', structuredOutputMode: 'json_object' }],
+    });
+    expect(modelSet.models[0]?.structuredOutputMode).toBe('json_object');
+    expect(resolvedMode(modelSet)).toBe('json_object');
+
+    const providerSet = parseRegistryConfig({
+      version: 1,
+      providers: [
+        {
+          id: 'p',
+          kind: 'openai-compatible',
+          baseURL: 'http://127.0.0.1:1/v1',
+          structuredOutputMode: 'json_object',
+        },
+      ],
+      models: [{ provider: 'p', modelId: 'm' }],
+    });
+    expect(resolvedMode(providerSet)).toBe('json_object');
+
+    const both = parseRegistryConfig({
+      version: 1,
+      providers: [
+        {
+          id: 'p',
+          kind: 'openai-compatible',
+          baseURL: 'http://127.0.0.1:1/v1',
+          structuredOutputMode: 'json_object',
+        },
+      ],
+      models: [{ provider: 'p', modelId: 'm', structuredOutputMode: 'json_schema' }],
+    });
+    expect(resolvedMode(both)).toBe('json_schema');
+  });
+
+  it('rejects an unknown mode', () => {
+    expect(
+      issuesOf({
+        ...base,
+        models: [{ provider: 'p', modelId: 'm', structuredOutputMode: 'xml' }],
+      }).join('\n'),
+    ).toMatch(/structuredOutputMode/);
   });
 });

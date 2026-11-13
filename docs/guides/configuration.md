@@ -72,6 +72,7 @@ it with `loadRegistryConfigFile(path)` (`@soot/model-registry`):
       "modelId": "<model id from the provider>",
       "contextWindow": 200000,
       "capabilities": { "tools": true, "structuredOutput": true },
+      "structuredOutputMode": "json_schema",
       "pricing": {
         "inputPerMTokUsd": 3,
         "outputPerMTokUsd": 15,
@@ -85,7 +86,10 @@ it with `loadRegistryConfigFile(path)` (`@soot/model-registry`):
 ```
 
 Anything you leave out is **unknown** (`null`), never guessed. Prices must carry a `source`
-and an `asOf` date. `reliability` is your prior estimate (0–1) that the model completes a task
+and an `asOf` date. `structuredOutputMode` is `"json_schema"` (strict structured outputs) or
+`"json_object"` (`response_format: { "type": "json_object" }`, with the JSON parsed and
+validated against the schema afterwards). You can set it on a model or, as a default, on the
+provider; the model wins if both are set. Omitted, it is `"json_schema"` (ADR-036). `reliability` is your prior estimate (0–1) that the model completes a task
 of each complexity. It needs a `source`. The router (`@soot/model-router`) blends it with
 recorded success history. A model with no prior and too little history has unknown reliability,
 and the built-in policies do not select it. Cost estimates and provider-reported actuals stay separate types.

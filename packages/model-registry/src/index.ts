@@ -18,6 +18,7 @@ export {
   CAPABILITIES,
   CONFIG_VERSION,
   CapabilitiesSchema,
+  DEFAULT_STRUCTURED_OUTPUT_MODE,
   ModelConfigSchema,
   PROVIDER_KINDS,
   PricingSchema,
@@ -25,9 +26,12 @@ export {
   RegistryConfigError,
   RegistryConfigSchema,
   ReliabilitySchema,
+  STRUCTURED_OUTPUT_MODES,
+  StructuredOutputModeSchema,
   UNKNOWN_RELIABILITY,
   loadRegistryConfigFile,
   parseRegistryConfig,
+  structuredOutputMode,
   type Capabilities,
   type Capability,
   type ModelConfig,
@@ -37,6 +41,7 @@ export {
   type RegistryConfig,
   type RegistryConfigInput,
   type Reliability,
+  type StructuredOutputMode,
 } from './config.js';
 export { isCallable } from './policy.js';
 export {

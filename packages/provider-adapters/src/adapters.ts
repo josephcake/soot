@@ -2,7 +2,12 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { LanguageModelV4 } from '@ai-sdk/provider';
-import { isCallable, type ModelEntry, type ProviderConfig } from '@soot/model-registry';
+import {
+  isCallable,
+  structuredOutputMode,
+  type ModelEntry,
+  type ProviderConfig,
+} from '@soot/model-registry';
 import { AiSdkModelClient } from './ai-sdk-client.js';
 import { ProviderError } from './errors.js';
 import type { RetryPolicy } from './retry.js';
@@ -36,6 +41,38 @@ function refuse(provider: ProviderConfig, message: string): ProviderError {
   return new ProviderError({ kind: 'refused', provider: provider.id, message });
 }
 
+/**
+ * When the registry asks for JSON-object mode, rewrite Chat Completions `response_format`
+ * to `{ type: "json_object" }`. The schema is still applied by soot after the JSON is parsed.
+ * Vendor-neutral: no provider-id checks.
+ */
+export function forceJsonObjectResponseFormat(fetchImpl: typeof fetch): typeof fetch {
+  return (input, init) => {
+    let next = init;
+    const raw = init?.body;
+    if (typeof raw === 'string') {
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (
+          parsed !== null &&
+          typeof parsed === 'object' &&
+          !Array.isArray(parsed) &&
+          'response_format' in parsed &&
+          (parsed as { response_format?: unknown }).response_format !== undefined
+        ) {
+          next = {
+            ...init,
+            body: JSON.stringify({ ...parsed, response_format: { type: 'json_object' } }),
+          };
+        }
+      } catch {
+        // Body is not JSON; send it unchanged.
+      }
+    }
+    return fetchImpl(input, next);
+  };
+}
+
 /** Build a `ModelClient` for a registry model. Throws `ProviderError` (`refused`/`auth`). */
 export function createModelClient(
   provider: ProviderConfig,
@@ -57,7 +94,10 @@ export function createModelClient(
           ? 'no apiKeyEnv configured for this provider'
           : `${provider.apiKeyEnv} is not set (bring your own key)`,
     });
-  const fetchOption = options.fetch === undefined ? {} : { fetch: options.fetch };
+  const mode = structuredOutputMode(provider, model);
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  const fetch = mode === 'json_object' ? forceJsonObjectResponseFormat(fetchImpl) : fetchImpl;
+  const fetchOption = { fetch };
   const baseURL = provider.baseURL === undefined ? {} : { baseURL: provider.baseURL };
 
   let languageModel: LanguageModelV4;
@@ -77,7 +117,10 @@ export function createModelClient(
         baseURL: provider.baseURL ?? '',
         ...(apiKey === undefined ? {} : { apiKey }),
         includeUsage: true,
-        supportsStructuredOutputs: model.capabilities.structuredOutput === true,
+        // json_object mode: the AI SDK then sends response_format json_object; the fetch
+        // wrapper also forces that type, so the wire body is explicit either way.
+        supportsStructuredOutputs:
+          mode === 'json_schema' && model.capabilities.structuredOutput === true,
         ...fetchOption,
       })(model.modelId);
       break;
@@ -91,6 +134,7 @@ export function createModelClient(
     adapter: `ai-sdk:${provider.kind}`,
     model: languageModel,
     defaultMaxOutputTokens: model.maxOutputTokens,
+    structuredOutputMode: mode,
     ...(options.retry === undefined ? {} : { retry: options.retry }),
     secrets: apiKey === undefined ? [] : [apiKey],
   });

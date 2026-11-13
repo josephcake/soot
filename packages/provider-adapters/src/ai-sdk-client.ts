@@ -41,6 +41,12 @@ export interface AiSdkModelClientOptions {
   readonly retry?: Partial<RetryPolicy>;
   /** Values to scrub from every error message (the provider key). Never exposed. */
   readonly secrets?: readonly string[];
+  /**
+   * Wire format for structured output (ADR-036). `json_object` needs the word "json" in the
+   * prompt; if the caller omitted it, a short system line is added. Never includes user prompt
+   * text in errors.
+   */
+  readonly structuredOutputMode?: 'json_schema' | 'json_object';
 }
 
 function toAiTools(provider: string, tools: readonly ToolSpec[] | undefined): ToolSet | undefined {
@@ -105,6 +111,7 @@ export class AiSdkModelClient implements ModelClient {
   readonly #defaultMax: number | null;
   readonly #retry: RetryPolicy;
   readonly #secrets: readonly string[];
+  readonly #structuredOutputMode: 'json_schema' | 'json_object';
 
   constructor(options: AiSdkModelClientOptions) {
     if (typeof options.model !== 'object')
@@ -117,6 +124,20 @@ export class AiSdkModelClient implements ModelClient {
     this.#defaultMax = options.defaultMaxOutputTokens ?? null;
     this.#retry = { ...DEFAULT_RETRY_POLICY, ...options.retry };
     this.#secrets = options.secrets ?? [];
+    this.#structuredOutputMode = options.structuredOutputMode ?? 'json_schema';
+  }
+
+  /** Some JSON-object endpoints require the word "json" in the prompt. */
+  #withJsonMention(request: GenerateRequest): GenerateRequest {
+    if (this.#structuredOutputMode !== 'json_object') return request;
+    const parts = [request.system, ...request.messages.map((m) => m.content)];
+    if (parts.some((t) => t !== undefined && /\bjson\b/i.test(t))) return request;
+    return {
+      ...request,
+      system: [request.system, 'Return a JSON object.']
+        .filter((s): s is string => s !== undefined && s !== '')
+        .join('\n'),
+    };
   }
 
   #error(error: unknown): ProviderError {
@@ -151,14 +172,15 @@ export class AiSdkModelClient implements ModelClient {
     request: GenerateRequest<T>,
     signal?: AbortSignal,
   ): Promise<GenerateResponse<T>> {
-    const tools = toAiTools(this.provider, request.tools);
+    const req = this.#withJsonMention(request);
+    const tools = toAiTools(this.provider, req.tools);
     const { value, attempts } = await withRetries(
       async () => {
-        const abortSignal = this.#signal(signal, request.timeoutMs);
+        const abortSignal = this.#signal(signal, req.timeoutMs);
         try {
           signal?.throwIfAborted();
           return await generateText({
-            ...this.#common(request),
+            ...this.#common(req),
             ...(tools === undefined ? {} : { tools }),
             ...(request.output === undefined
               ? {}

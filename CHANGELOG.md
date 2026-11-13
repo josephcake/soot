@@ -5,6 +5,27 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (structured-output wire mode `json_object`, ADR-036; mocks only)
+
+- Optional `structuredOutputMode` on a model or provider in the registry: `"json_schema"`
+  (default) or `"json_object"`. The model setting wins. In `json_object` mode the client
+  sends `response_format: { "type": "json_object" }`, mentions JSON in the prompt if needed,
+  then parses and validates the JSON against the existing schema. Failures stay
+  `invalid-output`; there is no partial graph and no prompt text in errors. No vendor-id
+  checks in code.
+- Docs: [providers](docs/guides/providers.md) (optional DeepSeek example uses `json_object`),
+  [configuration](docs/guides/configuration.md), ADR-036. Tests: mocked HTTP / fake `fetch`
+  only (request body, valid JSON, invalid JSON, schema mismatch).
+
+### Fixed (decomposition prompt names the exact task contract)
+
+- The planner system prompt now lists every required task field (including `instructions`
+  and `requiredCapabilities`), the `complexity` enum, and one complete example with
+  `estimate.costUsd` set to `null`. A live DeepSeek `json_object` answer failed
+  validation because it used `description` in place of `instructions` and omitted
+  `requiredCapabilities`. Schema validation is unchanged; the captured shape is
+  replayed in a mock test and still rejected.
+
 ### Changed (documentation layout)
 
 - Project tracking and design docs moved from the repository root into `docs/project/` and

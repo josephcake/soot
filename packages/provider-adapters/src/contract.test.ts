@@ -287,3 +287,77 @@ describe('request wiring (mocked HTTP)', () => {
     ).toThrow(TypeError);
   });
 });
+
+describe('structuredOutputMode json_object (mocked HTTP, ADR-036)', () => {
+  const Plan = z.object({ steps: z.array(z.string()).min(1) });
+  const output = { schema: Plan, name: 'plan' as const };
+
+  function client(
+    fetch: typeof globalThis.fetch,
+    mode: 'json_object' | 'json_schema' = 'json_object',
+  ) {
+    const { provider, model } = entry(testRegistry(), 'local/test-local');
+    return createModelClient(
+      provider,
+      { ...model, structuredOutputMode: mode },
+      { env: {}, fetch },
+    );
+  }
+
+  it('sends response_format { type: "json_object" } and not json_schema', async () => {
+    const http = scriptedFetch('openai', [{ text: '{"steps":["a"]}' }]);
+    await client(http.fetch).generate({
+      system: 'Return a JSON object with a steps array.',
+      ...ask,
+      output,
+    });
+    expect(http.requests[0]?.body).toMatchObject({ response_format: { type: 'json_object' } });
+    const format = (http.requests[0]?.body as { response_format: { type: string } })
+      .response_format;
+    expect(format).toEqual({ type: 'json_object' });
+  });
+
+  it('returns validated output when the JSON matches the schema', async () => {
+    const http = scriptedFetch('openai', [{ text: JSON.stringify({ steps: ['a', 'b'] }) }]);
+    const r = await client(http.fetch).generate({
+      system: 'Return a JSON object.',
+      ...ask,
+      output,
+    });
+    expect(r.output).toEqual({ steps: ['a', 'b'] });
+  });
+
+  it('fails invalid JSON as invalid-output without prompt text', async () => {
+    const secretPrompt = 'UNIQUE_PROMPT_TOKEN_SHOULD_NOT_APPEAR';
+    const http = scriptedFetch('openai', [{ text: 'not-json at all' }]);
+    const error = await client(http.fetch)
+      .generate({
+        system: 'Return a JSON object.',
+        messages: [{ role: 'user', content: secretPrompt }],
+        output,
+      })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ProviderError);
+    expect(error).toMatchObject({ kind: 'invalid-output', retryable: false });
+    const message = (error as Error).message;
+    expect(message).toMatch(/not valid JSON|could not parse the response/i);
+    expect(message).not.toContain(secretPrompt);
+  });
+
+  it('rejects a schema mismatch as invalid-output without prompt text', async () => {
+    const secretPrompt = 'ANOTHER_UNIQUE_PROMPT_TOKEN';
+    const http = scriptedFetch('openai', [{ text: JSON.stringify({ steps: [] }) }]);
+    const error = await client(http.fetch)
+      .generate({
+        system: 'Return a JSON object.',
+        messages: [{ role: 'user', content: secretPrompt }],
+        output,
+      })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ProviderError);
+    expect(error).toMatchObject({ kind: 'invalid-output', retryable: false });
+    const message = (error as Error).message;
+    expect(message).toMatch(/structured output failed validation/i);
+    expect(message).not.toContain(secretPrompt);
+  });
+});

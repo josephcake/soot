@@ -20,6 +20,17 @@ const slug = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/, 'must be a lowercase 
 export const PROVIDER_KINDS = ['anthropic', 'openai', 'openai-compatible', 'listed-only'] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
+/**
+ * How structured output is requested on the wire (ADR-036). `json_schema` is the default
+ * (strict OpenAI-style structured outputs). `json_object` sends
+ * `response_format: { "type": "json_object" }` and validates the JSON against the schema
+ * after it comes back. Set this when an endpoint does not accept `json_schema`.
+ */
+export const STRUCTURED_OUTPUT_MODES = ['json_schema', 'json_object'] as const;
+export type StructuredOutputMode = (typeof STRUCTURED_OUTPUT_MODES)[number];
+export const StructuredOutputModeSchema = z.enum(STRUCTURED_OUTPUT_MODES);
+export const DEFAULT_STRUCTURED_OUTPUT_MODE: StructuredOutputMode = 'json_schema';
+
 export const ProviderConfigSchema = z
   .object({
     id: slug,
@@ -33,6 +44,8 @@ export const ProviderConfigSchema = z
       .optional(),
     /** True for endpoints on the user's machine (no data leaves it). */
     local: z.boolean().default(false),
+    /** Default structured-output wire format for this provider's models, unless a model overrides it. */
+    structuredOutputMode: StructuredOutputModeSchema.optional(),
   })
   .strict()
   .refine((p) => p.kind !== 'openai-compatible' || p.baseURL !== undefined, {
@@ -138,6 +151,8 @@ export const ModelConfigSchema = z
     reliability: ReliabilitySchema.default(UNKNOWN_RELIABILITY),
     /** Set false to keep a model listed but out of automatic selection. */
     selectable: z.boolean().default(true),
+    /** Wire format for structured output; omitted = inherit from the provider, else `json_schema`. */
+    structuredOutputMode: StructuredOutputModeSchema.optional(),
   })
   .strict();
 
@@ -181,6 +196,19 @@ export const RegistryConfigSchema = z
 
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
+
+/**
+ * Effective structured-output mode: the model's setting, else the provider's, else `json_schema`.
+ * No vendor-specific branches; the user names the mode in config.
+ */
+export function structuredOutputMode(
+  provider: ProviderConfig,
+  model: Pick<ModelConfig, 'structuredOutputMode'>,
+): StructuredOutputMode {
+  return (
+    model.structuredOutputMode ?? provider.structuredOutputMode ?? DEFAULT_STRUCTURED_OUTPUT_MODE
+  );
+}
 export type Capabilities = z.infer<typeof CapabilitiesSchema>;
 export type Pricing = z.infer<typeof PricingSchema>;
 export type Reliability = z.infer<typeof ReliabilitySchema>;

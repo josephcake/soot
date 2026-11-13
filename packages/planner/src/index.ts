@@ -40,6 +40,7 @@ export {
 } from './decomposer.js';
 export {
   DEFAULT_MAX_DECOMPOSITION_TASKS,
+  DECOMPOSITION_SYSTEM_PROMPT,
   FixtureThenModelDecomposer,
   ModelDecomposer,
   ModelDecompositionError,

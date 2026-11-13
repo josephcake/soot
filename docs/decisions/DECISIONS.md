@@ -498,3 +498,39 @@ the old one.
 - **Alternatives:** an explicit opt-in flag for DeepSeek (rejected: configuring the provider and its key is already an explicit opt-in, and a vendor flag would keep vendor-specific policy in code); keeping the restriction hook with no values (rejected: dead code).
 - **Consequences:** A user who configures DeepSeek and sets `DEEPSEEK_API_KEY` can route to it and use it for decomposition. No live DeepSeek request has been made in this change, so its wire behaviour, structured-output support and decomposition quality are unverified; M2-07 stays Blocked and TASKS P-01/P-02 stay Implemented, not Verified. `soot models --json` no longer has a `restriction` field.
 - **Reversible:** Yes, by a new decision restoring a restriction.
+
+## ADR-036: Optional `structuredOutputMode` (`json_schema` or `json_object`)
+
+- **Date:** 2026-11-12
+- **Status:** Accepted. Implemented and verified with mocked HTTP / fake `fetch` only.
+- **Context:** soot's default structured-output path asks Chat Completions endpoints for
+  `response_format: { "type": "json_schema", ... }`. Some OpenAI-compatible endpoints accept
+  only JSON mode, `response_format: { "type": "json_object" }`, and reject `json_schema` with
+  an invalid-request error. Those endpoints typically also require the word "json" in the
+  prompt. soot already parses the model text as JSON and validates it against the request
+  schema (`parseTask` / `buildTaskGraph` for decomposition). The missing piece was a way to
+  request JSON mode on the wire without vendor-specific branches in code.
+- **Decision:**
+  - The model registry accepts an optional `structuredOutputMode` of `"json_schema"` (default)
+    or `"json_object"` on a model, and the same field on a provider as a default. The model
+    setting wins if both are set. The resolver is `structuredOutputMode(provider, model)`.
+  - When the effective mode is `json_object`, the Chat Completions client sends
+    `response_format: { "type": "json_object" }` (not `json_schema`). The JSON is then parsed
+    and validated against the caller's schema. A bad parse or a schema mismatch is
+    `invalid-output`. There is no partial graph, and errors do not include prompt text.
+  - For `json_object`, if the caller's system and messages do not already contain the word
+    "json", the client adds a short system line (`Return a JSON object.`). The decomposer
+    system prompt already names JSON and the `{ "tasks": [...] }` shape.
+  - The setting is vendor-neutral. There are no provider-id or hostname checks. Users who
+    need JSON mode set the field in their registry (for example on an OpenAI-compatible
+    model whose endpoint does not implement `json_schema`).
+- **Alternatives:** hard-coding a vendor id or hostname to switch modes (rejected: puts
+  vendor policy in code, ADR-035 already removed that pattern); sending `json_schema` and
+  retrying as `json_object` after a 400 (rejected: an extra live call, and the config should
+  describe the endpoint's capability up front); treating `json_object` as unvalidated free
+  text (rejected: soot must still validate against the task contract).
+- **Consequences:** A user can configure JSON mode for any provider that needs it. Automated
+  tests cover the wire body, valid JSON, invalid JSON, and schema mismatch with fake `fetch`
+  only. A live `json_object` decomposition is a separate, explicit check and is not implied
+  by this change.
+- **Reversible:** Yes, by removing the field (the default remains `json_schema`).
