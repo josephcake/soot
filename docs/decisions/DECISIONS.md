@@ -580,3 +580,90 @@ the old one.
   stale; the prompt, the `asOf` date, and dated entries keep that visible. Batch, flex and
   priority tiers, regional uplifts and per-request tool fees are not modeled.
 - **Reversible:** Yes. Remove the catalog call in the CLI and prices come only from config again.
+
+## ADR-038: Dashboard prompt box: plan and run from `soot dashboard --agent`, behind a token, in allowlisted folders
+
+- **Date:** 2026-11-13
+- **Status:** Accepted (Joseph: "let's build out the soot local dashboard first", "it should
+  auto run", "this prompt input dashboard should be the default", "it's just like a regular
+  prompt. no approval needed"; design by Prism; open questions decided by Mochi). Implemented;
+  verified with tests and the mock runner only. Amends ADR-031 (the dashboard was read-only
+  with no login).
+- **Context:** Users could only give soot a prompt from the CLI or an MCP host. The local
+  dashboard showed runs but had no input. A page that can start work on the user's code needs
+  a real access boundary: a loopback port is reachable by every local process and, through
+  DNS rebinding or cross-site requests, by web pages.
+- **Decision:**
+  - **Engine split.** `SootEngine.run()` is now `plan()` (config, registry, runner check,
+    decomposition; no store writes, worktrees or run lock) followed by `runPlan()` (today's run
+    from the run lock and `store.createRun` onward; a plan runs at most once; `onRunStarted`
+    fires once the run is recorded). `soot run` and `soot_run` call `run()`, so their behaviour
+    and output are unchanged. `previewPlan()` routes each task like the supervisor's first
+    assignment (stored history and provider cooldowns) and adds a worst case: every attempt the
+    escalation config allows (`maxAttemptsPerTask`) on the priciest model the router accepts for
+    that task, capped by `taskBudgetUsd` / `runBudgetUsd` when set, plus the planning call.
+  - **Auto-run, no approve step.** Submitting a prompt plans it and runs it at once, like a
+    chat prompt. The page shows the plan (tasks, first-choice model, estimates) as soon as it
+    exists, then live state per task, cost so far and the worst case, with Stop and a per-task
+    stop always visible. Stop has no confirm step.
+  - **The prompt box is the landing view** (`#/`). Overview moved to `#/overview` (old
+    `#/?zoom=` links still open it); Prompts stays at `#/prompts`. While the user types or a
+    prompt is working, the page drops to focus mode: the tabs and header meta fade out and only
+    the prompt (or the submitted prompt), a compact task list and Stop remain, with a small
+    `details` link to the full prompt page.
+  - **Writes only with an explicit runner.** Plain `soot dashboard` stays read-only (the box is
+    disabled and says how to enable it). `soot dashboard --agent mock --mock-script <file>` or
+    `--agent acp` turns it on. The runner is fixed for the life of the process and labeled
+    honestly (`mock (test double)`, or `acp (<command>)` per project).
+  - **The run lives in the dashboard process** (v1). Stopping the dashboard (Ctrl-C) aborts
+    every run it started, through the existing run signal; the page says so. Closing the tab
+    does not stop a run.
+  - **Approvals are unattended in v1.** Approval-needing actions are refused, never granted.
+    This includes soot's own `integrate-into-working-tree` step, so a dashboard run leaves its
+    result on `soot/<run>/integration` and reports `incomplete`; the page shows that problem.
+    "No approval needed" in the product request is honoured as "no approve step before the
+    run", not as auto-approving file deletes or working-tree updates (ADR-018 still holds).
+  - **Access token (Jupyter style).** `soot dashboard` prints
+    `http://127.0.0.1:<port>/?token=<256-bit base64url>`. Opening it swaps the token (constant
+    time compare) for `soot_session_<port>=<random>; HttpOnly; SameSite=Strict; Path=/` and
+    `303 → /`, so the token leaves the address bar. The cookie name carries the port because
+    cookies are not port-scoped. Scripts may send `Authorization: Bearer <token>`. Every page
+    and API request needs a session; without one the page is a static access gate and the API
+    is `401 auth_required`. Only CSS, the script and logos (no data) load without one. The
+    token is never written to disk and changes with every start.
+  - **Writes need more.** Every POST needs `Content-Type: application/json` (else 415). Cookie
+    sessions also need `Origin` exactly `http://127.0.0.1:<port>` or `http://localhost:<port>`,
+    `Sec-Fetch-Site: same-origin` when the browser sends it, and `X-Soot-CSRF` equal to the
+    session's value from `GET /api/session` (else `403 csrf`). Bearer requests are not ambient,
+    so they skip the CSRF header, but a foreign `Origin` is still refused. The Host check (421)
+    stays first. No `Access-Control-*` header is ever sent. Bodies are capped at 300 KiB and
+    prompts at 256 KiB.
+  - **Folder allowlist in the user's state dir.** `<dataDir>/dashboard.json` (mode 0600), never
+    in the repository (a cloned repo cannot allow itself). Only the CLI writes it:
+    `soot dashboard allow <dir>` (the folder must hold a loadable `soot.config.json`; its real
+    path is stored), `disallow <dir|id>`, `list`. The browser sends an opaque id
+    (`p_` + 16 hex of sha256(realpath)); the server resolves it and refuses a folder whose real
+    path changed since it was allowed (e.g. swapped for a symlink). Request bodies with any
+    field other than `project` and `prompt` are refused.
+  - **Keys:** responses carry provider ids, key variable names and `set` / `missing` /
+    `none-needed` only. Presence is checked without keeping the value; the value is read only
+    by the provider adapters inside the engine (ADR-022).
+  - **Endpoints:** `GET /api/session`, `GET /api/projects`, `GET /api/keys/status?project=<id>`,
+    `POST /api/prompts` `{project, prompt}` (optional `Idempotency-Key`; 202 with the job; 409
+    `project_busy` when the project already has a live job), `GET /api/prompts`,
+    `GET /api/prompts/<job>`, `POST /api/prompts/<job>/cancel` (aborts planning, or writes the
+    run's stop file), `POST /api/runs/<run>/cancel` `{task?}` (only runs this dashboard
+    started; `soot stop` stays the way to stop others). Live status is polling (1 s); SSE is
+    deferred. Jobs are kept in memory (last 50).
+- **Alternatives:** an Approve step bound to a plan digest (Prism's design; dropped at Joseph's
+  request: it is a prompt box, not a review queue); a spawned `soot run --plan` child that
+  survives the dashboard (needs a signed plan file; deferred); browser-side folder adding
+  (rejected: the page could then widen its own access); an approval card in the page (v2);
+  auto-approving the working-tree step (rejected: ADR-018).
+- **Consequences:** The dashboard can now change code in allowlisted folders, but only after
+  someone with the printed link opens it on this machine, and only with the runner chosen at
+  start. Existing `soot dashboard` users must open the printed link once per start. With
+  `--agent mock` every task is the scripted test double; real model execution is still
+  M2-07. The plan preview and the run share one decomposition, so what is shown is what runs.
+- **Reversible:** Yes. Without `--agent` nothing can be written; removing the token check
+  restores ADR-031's read-only page.

@@ -1,16 +1,50 @@
 # @soot/dashboard
 
-> **Status: optional local surface (ADR-031).** Not a milestone. Tested against mock runs only.
+> **Status: optional local surface (ADR-031, ADR-038).** Not a milestone. Tested against mock
+> runs only.
 
-A simple read-only dashboard for soot runs on this machine. It is **off unless you run
-`soot dashboard`**; soot is headless by default, and no other command (`run`, `status`, `cost`,
-`mcp`, the skill, ACP, the VS Code extension) starts it or loads this package.
+A local dashboard for soot on this machine: a prompt box (the landing page) plus views of every
+run. It is **off unless you run `soot dashboard`**; soot is headless by default, and no other
+command (`run`, `status`, `cost`, `mcp`, the skill, ACP, the VS Code extension) starts it or
+loads this package.
 
 ```
-soot dashboard                 # http://127.0.0.1:8787
-soot dashboard --port 9000     # another port; fails if it is taken (no fallback)
-soot dashboard --open          # also open a browser (off by default)
+soot dashboard allow ~/code/my-app            # once: folders the prompt box may work in
+soot dashboard list                           # what is allowed (disallow <dir> removes one)
+soot dashboard --agent mock --mock-script mock-agent.json   # prompt box on, scripted test double
+soot dashboard --agent acp                    # prompt box on, each project's "acpAgent"
+soot dashboard                                # read-only: runs only, the prompt box is off
+soot dashboard --port 9000                    # another port; fails if it is taken (no fallback)
+soot dashboard --open                         # also open a browser (off by default)
 ```
+
+It prints `http://127.0.0.1:<port>/?token=…`. **Open that link**: it signs the browser in with
+a session cookie and drops the token from the address bar. Without it you get an access gate.
+Every start prints a new token.
+
+## Prompt box (ADR-038)
+
+- **Landing view** (`#/`). A centered prompt box, a project picker (allowed folders only), and
+  a quiet line with the runner (`mock (test double)` or `acp (<command>)`) and the planner
+  with a rough per-plan cost (`planner: deepseek-flash · ~$0.0016 per plan`; recorded prompts
+  cost nothing). A small `setup` toggle lists the folder, models, and each provider's key
+  variable as `set` / `missing` (names only).
+- **Like a chat prompt.** Enter (or Run) submits; Shift+Enter is a new line. There is no
+  approve or confirm step: the prompt is planned and then run right away.
+- **Focus mode.** While you type, and while a prompt works, the tabs and header meta fade out.
+  The page shows the submitted prompt, an 8-block progress strip, one line per task (model,
+  state, cost) with a planning line first, the cost so far (`~$0.0049 est.`), the worst case
+  (`worst case ≤ $0.03`: planning plus every allowed attempt on the priciest acceptable model),
+  **Stop**, and a `stop` per unfinished task. `details` opens the full prompt page.
+- **When it ends** the card stays with the result (for example "working tree not updated:
+  approval unavailable; result left on soot/<run>/integration") and `dismiss`; the prompt box
+  comes back.
+- **Runs live in the dashboard process.** Ctrl-C on `soot dashboard` stops them (work merged
+  before the stop stays merged). Closing the tab does not. One live prompt per project.
+- **Approvals** inside a run are refused in v1, including soot's own "update the working tree"
+  step, so results stay on the run's integration branch for you to merge.
+- **Read-only mode** (no `--agent`): the box is disabled and shows the restart command.
+  No allowed folders: it shows `soot dashboard allow <dir>`.
 
 - **Bind:** 127.0.0.1 only, never 0.0.0.0 or another interface. The bound address is checked
   after listening. `--port 0` asks the OS for a free port explicitly; the URL is printed.
@@ -33,8 +67,8 @@ soot dashboard --open          # also open a browser (off by default)
   (`{ value, runs }`) and is `null` when no run reported it.
 - **Centerpiece: prompts over time.** A GitHub-contribution-style grid of square pixel cells
   (plain DOM links, 1px gaps, a 5-step orange ramp from near-black to `#ff7a1a`; faint cells
-  are empty slots). A pixel segmented toggle picks the zoom, kept in the hash (`#/`,
-  `#/?zoom=hour`, `#/?zoom=day`):
+  are empty slots). A pixel segmented toggle picks the zoom, kept in the hash (`#/overview`,
+  `#/overview?zoom=hour`, `#/overview?zoom=day`; old `#/?zoom=` links still work):
   - **Prompt** (default): a column per local day (at least 28, at most 42, ending today), one
     square per prompt stacked oldest-first, up to 7; more shows a `+N` chip that opens that
     day's filtered list. The shade is the prompt's **complexity level** (fixed scale).
@@ -76,8 +110,9 @@ soot dashboard --open          # also open a browser (off by default)
   Each pipe and model bar wears that model's colour and pattern; the largest share is
   bracketed in cream. The legend under it counts every prompt. Empty state is a pixel "no
   data" block. Prompt text is drawn with `fillText` only.
-- **Views (hash routes, no router library):** a pixel tab bar switches between **Overview**
-  (`#/`: summary tiles for prompts, tasks, tokens and cost, the prompt grid, the canvas, a shared model legend,
+- **Views (hash routes, no router library):** a pixel tab bar switches between **Prompt**
+  (`#/`, the prompt box above), **Overview**
+  (`#/overview`: summary tiles for prompts, tasks, tokens and cost, the prompt grid, the canvas, a shared model legend,
   and aggregate charts across every prompt; nothing specific to one prompt) and **Prompts**
   (`#/prompts`). The browser back and forward buttons work (`hashchange`).
 - **Previous prompts (D-04):** `#/prompts` lists every recorded run, newest first, with the
@@ -125,7 +160,27 @@ soot dashboard --open          # also open a browser (off by default)
   "About these numbers" footnote at the bottom.
 - **Page:** plain HTML, one stylesheet, one script, no framework (ADR-009): each section is a
   text block. All text is set with `textContent`. It polls while a run is running.
-- **Safety:** GET/HEAD only, `Host` must be `127.0.0.1:<port>` or `localhost:<port>`, strict
-  CSP, no outbound requests, no provider calls, no keys. See `docs/guides/security.md`.
+- **Safety:** `Host` must be `127.0.0.1:<port>` or `localhost:<port>` (421 otherwise, checked
+  first); a session (cookie from the printed link, or bearer) for every page and API call;
+  writes (POST) need JSON, the exact loopback `Origin`, `Sec-Fetch-Site: same-origin` when
+  sent, and `X-Soot-CSRF`; no CORS headers; strict CSP; no outbound requests; key names only.
+  See `docs/guides/security.md`.
 
-Programmatic use: `startDashboard({ source, port })` returns `{ url, address, close() }`.
+### Write API (only with `--agent`)
+
+| Endpoint                                     | Does                                                                                       |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `GET /api/session`                           | `{ writes, runner, csrf, auth, readOnlyHint, port }`                                       |
+| `GET /api/projects`                          | allowed folders: `{ id, label, path, config, planner, runnerLabel }`                       |
+| `GET /api/keys/status?project=<id>`          | models, unpriced models, planner, providers with key `set` / `missing`                     |
+| `POST /api/prompts` `{ project, prompt }`    | plan and run; `202 { job }`; optional `Idempotency-Key`                                    |
+| `GET /api/prompts`, `GET /api/prompts/<job>` | jobs: `planning` → `running` → `done` / `failed` / `cancelled`, with `preview` and `runId` |
+| `POST /api/prompts/<job>/cancel`             | stop planning, or stop the run                                                             |
+| `POST /api/runs/<run>/cancel` `{ task? }`    | stop a run started here, or one task                                                       |
+
+Errors are `{ error, message, retryable }`: 401 `auth_required`, 403 `csrf` / `read_only` /
+`not_owned`, 404 `unknown_project` / `unknown_job`, 409 `project_busy` / `not_running`, 413
+`prompt_too_long`, 415 `content_type`, 422 `prompt_invalid` / `config_invalid`.
+
+Programmatic use: `startDashboard({ source, port, agent?, token? })` returns
+`{ url, baseUrl, address, close() }`; `url` holds the token. `close()` stops live runs first.

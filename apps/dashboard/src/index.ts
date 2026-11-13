@@ -10,6 +10,21 @@ export {
   type DashboardHandle,
   type DashboardOptions,
 } from './server.js';
+export {
+  JobStore,
+  MAX_PROMPT_BYTES,
+  promptProblem,
+  type DashboardAgent,
+  type DashboardProject,
+  type JobState,
+  type JobView,
+  type KeyStatus,
+  type PlanPreviewJson,
+  type PlanResult,
+  type PlannerInfo,
+  type RunResult,
+  type RunnerInfo,
+} from './jobs.js';
 export { usageCharts, type UsageCharts, type UsageRow, type UsageSide } from './charts.js';
 export {
   complexityOf,

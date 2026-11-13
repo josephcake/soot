@@ -5,8 +5,13 @@
  * text drawn on the canvas uses fillText only. The script only talks to this server's own
  * /api paths.
  *
- * Views (hash routes, no router library): `#/` Overview (aggregates across every prompt only),
- * `#/prompts` the prompt list, `#/prompts/<runId>` one prompt's detail.
+ * Views (hash routes, no router library): `#/` the prompt box (the default, ADR-038),
+ * `#/overview` Overview (aggregates across every prompt only), `#/prompts` the prompt list,
+ * `#/prompts/<runId>` one prompt's detail.
+ *
+ * The prompt box works like a chat prompt: submit plans and runs right away. While the user is
+ * typing or a prompt is working, the page drops to focus mode: the prompt, a compact live task
+ * list (model, status, cost so far) and Stop. Everything else (tabs, meta, charts) steps back.
  */
 
 export const INDEX_HTML = `<!doctype html>
@@ -28,10 +33,27 @@ export const INDEX_HTML = `<!doctype html>
         <p class="meta" id="meta">loading…</p>
       </header>
       <nav class="tabs" aria-label="views">
-        <a class="tab" id="tab-overview" href="#/">Overview</a>
+        <a class="tab" id="tab-compose" href="#/">Prompt</a>
+        <a class="tab" id="tab-overview" href="#/overview">Overview</a>
         <a class="tab" id="tab-prompts" href="#/prompts">Prompts</a>
       </nav>
-      <main id="view-overview" class="grid">
+      <main id="view-compose" class="compose" aria-label="prompt">
+        <div id="cmp-live" class="cmp-live" hidden></div>
+        <form id="cmp-form" class="cmp-form" novalidate>
+          <label class="sr-only" for="cmp-prompt">Prompt</label>
+          <textarea id="cmp-prompt" rows="3" placeholder="What should soot do?" aria-describedby="cmp-why" spellcheck="true"></textarea>
+          <div class="cmp-bar">
+            <label class="sr-only" for="cmp-project">Project</label>
+            <select id="cmp-project" class="cmp-select"></select>
+            <span class="cmp-labels" id="cmp-labels"></span>
+            <button id="cmp-send" class="btn primary" type="submit">Run <kbd>↵</kbd></button>
+          </div>
+          <p id="cmp-why" class="cmp-why" role="status" aria-live="polite"></p>
+          <p id="cmp-sr" class="sr-only" role="status" aria-live="polite"></p>
+        </form>
+        <details id="cmp-setup" class="cmp-setup" hidden><summary>setup</summary><div id="cmp-setup-body"></div></details>
+      </main>
+      <main id="view-overview" class="grid" hidden>
         <section id="tiles" class="tiles wide" aria-label="summary"></section>
         <section id="pgrid-panel" class="block wide pgrid-panel" aria-label="prompts over time"></section>
         <section id="centerpiece" class="block wide centerpiece">
@@ -51,6 +73,31 @@ export const INDEX_HTML = `<!doctype html>
       </main>
     </div>
     <script src="/app.js" defer></script>
+  </body>
+</html>
+`;
+
+export const GATE_HTML = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>soot dashboard (local)</title>
+    <link rel="icon" href="/mark.png" type="image/png" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="top">
+        <h1><img src="/logo.png" alt="soot" width="144" height="32" /><span>local dashboard</span></h1>
+        <p class="meta">127.0.0.1 only</p>
+      </header>
+      <main class="gate block">
+        <h2>Open the link from your terminal</h2>
+        <p>This dashboard only opens with the link printed by <code>soot dashboard</code>. It looks like <code>http://127.0.0.1:8787/?token=…</code>.</p>
+        <p class="note">The link holds an access token, new each start. Opening it signs this browser in with a cookie and removes the token from the address bar. Restarting the dashboard prints a new link.</p>
+      </main>
+    </div>
   </body>
 </html>
 `;
@@ -257,6 +304,84 @@ a.cell:hover, a.cell:focus-visible { outline: 2px solid var(--cream); outline-of
   .task-row .r { text-align: left; }
   .row, .row.long { grid-template-columns: minmax(0, 9em) minmax(0, 1fr) minmax(0, 7em); }
 }
+
+/* Prompt box (ADR-038): pixel buttons with a hard "stud" shadow, square inputs, focus mode. */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.top, .tabs { transition: opacity 0.2s; }
+body.focus .tabs, body.focus .meta { opacity: 0; pointer-events: none; }
+body.focus .tabs { height: 0; overflow: hidden; margin-bottom: 0; border-bottom: 0; }
+.compose { max-width: 760px; margin: 12vh auto 0; display: flex; flex-direction: column; gap: var(--s2); }
+body.working .compose { margin-top: var(--s2); }
+.cmp-form { display: flex; flex-direction: column; gap: var(--s1); }
+.cmp-form textarea { font: inherit; font-size: 14px; color: var(--cream); background: var(--block); border: 1px solid var(--muted); border-radius: 0; padding: var(--s2); min-height: 96px; max-height: 50vh; width: 100%; resize: vertical; line-height: 1.5; box-shadow: 0 4px 0 0 var(--line); }
+.cmp-form textarea::placeholder { color: var(--muted); }
+.cmp-form textarea:focus { outline: 2px solid var(--cream); outline-offset: 2px; border-color: var(--orange); }
+.cmp-form textarea:disabled { color: var(--muted); border-color: var(--line-2); cursor: not-allowed; }
+.cmp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); margin-top: var(--s1); }
+.cmp-select { font: inherit; font-size: 12px; color: var(--cream); background: var(--page); border: 1px solid var(--muted); border-radius: 0; min-height: 40px; padding: 0 var(--s1); max-width: 18em; }
+.cmp-select:focus-visible, .btn:focus-visible { outline: 2px solid var(--cream); outline-offset: 3px; }
+.cmp-labels { flex: 1 1 14em; min-width: 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.cmp-labels b { color: var(--text); font-weight: normal; }
+.cmp-why { margin: 0; min-height: 1.45em; font-size: 12px; color: var(--muted); }
+.cmp-why.error { color: var(--error); }
+.btn { font: inherit; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; min-height: 40px; padding: 0 var(--s3); border: 1px solid var(--line-2); background: var(--block); color: var(--cream); border-radius: 0; cursor: pointer; display: inline-flex; align-items: center; gap: var(--s1); box-shadow: 0 4px 0 0 var(--line); text-decoration: none; }
+.btn:active { transform: translateY(2px); box-shadow: 0 2px 0 0 var(--line); }
+.btn.primary { background: var(--orange); border-color: var(--orange); color: var(--page); box-shadow: 0 4px 0 0 var(--orange-dark); }
+.btn.danger { border-color: var(--error); color: var(--error); box-shadow: 0 4px 0 0 #5a1a10; }
+.btn.small { min-height: 28px; padding: 0 var(--s1); font-size: 11px; box-shadow: 0 2px 0 0 var(--line); }
+.btn[disabled], .btn[aria-disabled="true"] { background: var(--block); border-color: var(--line); color: var(--muted); box-shadow: none; cursor: not-allowed; transform: none; }
+.btn kbd { font: inherit; font-size: 11px; border: 1px solid currentColor; padding: 0 4px; opacity: 0.7; }
+.cmp-setup { font-size: 12px; color: var(--muted); }
+.cmp-setup summary { cursor: pointer; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.cmp-setup ul { list-style: none; margin: var(--s1) 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.cmp-setup code, .cmp-off code { color: var(--cream); background: var(--page); border: 1px solid var(--line); padding: 1px 6px; }
+.pill { font-size: 11px; padding: 0 6px; border: 1px solid; margin-left: var(--s1); }
+.pill.set { color: var(--orange); border-color: var(--orange-dark); }
+.pill.missing { color: var(--error); border-color: var(--error); }
+.pill.none-needed { color: var(--muted); border-color: var(--line-2); }
+.cmp-off { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s2); border: 1px solid var(--line); border-left: 8px solid var(--line-2); background: var(--block); color: var(--cream); font-size: 12px; }
+.cmp-off.err { border-left-color: var(--error); }
+.cmp-live { display: flex; flex-direction: column; gap: var(--s2); border: 1px solid var(--line); border-left: 8px solid var(--orange); background: var(--block); padding: var(--s2); }
+.cmp-live.done { border-left-color: var(--orange-dark); }
+.cmp-live.failed { border-left-color: var(--error); }
+.cmp-live.cancelled { border-left-color: var(--line-2); }
+.cmp-quote { color: var(--cream); font-size: 14px; white-space: pre-wrap; word-break: break-word; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.cmp-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); }
+.cmp-head .what { flex: 1 1 16em; color: var(--cream); font-size: 12px; }
+.cmp-head .what small { display: block; color: var(--muted); }
+.cmp-cost { text-align: right; }
+.cmp-cost .v { color: var(--cream); font-size: 22px; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cmp-cost .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.blocks { display: inline-grid; grid-template-columns: repeat(8, 8px); gap: 2px; flex: none; }
+.blocks i { width: 8px; height: 8px; background: var(--line-2); display: block; }
+.blocks i.on { background: var(--orange); }
+.blocks.live i.next { animation: blink 1s steps(2, start) infinite; background: var(--orange-dark); }
+@keyframes blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .blocks.live i.next { animation: none; } .top, .tabs { transition: none; } }
+.cmp-tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.cmp-tasks li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 11em) auto 8.5em; gap: var(--s1) var(--s2); align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 12px; }
+.cmp-tasks li.plan { color: var(--muted); }
+.cmp-tasks .t { color: var(--cream); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-tasks li.plan .t { color: var(--muted); }
+.cmp-tasks .c { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cmp-tasks .s { display: flex; align-items: center; gap: 4px; justify-content: flex-start; min-width: 0; }
+.tag.state-running, .tag.state-planning { color: var(--cream); border-color: var(--cream); }
+.tag.state-cancelled, .tag.state-skipped { color: var(--muted); border-style: dashed; }
+.tag.state-pending, .tag.state-queued { color: var(--muted); }
+.taskstop { font: inherit; font-size: 11px; background: none; padding: 0 6px; border: 1px solid var(--line-2); color: var(--muted); cursor: pointer; }
+.taskstop:hover { color: var(--error); border-color: var(--error); }
+.cmp-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s1) var(--s2); font-size: 12px; color: var(--muted); }
+.cmp-foot .acts { display: flex; gap: var(--s1); align-items: center; }
+.gate { max-width: 640px; margin: 10vh auto 0; }
+.gate h2 { color: var(--cream); }
+@media (max-width: 760px) {
+  .compose { margin-top: var(--s3); }
+  .cmp-bar { flex-direction: column; align-items: stretch; }
+  .cmp-select { max-width: none; }
+  .cmp-bar .btn { justify-content: center; }
+  .cmp-tasks li { grid-template-columns: minmax(0, 1fr) auto; }
+  .cmp-tasks .m { grid-column: 1 / -1; grid-row: 2; }
+}
 `;
 
 export const APP_JS = String.raw`'use strict';
@@ -271,14 +396,17 @@ let lastRunId = null;
 
 // ---- Pure helpers (tested in ui.test.ts) -------------------------------------------------
 
-// Hash route: '' | '#' | '#/' → overview; '#/prompts' → list; '#/prompts/<runId>' → detail.
-// An old-style '#<runId>' link still opens that prompt. Anything else is the overview.
+// Hash route: '' | '#' | '#/' → the prompt box; '#/overview' → overview; '#/prompts' → list;
+// '#/prompts/<runId>' → detail. An old-style '#<runId>' link still opens that prompt, and an
+// old '#/?zoom=hour' overview link still opens the overview. Anything else is the prompt box.
 function parseRoute(hash) {
   const raw = String(hash || '').replace(/^#/, '');
   const qi = raw.indexOf('?');
   const h = qi === -1 ? raw : raw.slice(0, qi);
   const q = parseQuery(qi === -1 ? '' : raw.slice(qi + 1));
-  if (h === '' || h === '/') return q.zoom === 'hour' || q.zoom === 'day' ? { view: 'overview', zoom: q.zoom } : { view: 'overview' };
+  const zoomed = q.zoom === 'hour' || q.zoom === 'day';
+  if (h === '' || h === '/') return zoomed ? { view: 'overview', zoom: q.zoom } : { view: 'compose' };
+  if (h === '/overview' || h === '/overview/') return zoomed ? { view: 'overview', zoom: q.zoom } : { view: 'overview' };
   const m = /^\/prompts\/?(.*)$/.exec(h);
   if (m) {
     const rest = m[1].replace(/\/+$/, '');
@@ -294,7 +422,7 @@ function parseRoute(hash) {
   if (h.charAt(0) !== '/') {
     try { return { view: 'prompt', runId: decodeURIComponent(h) }; } catch (e) { return { view: 'prompt', runId: h }; }
   }
-  return { view: 'overview' };
+  return { view: 'compose' };
 }
 const promptHref = (runId) => '#/prompts/' + encodeURIComponent(runId);
 
@@ -1056,7 +1184,7 @@ function zoomToggle(zoom) {
   nav.setAttribute('aria-label', 'zoom');
   for (const z of ZOOMS) {
     const a = el('a', 'seg-b' + (z === zoom ? ' on' : ''), z.charAt(0).toUpperCase() + z.slice(1));
-    a.href = z === 'prompt' ? '#/' : '#/?zoom=' + z;
+    a.href = z === 'prompt' ? '#/overview' : '#/overview?zoom=' + z;
     if (z === zoom) a.setAttribute('aria-current', 'true');
     nav.append(a);
   }
@@ -1384,7 +1512,7 @@ function renderPrompts(all, filter) {
 async function getJson(path) {
   const r = await fetch(path, { cache: 'no-store' });
   const j = await r.json();
-  if (!r.ok) throw new Error(j.error || String(r.status));
+  if (!r.ok) throw new Error(j.message || j.error || String(r.status));
   return j;
 }
 
@@ -1803,10 +1931,389 @@ async function showRun(runId) {
   }
 }
 
+// ---- Prompt box (ADR-038): submit plans and runs right away; focus mode while working -----
+
+const cmp = { session: null, projects: [], job: null, run: null, poll: null, loaded: false, said: '' };
+const TERMINAL_TASK = ['succeeded', 'failed', 'cancelled', 'skipped'];
+const liveJob = (j) => !!j && (j.state === 'planning' || j.state === 'running');
+
+// "planner: deepseek-flash · ~$0.0016 per plan" for the line next to Run.
+function plannerText(p) {
+  if (!p || p.status === 'not-configured' || !p.model) return 'planner: recorded prompts only';
+  if (p.status === 'unusable') return 'planner: ' + short(p.model) + ' not usable (recorded prompts only)';
+  return 'planner: ' + short(p.model) + ' · ' + (p.roughCostUsd === null || p.roughCostUsd === undefined ? 'price not set' : '~' + fmtUsd(p.roughCostUsd) + ' per plan');
+}
+
+// The compact live view of one job: the planning row, one row per task (model, state, cost so far),
+// the total so far and the worst case. Uses the run once it exists, else the plan preview.
+function liveModel(job, run) {
+  const pv = job.preview || null;
+  const planner = pv ? pv.planner : null;
+  const planning = planner === null
+    ? { name: 'Planning', model: null, state: job.state === 'planning' ? 'planning' : (job.state === 'failed' ? 'failed' : 'cancelled'), inputTokens: null, outputTokens: null, cost: addPart(noCost(), 'none', null) }
+    : planner.kind === 'fixture'
+      ? { name: 'Planning', model: null, fixture: true, state: 'succeeded', inputTokens: null, outputTokens: null, cost: addPart(noCost(), 'free', null) }
+      : { name: 'Planning', model: planner.model, state: 'succeeded', inputTokens: planner.inputTokens, outputTokens: planner.outputTokens, cost: planningCost(planner) };
+  const planned = pv ? pv.tasks : [];
+  const byId = {};
+  for (const t of planned) byId[t.taskId] = t;
+  const fromPlan = (t) => t.estimateUsd === null ? addPart(noCost(), 'unpriced', null) : addPart(noCost(), 'estimated', t.estimateUsd);
+  let tasks;
+  if (run) {
+    tasks = detailRows(run).tasks.map((row) => {
+      const p = byId[row.id];
+      const started = row.cost.actual + row.cost.estimated + row.cost.unpriced + row.cost.unreported > 0;
+      return {
+        id: row.id,
+        name: row.name,
+        models: row.models.length > 0 ? row.models : (p && p.model ? [p.model] : []),
+        state: row.state,
+        cost: started || !p ? row.cost : fromPlan(p),
+        inputTokens: null,
+        outputTokens: null,
+      };
+    });
+  } else {
+    tasks = planned.map((t) => ({ id: t.taskId, name: t.title || t.taskId, models: t.model ? [t.model] : [], state: job.state === 'running' ? 'pending' : (liveJob(job) ? 'queued' : 'cancelled'), cost: fromPlan(t), inputTokens: null, outputTokens: null }));
+  }
+  const tot = detailTotals({ planning: planning, tasks: tasks });
+  const done = tasks.filter((t) => TERMINAL_TASK.includes(t.state)).length;
+  const planCost = planning.cost.usd === null ? 0 : planning.cost.usd;
+  const worst = pv && pv.worstCaseUsd !== null && pv.worstCaseUsd !== undefined
+    ? { usd: pv.worstCaseUsd + planCost, partial: !!pv.worstCasePartial, basis: pv.worstCaseBasis }
+    : null;
+  return { planning: planning, tasks: tasks, total: totalCostText(tot), worst: worst, done: done };
+}
+
+// One line for the live card's head.
+function liveHeadline(job, m, now) {
+  const secs = Math.max(0, Math.round(((now || Date.now()) - Date.parse(job.createdAt)) / 1000));
+  const clock = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+  if (job.state === 'planning') return { text: 'Planning…', sub: 'Splitting the prompt into tasks · ' + clock };
+  if (job.state === 'running') return { text: 'Running · ' + m.done + ' of ' + m.tasks.length + ' tasks done · ' + clock, sub: 'Runner: ' + job.runner.label + ' · ' + job.project.label };
+  if (job.state === 'done') {
+    const st = job.result && job.result.status ? job.result.status : 'done';
+    return { text: st === 'complete' ? 'Done · complete' : 'Done · ' + st, sub: m.done + ' of ' + m.tasks.length + ' tasks finished · ' + job.project.label };
+  }
+  if (job.state === 'cancelled') return { text: 'Stopped', sub: job.runId ? 'Running agents were told to stop. Work merged before the stop stays in ' + job.project.label + '.' : 'Stopped while planning. Nothing ran.' };
+  return { text: 'Failed', sub: job.error ? job.error.message : 'The prompt did not finish.' };
+}
+
+function setFocus() {
+  const ta = $('cmp-prompt');
+  const typing = !!ta && document.activeElement === ta && ta.value.trim() !== '';
+  const onCompose = parseRoute(location.hash).view === 'compose';
+  document.body.classList.toggle('focus', onCompose && (typing || liveJob(cmp.job)));
+  document.body.classList.toggle('working', onCompose && cmp.job !== null);
+}
+
+async function postJson(path, body, headers) {
+  const h = Object.assign({ 'content-type': 'application/json' }, headers || {});
+  if (cmp.session && cmp.session.csrf) h['x-soot-csrf'] = cmp.session.csrf;
+  const r = await fetch(path, { method: 'POST', headers: h, body: JSON.stringify(body), cache: 'no-store', credentials: 'same-origin' });
+  let j = {};
+  try { j = await r.json(); } catch (e) { j = {}; }
+  if (!r.ok) throw new Error(j.message || j.error || String(r.status));
+  return j;
+}
+
+const randomKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+
+function selectedProject() {
+  const sel = $('cmp-project');
+  return cmp.projects.find((p) => p.id === (sel ? sel.value : '')) || null;
+}
+
+function say(text, isError) {
+  const why = $('cmp-why');
+  why.textContent = text;
+  why.className = 'cmp-why' + (isError ? ' error' : '');
+  if (isError) why.setAttribute('role', 'alert'); else why.setAttribute('role', 'status');
+}
+
+function offBox(lines, kind) {
+  const box = el('div', 'cmp-off' + (kind ? ' ' + kind : ''));
+  box.id = 'cmp-off';
+  for (const l of lines) {
+    if (typeof l === 'string') box.append(el('div', '', l));
+    else { const c = el('div', ''); c.append(el('code', '', l.code)); box.append(c); }
+  }
+  return box;
+}
+
+function setDisabled(disabled, reason) {
+  const ta = $('cmp-prompt'), send = $('cmp-send'), sel = $('cmp-project');
+  ta.disabled = disabled;
+  sel.disabled = disabled || cmp.projects.length === 0;
+  send.disabled = disabled;
+  if (disabled) send.setAttribute('aria-disabled', 'true'); else send.removeAttribute('aria-disabled');
+  if (reason !== undefined) say(reason, false);
+}
+
+function renderLabels() {
+  const p = selectedProject();
+  const box = $('cmp-labels');
+  if (!cmp.session || !cmp.session.writes || p === null) { box.replaceChildren(); return; }
+  const runner = el('span', '', 'runner: ');
+  runner.append(el('b', '', p.runnerLabel || cmp.session.runner.label));
+  box.replaceChildren(runner, el('span', '', ' · ' + plannerText(p.planner)));
+  box.title = p.path + ' · ' + (p.runnerLabel || '') + ' · ' + plannerText(p.planner);
+}
+
+async function renderSetup() {
+  const p = selectedProject();
+  const d = $('cmp-setup');
+  if (p === null) { d.hidden = true; return; }
+  try {
+    const k = await getJson('/api/keys/status?project=' + encodeURIComponent(p.id));
+    const ul = el('ul', '');
+    ul.append(el('li', '', 'folder: ' + p.path));
+    ul.append(el('li', '', 'models: ' + k.models + (k.unpriced.length > 0 ? ' (' + k.unpriced.length + ' with no price: ' + k.unpriced.map(short).join(', ') + ')' : '')));
+    ul.append(el('li', '', plannerText(k.planner) + (k.planner.reason ? ' — ' + k.planner.reason : '')));
+    for (const pr of k.providers) {
+      const li = el('li', '', pr.id + ' ');
+      if (pr.keyVar) li.append(el('code', '', pr.keyVar));
+      li.append(el('span', 'pill ' + pr.key, pr.key));
+      ul.append(li);
+    }
+    ul.append(el('li', '', 'Keys show as set or missing only. soot never asks for keys here and never shows them. Approval-needing actions in a run are refused.'));
+    $('cmp-setup-body').replaceChildren(ul);
+    d.hidden = false;
+  } catch (e) {
+    d.hidden = true;
+  }
+}
+
+async function initCompose() {
+  if (cmp.loaded) return;
+  cmp.loaded = true;
+  const ta = $('cmp-prompt');
+  const form = $('cmp-form');
+  const sel = $('cmp-project');
+  ta.addEventListener('input', () => { setFocus(); if (!liveJob(cmp.job)) say('', false); });
+  ta.addEventListener('focus', setFocus);
+  ta.addEventListener('blur', setFocus);
+  ta.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); void submitPrompt(); }
+  });
+  form.addEventListener('submit', (ev) => { ev.preventDefault(); void submitPrompt(); });
+  sel.addEventListener('change', () => { try { localStorage.setItem('soot.project', sel.value); } catch (e) { /* private mode */ } renderLabels(); void renderSetup(); });
+  try {
+    cmp.session = await getJson('/api/session');
+  } catch (e) {
+    setDisabled(true, 'Could not reach the dashboard: ' + e.message);
+    return;
+  }
+  if (lastOverview) renderMeta(lastOverview);
+  const view = $('view-compose');
+  if (!cmp.session.writes) {
+    view.prepend(offBox(['This dashboard is read-only.', 'To run prompts from here, restart it with a runner:', { code: 'soot dashboard --agent mock --mock-script <file>' }, { code: 'soot dashboard --agent acp' }]));
+    ta.placeholder = 'Read-only: start soot dashboard with --agent to run prompts';
+    setDisabled(true, '');
+    return;
+  }
+  try {
+    cmp.projects = (await getJson('/api/projects')).projects;
+  } catch (e) {
+    setDisabled(true, 'Could not load projects: ' + e.message);
+    return;
+  }
+  if (cmp.projects.length === 0) {
+    view.prepend(offBox(['No project folders are allowed yet. For safety, folders can only be added from the terminal, never from this page:', { code: 'soot dashboard allow <dir>' }, 'Then reload this page.']));
+    setDisabled(true, '');
+    return;
+  }
+  let saved = null;
+  try { saved = localStorage.getItem('soot.project'); } catch (e) { saved = null; }
+  sel.replaceChildren(...cmp.projects.map((p) => {
+    const o = el('option', '', p.label + (p.config.ok ? '' : ' (config error)'));
+    o.value = p.id;
+    o.title = p.path;
+    return o;
+  }));
+  if (saved && cmp.projects.some((p) => p.id === saved)) sel.value = saved;
+  setDisabled(false);
+  renderLabels();
+  void renderSetup();
+  try {
+    const jobs = (await getJson('/api/prompts')).jobs;
+    const live = jobs.find(liveJob);
+    if (live) { cmp.job = live; startPoll(); }
+  } catch (e) { /* nothing to resume */ }
+  renderCompose();
+  ta.focus();
+}
+
+async function submitPrompt() {
+  const ta = $('cmp-prompt');
+  const p = selectedProject();
+  if (ta.disabled || liveJob(cmp.job)) return;
+  if (p === null) { say('Pick a project first.', true); return; }
+  if (ta.value.trim() === '') { say('Write a prompt first.', true); return; }
+  if (!p.config.ok) { say(p.label + ': ' + (p.config.error || 'soot.config.json does not load'), true); return; }
+  setDisabled(true, 'Starting…');
+  try {
+    const out = await postJson('/api/prompts', { project: p.id, prompt: ta.value }, { 'idempotency-key': randomKey() });
+    cmp.job = out.job;
+    cmp.run = null;
+    ta.value = '';
+    say('', false);
+    startPoll();
+  } catch (e) {
+    say(e.message, true);
+  } finally {
+    setDisabled(false);
+    renderCompose();
+  }
+}
+
+async function stopJob() {
+  if (!cmp.job) return;
+  try { cmp.job = (await postJson('/api/prompts/' + encodeURIComponent(cmp.job.id) + '/cancel', {})).job; } catch (e) { say('Could not stop: ' + e.message, true); }
+  renderCompose();
+}
+
+async function stopTask(taskId) {
+  if (!cmp.job || !cmp.job.runId) return;
+  try { await postJson('/api/runs/' + encodeURIComponent(cmp.job.runId) + '/cancel', { task: taskId }); } catch (e) { say('Could not stop ' + taskId + ': ' + e.message, true); }
+}
+
+function startPoll() {
+  clearTimeout(cmp.poll);
+  const tick = async () => {
+    if (!cmp.job) return;
+    const wasLive = liveJob(cmp.job);
+    try {
+      cmp.job = (await getJson('/api/prompts/' + encodeURIComponent(cmp.job.id))).job;
+      if (cmp.job.runId) {
+        try { cmp.run = (await getJson('/api/runs/' + encodeURIComponent(cmp.job.runId))).run; } catch (e) { /* not recorded yet */ }
+      }
+    } catch (e) {
+      say('Lost the dashboard: ' + e.message, true);
+      return;
+    }
+    renderCompose();
+    if (liveJob(cmp.job)) cmp.poll = setTimeout(() => { void tick(); }, 1000);
+    else if (wasLive) { void refresh(); const ta = $('cmp-prompt'); if (ta && parseRoute(location.hash).view === 'compose') ta.focus(); }
+  };
+  void tick();
+}
+
+// After a run: the first run-level problem (e.g. "working tree not updated: approval
+// unavailable; result left on soot/<run>/integration"), else the runner's one-line summary.
+function finishNote(job, run) {
+  const problems = run && run.validation && run.validation.problems ? run.validation.problems : [];
+  if (problems.length > 0) return problems[0];
+  return job.result && job.result.message ? job.result.message : '';
+}
+
+function liveCard(job, run) {
+  const m = liveModel(job, run);
+  const head = liveHeadline(job, m);
+  const card = el('section', 'cmp-live ' + (job.state === 'done' ? 'done' : job.state));
+  card.id = 'cmp-live';
+  card.setAttribute('aria-label', 'current prompt');
+  card.append(el('div', 'cmp-quote', job.prompt));
+  const top = el('div', 'cmp-head');
+  const blocks = el('span', 'blocks' + (liveJob(job) ? ' live' : ''));
+  const n = m.tasks.length + 1;
+  const on = Math.round(((m.done + (job.preview ? 1 : 0)) / n) * 8);
+  for (let i = 0; i < 8; i++) blocks.append(el('i', i < on ? 'on' : (i === on && liveJob(job) ? 'next' : '')));
+  blocks.setAttribute('aria-hidden', 'true');
+  const what = el('div', 'what', head.text);
+  what.append(el('small', '', head.sub));
+  const cost = el('div', 'cmp-cost');
+  const v = el('div', 'v');
+  appendCost(v, m.total);
+  v.title = m.total.title;
+  cost.append(v, el('div', 'k', liveJob(job) ? 'cost so far' : 'cost'));
+  if (m.worst) {
+    const w = el('div', 'k', 'worst case ≤ ' + fmtUsd(m.worst.usd) + (m.worst.partial ? ' partial' : ''));
+    w.title = 'Worst case: planning plus ' + m.worst.basis + '. Not a quote.';
+    cost.append(w);
+  }
+  top.append(blocks, what, cost);
+  if (liveJob(job)) {
+    const stop = el('button', 'btn danger', job.stopRequested ? 'Stopping…' : 'Stop');
+    stop.type = 'button';
+    stop.disabled = !!job.stopRequested;
+    stop.addEventListener('click', () => { void stopJob(); });
+    top.append(stop);
+  }
+  card.append(top);
+  const ul = el('ul', 'cmp-tasks');
+  const li = (row, cls, stoppable) => {
+    const x = el('li', cls || '');
+    x.append(el('span', 't', row.name));
+    const mcell = el('span', 'm model-chain');
+    const models = row.models || [];
+    if (models.length === 0) mcell.append(el('span', 'muted-val', row.fixture ? 'recorded plan' : DASH));
+    models.forEach((mm, i) => { if (i > 0) mcell.append(el('span', 'via', '→')); mcell.append(modelLabel(mm, short(mm))); });
+    const scell = el('span', 's');
+    scell.append(stateTag(row.state));
+    if (stoppable) {
+      const b = el('button', 'taskstop', 'stop');
+      b.type = 'button';
+      b.title = 'Stop this task; tasks that depend on it are skipped';
+      b.addEventListener('click', () => { void stopTask(row.id); });
+      scell.append(b);
+    }
+    const c = el('span', 'c');
+    appendCost(c, costView(row.cost));
+    c.title = costView(row.cost).title;
+    x.append(mcell, scell, c);
+    return x;
+  };
+  const planRow = Object.assign({}, m.planning, { models: m.planning.model ? [m.planning.model] : [] });
+  ul.append(li(planRow, 'plan', false));
+  for (const t of m.tasks) ul.append(li(t, '', job.state === 'running' && !!job.runId && !TERMINAL_TASK.includes(t.state) && !job.stopRequested));
+  card.append(ul);
+  const foot = el('div', 'cmp-foot');
+  foot.append(el('span', '', liveJob(job) ? 'This run lives in soot dashboard: stopping the dashboard stops it. Approval-needing actions are refused.' : finishNote(job, run)));
+  const acts = el('span', 'acts');
+  if (job.runId) {
+    const a = el('a', 'btn small', 'details');
+    a.href = promptHref(job.runId);
+    acts.append(a);
+  }
+  if (!liveJob(job)) {
+    const b = el('button', 'btn small', 'dismiss');
+    b.type = 'button';
+    b.addEventListener('click', () => { cmp.job = null; cmp.run = null; cmp.said = ''; say('', false); renderCompose(); $('cmp-prompt').focus(); });
+    acts.append(b);
+  }
+  foot.append(acts);
+  card.append(foot);
+  const said = job.state === 'running' ? 'Running · ' + m.done + ' of ' + m.tasks.length + ' tasks done' : head.text + (job.state === 'failed' || job.state === 'cancelled' ? '. ' + head.sub : '');
+  return { card: card, said: said };
+}
+
+function renderCompose() {
+  const live = $('cmp-live');
+  const form = $('cmp-form');
+  if (!cmp.job) {
+    live.hidden = true;
+    form.hidden = false;
+    setFocus();
+    return;
+  }
+  const out = liveCard(cmp.job, cmp.run);
+  live.replaceWith(out.card);
+  out.card.hidden = false;
+  // While working, the submitted prompt replaces the box; it comes back when the run ends.
+  form.hidden = liveJob(cmp.job);
+  $('cmp-setup').hidden = liveJob(cmp.job) || $('cmp-setup-body').children.length === 0;
+  // Screen readers hear state changes only, not the ticking clock.
+  // The card already shows the state, so it is announced in a hidden live region, not repeated
+  // under the prompt box.
+  if (out.said !== cmp.said) { cmp.said = out.said; const sr = $('cmp-sr'); if (sr) sr.textContent = out.said; }
+  setFocus();
+}
+
 // ---- Router -------------------------------------------------------------------------------------
 
 function setTab(active) {
-  for (const name of ['overview', 'prompts']) {
+  for (const name of ['compose', 'overview', 'prompts']) {
     const t = $('tab-' + name);
     if (!t) continue;
     t.className = 'tab' + (name === active ? ' active' : '');
@@ -1816,10 +2323,16 @@ function setTab(active) {
 
 async function route() {
   const r = parseRoute(location.hash);
-  setTab(r.view === 'overview' ? 'overview' : 'prompts');
+  setTab(r.view === 'compose' || r.view === 'overview' ? r.view : 'prompts');
+  $('view-compose').hidden = r.view !== 'compose';
   $('view-overview').hidden = r.view !== 'overview';
   $('view-prompts').hidden = r.view !== 'prompts';
   $('view-prompt').hidden = r.view !== 'prompt';
+  setFocus();
+  if (r.view === 'compose') {
+    void initCompose();
+    return false;
+  }
   if (r.view === 'overview') {
     if (lastOverview) {
       renderGrid(lastOverview, r.zoom || 'prompt');
@@ -1840,7 +2353,8 @@ function renderMeta(ov) {
   const t = el('time', '', fmtDate(now.toISOString()) || '');
   t.dateTime = now.toISOString();
   t.title = now.toISOString();
-  meta.replaceChildren(el('span', '', ov.promptCount + ' run(s) · read-only · 127.0.0.1 only · updated '), t);
+  const mode = cmp.session === null ? '' : cmp.session.writes ? 'runner: ' + cmp.session.runner.label + ' · ' : 'read-only · ';
+  meta.replaceChildren(el('span', '', ov.promptCount + ' run(s) · ' + mode + '127.0.0.1 only · updated '), t);
 }
 
 async function refresh() {

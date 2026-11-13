@@ -107,13 +107,16 @@ compatibility is claimed until tested.
 
 ### Local dashboard (optional)
 
-soot is headless by default. `soot dashboard` starts an optional read-only page on
-`http://127.0.0.1:8787` (127.0.0.1 only; `--port <n>` to change it; `--open` to open a browser)
-that leads with a pixel canvas of where tasks went (across every recorded prompt, to each
-model) and a previous-prompts list. Click a prompt to see each task, the run's runner, the
-model that took it, and reported tokens. Usage charts (estimated and actual cost, tokens,
-outcomes) follow. Unknown costs stay unknown and no savings are claimed. No other command
-starts or loads it ([`apps/dashboard`](apps/dashboard/README.md), ADR-031).
+soot is headless by default. `soot dashboard` starts an optional local page on 127.0.0.1
+(port 8787; `--port <n>` to change it; `--open` to open a browser). Open the access link it
+prints; it holds an access token. With `--agent mock --mock-script <file>` or `--agent acp`,
+the landing page is a prompt box: pick a folder you allowed with
+`soot dashboard allow <dir>`, type a prompt, press Enter, and it plans and runs right away,
+showing each task's model, state and cost so far, with Stop. Without `--agent` it is
+read-only. Overview and Prompts show every recorded run: where tasks went, each task's
+model, runner, tokens and cost. Unknown costs stay unknown and no savings are claimed. No
+other command starts or loads it ([`apps/dashboard`](apps/dashboard/README.md), ADR-031,
+ADR-038).
 
 ## Try it (no keys)
 

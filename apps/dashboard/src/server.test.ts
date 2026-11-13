@@ -38,6 +38,9 @@ const source: DashboardSource = {
   },
 };
 
+const TOKEN = 'test-token-0123456789abcdef0123456789';
+const BEARER = `Bearer ${TOKEN}`;
+
 let handle: DashboardHandle | null = null;
 afterEach(async () => {
   await handle?.close();
@@ -45,7 +48,11 @@ afterEach(async () => {
   calls.length = 0;
 });
 
-const get = (port: number, path: string, options: { method?: string; host?: string } = {}) =>
+const get = (
+  port: number,
+  path: string,
+  options: { method?: string; host?: string; auth?: boolean } = {},
+) =>
   new Promise<{ status: number; headers: Record<string, unknown>; body: string }>(
     (resolve, reject) => {
       const req = request(
@@ -54,7 +61,10 @@ const get = (port: number, path: string, options: { method?: string; host?: stri
           port,
           path,
           method: options.method ?? 'GET',
-          headers: { host: options.host ?? `127.0.0.1:${String(port)}` },
+          headers: {
+            host: options.host ?? `127.0.0.1:${String(port)}`,
+            ...(options.auth === false ? {} : { authorization: BEARER }),
+          },
         },
         (res) => {
           let body = '';
@@ -79,7 +89,7 @@ const getBuf = (port: number, path: string, method = 'GET') =>
         port,
         path,
         method,
-        headers: { host: `127.0.0.1:${String(port)}` },
+        headers: { host: `127.0.0.1:${String(port)}`, authorization: BEARER },
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -102,10 +112,11 @@ const getBuf = (port: number, path: string, method = 'GET') =>
 
 describe('startDashboard', () => {
   it('listens on 127.0.0.1 / IPv4 only and serves the page and the JSON API', async () => {
-    handle = await startDashboard({ source, port: 0 });
+    handle = await startDashboard({ source, port: 0, token: TOKEN });
     expect(handle.address.address).toBe('127.0.0.1');
     expect(handle.address.family).toBe('IPv4');
-    expect(handle.url).toBe(`http://127.0.0.1:${String(handle.address.port)}/`);
+    expect(handle.baseUrl).toBe(`http://127.0.0.1:${String(handle.address.port)}/`);
+    expect(handle.url).toBe(`http://127.0.0.1:${String(handle.address.port)}/?token=${TOKEN}`);
     const port = handle.address.port;
 
     const page = await get(port, '/');
@@ -184,14 +195,16 @@ describe('no outbound network and no credentials', () => {
   const src = (f: string) => readFileSync(new URL(f, import.meta.url), 'utf8');
   it('the page script only calls its own /api paths and never builds HTML from data', () => {
     expect(APP_JS).not.toMatch(/https?:\/\//);
-    expect(APP_JS.match(/fetch\(/g)).toHaveLength(1);
+    // One GET helper and one POST helper, both same-origin.
+    expect(APP_JS.match(/fetch\(/g)).toHaveLength(2);
     expect(APP_JS).toContain("getJson('/api/runs')");
+    expect(APP_JS).toContain("credentials: 'same-origin'");
     expect(APP_JS).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(/);
     expect(INDEX_HTML).not.toMatch(/https?:\/\//);
   });
   it('the server code makes no requests and reads no keys or env', () => {
-    // ui.ts is the browser page (its one same-origin fetch is checked above).
-    for (const f of ['./server.ts', './view.ts', './overview.ts', './index.ts']) {
+    // ui.ts is the browser page (its same-origin fetches are checked above).
+    for (const f of ['./server.ts', './view.ts', './overview.ts', './index.ts', './jobs.ts']) {
       const code = src(f);
       expect(code, f).not.toMatch(
         /\bfetch\(|https?\.request|from 'node:https'|process\.env|apiKey/i,

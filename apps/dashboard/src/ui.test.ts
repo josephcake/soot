@@ -897,9 +897,12 @@ describe('page chart blocks', () => {
 describe('page helpers', () => {
   const ui = load();
 
-  it('parses hash routes for the overview, the prompt list and one prompt', () => {
+  it('parses hash routes: the prompt box by default, the overview, the list and one prompt', () => {
+    // The prompt box is the landing view (ADR-038); unknown routes land there too.
     for (const h of ['', '#', '#/', '#/nope/x'])
-      expect(ui.parseRoute(h)).toEqual({ view: 'overview' });
+      expect(ui.parseRoute(h)).toEqual({ view: 'compose' });
+    expect(ui.parseRoute('#/overview')).toEqual({ view: 'overview' });
+    expect(ui.parseRoute('#/overview/')).toEqual({ view: 'overview' });
     expect(ui.parseRoute('#/prompts')).toEqual({ view: 'prompts' });
     expect(ui.parseRoute('#/prompts/')).toEqual({ view: 'prompts' });
     expect(ui.parseRoute('#/prompts/run-1')).toEqual({ view: 'prompt', runId: 'run-1' });
@@ -1207,16 +1210,19 @@ describe('prompt grid', () => {
     expect(
       seg.map((n) => [n.textContent, (n as FakeNode & { href: string }).href, n.className]),
     ).toEqual([
-      ['Prompt', '#/', 'seg-b on'],
-      ['Hour', '#/?zoom=hour', 'seg-b'],
-      ['Day', '#/?zoom=day', 'seg-b'],
+      ['Prompt', '#/overview', 'seg-b on'],
+      ['Hour', '#/overview?zoom=hour', 'seg-b'],
+      ['Day', '#/overview?zoom=day', 'seg-b'],
     ]);
   });
 
   it('parses the zoom and the prompt-list window filter routes', () => {
+    expect(ui.parseRoute('#/overview?zoom=hour')).toEqual({ view: 'overview', zoom: 'hour' });
+    expect(ui.parseRoute('#/overview?zoom=day')).toEqual({ view: 'overview', zoom: 'day' });
+    expect(ui.parseRoute('#/overview?zoom=bogus')).toEqual({ view: 'overview' });
+    // Old overview zoom links still open the overview.
     expect(ui.parseRoute('#/?zoom=hour')).toEqual({ view: 'overview', zoom: 'hour' });
-    expect(ui.parseRoute('#/?zoom=day')).toEqual({ view: 'overview', zoom: 'day' });
-    expect(ui.parseRoute('#/?zoom=bogus')).toEqual({ view: 'overview' });
+    expect(ui.parseRoute('#/?zoom=bogus')).toEqual({ view: 'compose' });
     const from = '2026-11-12T17:00:00.000Z',
       to = '2026-11-12T18:00:00.000Z';
     expect(

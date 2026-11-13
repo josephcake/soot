@@ -2,7 +2,7 @@
   "name": "@soot/dashboard",
   "version": "0.0.0",
   "private": true,
-  "description": "Optional local dashboard for soot (ADR-031): a small static page and a read-only JSON API on 127.0.0.1, started only by `soot dashboard`.",
+  "description": "Optional local dashboard for soot (ADR-031, ADR-038): a small static page and a JSON API on 127.0.0.1 behind a per-start access token, read-only unless started with --agent, started only by `soot dashboard`.",
   "license": "MIT",
   "type": "module",
   "exports": {

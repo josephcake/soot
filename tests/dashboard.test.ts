@@ -104,11 +104,23 @@ function listeningAddresses(port: number): string[] {
     .map((cols) => cols[1]?.split(':')[0] ?? '');
 }
 
+/** The access token from the printed link (new each start) (ADR-038). */
+const tokenOf = (info: Record<string, unknown> | null) =>
+  new URL(String(info?.url)).searchParams.get('token') ?? '';
+const bearer = (info: Record<string, unknown> | null) => ({
+  headers: { authorization: `Bearer ${tokenOf(info)}` },
+});
+
 /** GET /api/runs with an explicit Host header; resolves the status code. */
-const statusWithHost = (port: number, host: string) =>
+const statusWithHost = (port: number, host: string, token = '') =>
   new Promise<number>((resolve, reject) => {
     const req = request(
-      { host: '127.0.0.1', port, path: '/api/runs', headers: { host } },
+      {
+        host: '127.0.0.1',
+        port,
+        path: '/api/runs',
+        headers: { host, ...(token === '' ? {} : { authorization: `Bearer ${token}` }) },
+      },
       (res) => {
         res.resume();
         resolve(res.statusCode ?? 0);
@@ -146,19 +158,28 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
       expect(d.info).toMatchObject({ ok: true, address: '127.0.0.1', family: 'IPv4' });
       const port = d.info?.port as number;
       expect(port).toBeGreaterThan(0);
-      expect(d.info?.url).toBe(`http://127.0.0.1:${String(port)}/`);
+      expect(d.info?.url).toMatch(
+        new RegExp(`^http://127\\.0\\.0\\.1:${String(port)}/\\?token=[A-Za-z0-9_-]{43}$`),
+      );
+      expect(d.info?.writes).toBe(false);
+      const auth = bearer(d.info);
       if (process.platform === 'linux') {
         // 0100007F is 127.0.0.1 in /proc/net/tcp; 00000000 (0.0.0.0) or any IPv6 must not appear.
         expect(listeningAddresses(port)).toEqual(['0100007F']);
       }
 
       const base = `http://127.0.0.1:${String(port)}`;
-      const page = await fetch(`${base}/`);
+      // No token, no page: the access gate only.
+      const gate = await fetch(`${base}/`);
+      expect(gate.status).toBe(401);
+      expect(await gate.text()).not.toContain('/app.js');
+      expect((await fetch(`${base}/api/runs`)).status).toBe(401);
+      const page = await fetch(`${base}/`, auth);
       expect(page.status).toBe(200);
       expect(page.headers.get('content-security-policy')).toContain("connect-src 'self'");
       expect(await page.text()).toContain('<script src="/app.js"');
 
-      const list = (await (await fetch(`${base}/api/runs`)).json()) as {
+      const list = (await (await fetch(`${base}/api/runs`, auth)).json()) as {
         runs: { runId: string }[];
         overview: {
           promptCount: number;
@@ -173,7 +194,7 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
       expect(list.overview.byModel).toEqual([{ model: 'anthropic/claude-haiku-5-5', tasks: 2 }]);
       expect(list.overview.prompts[0]?.prompt).toBe(TEST_1);
 
-      const { run: view } = (await (await fetch(`${base}/api/runs/dash-1`)).json()) as {
+      const { run: view } = (await (await fetch(`${base}/api/runs/dash-1`, auth)).json()) as {
         run: Record<string, unknown> & {
           tasks: { id: string; models: string[]; checks: unknown[] }[];
           cost: Record<string, unknown>;
@@ -234,11 +255,11 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
       expect(view.taskBreakdown.every((t) => t.runner !== null)).toBe(true);
 
       // Read-only, and only for requests addressed to this loopback server.
-      expect((await fetch(`${base}/api/runs`, { method: 'POST' })).status).toBe(405);
+      expect((await fetch(`${base}/api/runs`, { ...auth, method: 'POST' })).status).toBe(405);
       // fetch() will not send a foreign Host header, so use a raw request (DNS-rebinding shape).
-      expect(await statusWithHost(port, `evil.example:${String(port)}`)).toBe(421);
-      expect(await statusWithHost(port, `localhost:${String(port)}`)).toBe(200);
-      expect((await fetch(`${base}/api/runs/nope`)).status).toBe(404);
+      expect(await statusWithHost(port, `evil.example:${String(port)}`, tokenOf(d.info))).toBe(421);
+      expect(await statusWithHost(port, `localhost:${String(port)}`, tokenOf(d.info))).toBe(200);
+      expect((await fetch(`${base}/api/runs/nope`, auth)).status).toBe(404);
 
       d.child.kill('SIGINT');
       expect(await d.exited).toBe(0);
@@ -293,7 +314,9 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
         estimated: Side;
         actual: Side;
       }
-      const { run: view } = (await (await fetch(`${base}/api/runs/dash-esc`)).json()) as {
+      const { run: view } = (await (
+        await fetch(`${base}/api/runs/dash-esc`, bearer(d.info))
+      ).json()) as {
         run: {
           agent: { kind: string | null; label: string | null };
           usage: { byModel: Row[]; byTask: Row[]; byAgent: Row[] };
@@ -374,8 +397,8 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
       expect(d.info).toMatchObject({
         address: '127.0.0.1',
         port: 8787,
-        url: 'http://127.0.0.1:8787/',
       });
+      expect(d.info?.url).toMatch(/^http:\/\/127\.0\.0\.1:8787\/\?token=[A-Za-z0-9_-]{43}$/);
       if (process.platform === 'linux') expect(listeningAddresses(8787)).toEqual(['0100007F']);
       d.child.kill('SIGINT');
       expect(await d.exited).toBe(0);
@@ -432,7 +455,7 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
           });
         })();
         expect(await done).toBe(0);
-        const url = /http:\/\/127\.0\.0\.1:\d+\//.exec(stdout)?.[0];
+        const url = /http:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]+/.exec(stdout)?.[0];
         expect(url).toBeDefined();
         expect(opened).toEqual(open ? [url] : []);
       }

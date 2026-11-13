@@ -5,6 +5,19 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (dashboard prompt box, ADR-038; mock runner only)
+
+- `soot dashboard --agent mock|acp` adds a prompt box, now the dashboard's landing page: pick
+  an allowed folder, type a prompt, press Enter. It plans and runs at once (no approve step),
+  with a focus mode that shows only the prompt, live tasks with model, state and cost so far,
+  a worst case, Stop and per-task stop. Overview moved to `#/overview`.
+- `soot dashboard allow <dir>` / `disallow <dir>` / `list`: the folder allowlist in
+  `<dataDir>/dashboard.json`, written by the CLI only.
+- Every dashboard start prints a new access link; the dashboard now needs that session
+  (cookie or bearer) for every page and API call. Writes also need CSRF + exact Origin.
+- `SootEngine.plan()` / `runPlan()` / `previewPlan()`; `run()` is plan + runPlan (no change to
+  `soot run`).
+
 ### Added (sourced price catalog, pricing prompt, priced planning call, ADR-037)
 
 - `PRICE_CATALOG` in `@soot/model-registry`: official list prices (checked 2026-11-13, source

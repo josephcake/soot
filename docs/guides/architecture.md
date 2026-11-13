@@ -178,23 +178,23 @@ and file-conflict management.
 
 ### Workspace packages
 
-| Path                          | Status            | First real milestone | Responsibility                                        |
-| ----------------------------- | ----------------- | -------------------- | ----------------------------------------------------- |
-| `apps/cli/`                   | partial           | M6                   | `soot` CLI, SootEngine, config, skill installer       |
-| `apps/vscode-extension/`      | partial (M7)      | M7                   | Editor view over the CLI; no orchestration            |
-| `apps/dashboard/`             | optional          | — (ADR-031)          | Local read-only page + JSON API over status/cost      |
-| `packages/core/`              | foundation (real) | M0                   | Package metadata, `parseEnv`, leveled logger          |
-| `packages/planner/`           | partial (M1)      | M1                   | Prompt intake; fixture + model decomposers (mocks)    |
-| `packages/task-graph/`        | partial (M1)      | M1                   | Task/result contracts, JSON Schema, DAG               |
-| `packages/model-registry/`    | partial (M2)      | M2                   | User model config, availability, sourced pricing      |
-| `packages/model-router/`      | partial (M3)      | M3                   | Per-task routing, cost/reliability policies           |
-| `packages/agent-runtime/`     | partial (M1, M5)  | M1                   | Scheduler, attempts, approvals; MockAgentRunner       |
-| `packages/context-manager/`   | partial (M1, M5)  | M1                   | SQLite state, outcomes; untrusted context             |
-| `packages/escalation/`        | partial (M4)      | M4                   | Escalation, fallback, bounds, downgrade rules         |
-| `packages/provider-adapters/` | partial (M2)      | M2                   | ModelClient over AI SDK; retries, fallback, keys      |
-| `packages/harness-adapters/`  | partial           | M6                   | Service, MCP server, generic ACP runner (mock-tested) |
-| `packages/integrations/`      | partial (M5)      | M5                   | Worktrees, conflict detection, validation             |
-| `packages/observability/`     | partial (M1, M5)  | M1                   | Cost records/reports; routing log; audit log          |
+| Path                          | Status            | First real milestone | Responsibility                                             |
+| ----------------------------- | ----------------- | -------------------- | ---------------------------------------------------------- |
+| `apps/cli/`                   | partial           | M6                   | `soot` CLI, SootEngine, config, skill installer            |
+| `apps/vscode-extension/`      | partial (M7)      | M7                   | Editor view over the CLI; no orchestration                 |
+| `apps/dashboard/`             | optional          | — (ADR-031)          | Local page + JSON API; prompt box with `--agent` (ADR-038) |
+| `packages/core/`              | foundation (real) | M0                   | Package metadata, `parseEnv`, leveled logger               |
+| `packages/planner/`           | partial (M1)      | M1                   | Prompt intake; fixture + model decomposers (mocks)         |
+| `packages/task-graph/`        | partial (M1)      | M1                   | Task/result contracts, JSON Schema, DAG                    |
+| `packages/model-registry/`    | partial (M2)      | M2                   | User model config, availability, sourced pricing           |
+| `packages/model-router/`      | partial (M3)      | M3                   | Per-task routing, cost/reliability policies                |
+| `packages/agent-runtime/`     | partial (M1, M5)  | M1                   | Scheduler, attempts, approvals; MockAgentRunner            |
+| `packages/context-manager/`   | partial (M1, M5)  | M1                   | SQLite state, outcomes; untrusted context                  |
+| `packages/escalation/`        | partial (M4)      | M4                   | Escalation, fallback, bounds, downgrade rules              |
+| `packages/provider-adapters/` | partial (M2)      | M2                   | ModelClient over AI SDK; retries, fallback, keys           |
+| `packages/harness-adapters/`  | partial           | M6                   | Service, MCP server, generic ACP runner (mock-tested)      |
+| `packages/integrations/`      | partial (M5)      | M5                   | Worktrees, conflict detection, validation                  |
+| `packages/observability/`     | partial (M1, M5)  | M1                   | Cost records/reports; routing log; audit log               |
 
 ### Planned directories not created yet
 

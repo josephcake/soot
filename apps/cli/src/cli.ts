@@ -6,6 +6,8 @@ import { createLogger } from '@soot/core';
 import type * as Dashboard from '@soot/dashboard';
 import type { CommandOutput } from '@soot/harness-adapters';
 import { interactiveApprovals, unattendedApprovals } from './approvals.js';
+import { allowProject, disallowProject, projectId, readAllowlist } from './dashboard-allowlist.js';
+import type { createComposerAgent } from './dashboard-agent.js';
 import { SootEngine, runtimeFromEnv, type AgentMode } from './engine.js';
 import { SKILL_TARGETS, installSkill, type SkillTarget } from './install-skill.js';
 import { VERSION } from './version.js';
@@ -35,7 +37,9 @@ Usage:
   soot stop <run-id> [--task <task-id>]
   soot mcp [--agent mock --mock-script <file> | --agent acp]   MCP server on stdio (unattended)
   soot install-skill [--target <dir>] [--harness agents,claude,grok] [--force]
-  soot dashboard [--port <n>] [--open]   optional local dashboard on 127.0.0.1 (default port 8787)
+  soot dashboard [--port <n>] [--open] [--agent mock --mock-script <file> | --agent acp]
+                                optional local dashboard on 127.0.0.1 (default port 8787)
+  soot dashboard allow <dir> | disallow <dir> | list   folders the dashboard may run prompts in
 
 Global options:
   --config <file>   project config (default <repo>/soot.config.json)
@@ -55,8 +59,12 @@ model in soot.config.json, only when its key variable is set (verified with mock
 "soot config" shows whether it is usable). Without it, such prompts are refused.
 
 Dashboard: off unless you run "soot dashboard". It binds 127.0.0.1 only, fails if the port is
-taken (no other port is tried), is read-only, and opens a browser only with --open. Every
-other command is headless and never loads it.
+taken (no other port is tried), and opens a browser only with --open. It prints a new
+link with an access token; open that link (it sets a session cookie). Without --agent it is
+read-only. With --agent it adds a prompt box that plans and runs prompts right away, only in
+folders added with "soot dashboard allow <dir>" (never from the browser). Runs live in the
+dashboard process: stopping the dashboard stops them. Approval-needing actions are refused.
+Every other command is headless and never loads it.
 
 Exit codes: 0 ok / run complete, 1 error, 2 run incomplete, 3 run cancelled.`;
 
@@ -229,7 +237,70 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
           return 0;
         }
         case 'dashboard': {
-          if (rest.length > 0) throw new UsageError('dashboard takes no arguments');
+          const [sub, dir, ...extra] = rest;
+          if (sub !== undefined) {
+            // Allowlist management: CLI only, never the browser (ADR-038).
+            if (
+              values.port !== undefined ||
+              values.open !== undefined ||
+              values.agent !== undefined
+            )
+              throw new UsageError(`dashboard ${sub} takes no --port, --open or --agent`);
+            if (sub === 'list') {
+              if (dir !== undefined) throw new UsageError('dashboard list takes no arguments');
+              const projects = readAllowlist(dataDir);
+              print(
+                io,
+                {
+                  ok: true,
+                  text:
+                    projects.length === 0
+                      ? 'No folders allowed yet. Add one with: soot dashboard allow <dir>'
+                      : [
+                          'Folders the dashboard may run prompts in:',
+                          ...projects.map((p) => `- ${p.path} (${projectId(p.path)})`),
+                        ].join('\n'),
+                  data: { projects: projects.map((p) => ({ ...p, id: projectId(p.path) })) },
+                },
+                asJson,
+              );
+              return 0;
+            }
+            if (sub !== 'allow' && sub !== 'disallow')
+              throw new UsageError(`unknown dashboard command "${sub}" (allow, disallow, list)`);
+            if (dir === undefined || extra.length > 0)
+              throw new UsageError(`dashboard ${sub} needs exactly one folder`);
+            if (sub === 'allow') {
+              const entry = allowProject(dataDir, io.cwd, dir);
+              print(
+                io,
+                {
+                  ok: true,
+                  text: `Allowed ${entry.path} for the dashboard prompt box (stored in ${dataDir}).`,
+                  data: { project: { ...entry, id: projectId(entry.path) } },
+                },
+                asJson,
+              );
+              return 0;
+            }
+            const removed = disallowProject(dataDir, io.cwd, dir);
+            print(
+              io,
+              {
+                ok: removed,
+                text: removed
+                  ? `Removed ${dir} from the dashboard allowlist.`
+                  : `${dir} was not allowed.`,
+                data: { removed },
+              },
+              asJson,
+            );
+            return removed ? 0 : 1;
+          }
+          if (values.config !== undefined || values.repo !== undefined)
+            throw new UsageError(
+              "soot dashboard uses each allowed folder's own soot.config.json; --config and --repo do not apply",
+            );
           // The optional dashboard is loaded here and only here (ADR-031).
           let dashboard: typeof Dashboard;
           try {
@@ -247,14 +318,38 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
           } catch (error) {
             throw new UsageError((error as Error).message);
           }
-          const server = await dashboard.startDashboard({ source: engine, port });
+          // Writes only with an explicit runner, fixed for the life of this process.
+          let composer: ReturnType<typeof createComposerAgent> | undefined;
+          if (agent.kind !== 'none') {
+            const { createComposerAgent: create } = await import('./dashboard-agent.js');
+            composer = create({
+              dataDir,
+              agent:
+                agent.kind === 'mock'
+                  ? { kind: 'mock', script: resolve(io.cwd, agent.script) }
+                  : agent,
+              env: io.env,
+              log,
+            });
+          }
+          const server = await dashboard.startDashboard({
+            source: engine,
+            port,
+            ...(composer === undefined ? {} : { agent: composer }),
+          });
+          const mode =
+            composer === undefined
+              ? 'read-only'
+              : `prompt box on, runner: ${composer.runner.label}; runs stop when the dashboard stops`;
           print(
             io,
             {
               ok: true,
-              text: `soot dashboard: ${server.url} (127.0.0.1 only, read-only; Ctrl-C stops it)`,
+              text: `soot dashboard: ${server.url}\n  open this link (it holds an access token, new each start); 127.0.0.1 only, ${mode}; Ctrl-C stops it`,
               data: {
                 url: server.url,
+                writes: composer !== undefined,
+                runner: composer === undefined ? null : { ...composer.runner },
                 address: server.address.address,
                 family: server.address.family,
                 port: server.address.port,

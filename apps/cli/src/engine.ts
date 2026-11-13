@@ -16,7 +16,12 @@ import {
 } from '@soot/harness-adapters';
 import { SILENT_LOGGER, parseEnv, type LogLevel, type Logger } from '@soot/core';
 import { openExecutionStore, type ExecutionStore, type ModelOutcome } from '@soot/context-manager';
-import { AdaptiveSupervisor, type AdaptiveEvent } from '@soot/escalation';
+import {
+  AdaptiveSupervisor,
+  escalationConfig,
+  type AdaptiveEvent,
+  type EscalationConfig,
+} from '@soot/escalation';
 import type {
   CommandOutput,
   JsonValue,
@@ -39,7 +44,12 @@ import {
   unpricedWarning,
   type ModelEntry,
 } from '@soot/model-registry';
-import { historyFromAttempts, resolvePolicy } from '@soot/model-router';
+import {
+  historyFromAttempts,
+  resolvePolicy,
+  routeTasks,
+  type RoutingDecision,
+} from '@soot/model-router';
 import {
   AuditLog,
   buildCostReport,
@@ -190,6 +200,80 @@ function loadFixtures(path: string | null): DecompositionFixture[] {
   return raw as DecompositionFixture[];
 }
 
+/** ACP route records and the audit log, shared by a plan's runner callback and its run. */
+interface PlanAcpState {
+  readonly routes: AcpRouteRecord[];
+  audit: AuditLog | null;
+}
+
+/**
+ * A decomposed prompt, ready for `runPlan()` (ADR-038). Built by `plan()` only; the fields after
+ * `agentLabel` are the engine's own working state and are not part of any API response.
+ */
+export interface EnginePlan {
+  readonly runId: string;
+  readonly repoRoot: string;
+  readonly prompt: string;
+  readonly graph: Decomposition['graph'];
+  readonly source: DecompositionSource;
+  readonly planning: PlanningCost;
+  readonly fixtureId: string | null;
+  readonly planLabel: string;
+  readonly agentLabel: string;
+  readonly cfg: LoadedConfig;
+  readonly registry: ModelRegistry;
+  readonly intake: ReturnType<typeof createPromptIntake>;
+  readonly runner: AgentRunner;
+  readonly acp: PlanAcpState;
+}
+
+export type PlanOutcome =
+  | { readonly ok: true; readonly plan: EnginePlan }
+  | { readonly ok: false; readonly output: CommandOutput };
+
+/** One task in a plan preview: the router's first choice and its estimate. */
+export interface PlanPreviewTask {
+  readonly taskId: string;
+  readonly title: string;
+  readonly complexity: string;
+  readonly dependsOn: readonly string[];
+  /** First-choice model, or `null` when no model is eligible (the run will report it). */
+  readonly model: string | null;
+  /** Planned tokens × list price; `null` when the model has no price or nothing is eligible. */
+  readonly estimateUsd: number | null;
+  /** Worst case for this task: every allowed attempt on the priciest acceptable model. */
+  readonly worstCaseUsd: number | null;
+  readonly plannedInputTokens: number;
+  readonly plannedOutputTokens: number;
+  readonly reason: string;
+}
+
+export interface PlanPreview {
+  readonly runId: string;
+  readonly planner: {
+    readonly kind: 'fixture' | 'model';
+    readonly model: string | null;
+    readonly fixtureId: string | null;
+    readonly inputTokens: number | null;
+    readonly outputTokens: number | null;
+    /** Spent: the planning call already happened. `null` when unpriced or unreported. */
+    readonly costUsd: number | null;
+    readonly priced: boolean | null;
+  };
+  readonly tasks: readonly PlanPreviewTask[];
+  /** Sum of the known task estimates; `estimatePartial` when a task has none. */
+  readonly estimateUsd: number | null;
+  readonly estimatePartial: boolean;
+  /** Sum of the per-task worst cases, capped by the run budget when one is set. */
+  readonly worstCaseUsd: number | null;
+  readonly worstCasePartial: boolean;
+  readonly worstCaseBasis: string;
+  readonly policy: string;
+  readonly agentLabel: string;
+}
+
+const USED_PLANS = new WeakSet<EnginePlan>();
+
 export class SootEngine implements OrchestrationService {
   readonly #o: EngineOptions;
 
@@ -280,12 +364,28 @@ export class SootEngine implements OrchestrationService {
     return [...new Set([...cfg.config.protectedPaths, ...extra])];
   }
 
+  /**
+   * Plan and run one prompt: `plan()` then `runPlan()`, the same code the dashboard uses
+   * (ADR-038). Behaviour and output are unchanged from before the split.
+   */
   async run(request: RunRequest, signal?: AbortSignal): Promise<CommandOutput> {
+    const planned = await this.plan(request, signal);
+    if (!planned.ok) return planned.output;
+    return this.runPlan(planned.plan, signal);
+  }
+
+  /**
+   * Load the config and registry, check the runner, and decompose the prompt (fixtures first,
+   * then the configured decomposer model). No store writes, worktrees, locks or agent start:
+   * the only side effect is the planning call itself when a decomposer model is used.
+   */
+  async plan(request: RunRequest, signal?: AbortSignal): Promise<PlanOutcome> {
     const log = this.#o.log ?? SILENT_LOGGER;
     const progress = log.info;
     const repoRoot = resolve(this.#o.cwd, request.repo ?? '.');
     const runId = request.runId ?? newRunId();
-    if (!RUN_ID.test(runId)) return fail(`invalid run id: ${runId}`);
+    const failed = (output: CommandOutput): PlanOutcome => ({ ok: false, output });
+    if (!RUN_ID.test(runId)) return failed(fail(`invalid run id: ${runId}`));
     let cfg: LoadedConfig;
     let registry: ModelRegistry;
     let priced: PricedRegistry;
@@ -296,14 +396,13 @@ export class SootEngine implements OrchestrationService {
       registry = priced.registry;
       fixtures = loadFixtures(cfg.fixturesPath);
     } catch (error) {
-      return fail((error as Error).message);
+      return failed(fail((error as Error).message));
     }
     // ACP (ADR-028): whether each attempt's routed model was applied by the agent.
-    const acpRoutes: AcpRouteRecord[] = [];
-    let audit: AuditLog | null = null;
+    const acp: PlanAcpState = { routes: [], audit: null };
     const runner = this.#runner(cfg, (r) => {
-      acpRoutes.push(r);
-      audit?.record('model-route', r.taskId, {
+      acp.routes.push(r);
+      acp.audit?.record('model-route', r.taskId, {
         attempt: r.attempt,
         routed: r.routed,
         applied: r.applied,
@@ -314,9 +413,8 @@ export class SootEngine implements OrchestrationService {
         `soot: ${r.taskId} #${String(r.attempt)} ACP model ${r.applied ? 'applied' : 'NOT applied'}: ${r.reason}`,
       );
     });
-    if (typeof runner === 'string') return fail(runner);
+    if (typeof runner === 'string') return failed(fail(runner));
     const agentLabel = this.#agentLabel(cfg);
-    const isAcp = this.#o.agent.kind === 'acp';
 
     const unpricedNote = unpricedWarning(priced.unpriced);
     if (unpricedNote !== null) log.warn(`soot: ${unpricedNote}`);
@@ -340,31 +438,37 @@ export class SootEngine implements OrchestrationService {
       if (error instanceof NoFixtureError) {
         const recorded = `Recorded prompts: soot ships the build spec examples; add your own with "fixtures" in ${CONFIG_FILE}.`;
         if (decomposerModel.status === 'unusable') {
-          return fail(
-            `No decomposition fixture matches this prompt, and the decomposer model ${decomposerModel.ref} configured in ${CONFIG_FILE} is not usable: ${decomposerModel.reason}. No model was called. ${recorded}`,
-            {
-              promptSha256: error.promptSha256,
-              decomposerModel: decomposerModel.ref,
-              decomposerModelStatus: 'unusable',
-              decomposerModelReason: decomposerModel.reason,
-            },
+          return failed(
+            fail(
+              `No decomposition fixture matches this prompt, and the decomposer model ${decomposerModel.ref} configured in ${CONFIG_FILE} is not usable: ${decomposerModel.reason}. No model was called. ${recorded}`,
+              {
+                promptSha256: error.promptSha256,
+                decomposerModel: decomposerModel.ref,
+                decomposerModelStatus: 'unusable',
+                decomposerModelReason: decomposerModel.reason,
+              },
+            ),
           );
         }
-        return fail(
-          `${error.message} ${recorded} To decompose other prompts with a model from your models file, set "decomposer": {"model": "<provider/modelId>"} in ${CONFIG_FILE} (verified with mock clients only).`,
-          { promptSha256: error.promptSha256 },
+        return failed(
+          fail(
+            `${error.message} ${recorded} To decompose other prompts with a model from your models file, set "decomposer": {"model": "<provider/modelId>"} in ${CONFIG_FILE} (verified with mock clients only).`,
+            { promptSha256: error.promptSha256 },
+          ),
         );
       }
       if (error instanceof ModelDecompositionError) {
         // Reported as is: soot never falls back to a guess or a similar fixture.
-        return fail([error.message, ...error.issues.map((i) => `- ${i}`)].join('\n'), {
-          promptSha256: error.promptSha256,
-          decomposerModel: error.modelRef,
-          decompositionFailure: error.reason,
-          issues: [...error.issues],
-        });
+        return failed(
+          fail([error.message, ...error.issues.map((i) => `- ${i}`)].join('\n'), {
+            promptSha256: error.promptSha256,
+            decomposerModel: error.modelRef,
+            decompositionFailure: error.reason,
+            issues: [...error.issues],
+          }),
+        );
       }
-      return fail((error as Error).message);
+      return failed(fail((error as Error).message));
     }
     const { graph } = decomposition;
     const source = decomposition.decomposer;
@@ -377,6 +481,87 @@ export class SootEngine implements OrchestrationService {
     progress(
       `soot: run ${runId}: ${String(graph.tasks.length)} tasks from ${planLabel}; agent: ${agentLabel}`,
     );
+    const plan: EnginePlan = {
+      runId,
+      repoRoot,
+      prompt: request.prompt,
+      graph,
+      source,
+      planning,
+      fixtureId,
+      planLabel,
+      agentLabel,
+      cfg,
+      registry,
+      intake,
+      runner,
+      acp,
+    };
+    return { ok: true, plan };
+  }
+
+  /**
+   * First-choice model and estimate per task (the router, with stored history and provider
+   * cooldowns, exactly as the supervisor's first assignment), plus a worst case that allows every
+   * attempt the escalation config permits on the priciest model the router would accept. Reads
+   * the store; writes nothing.
+   */
+  previewPlan(plan: EnginePlan): PlanPreview {
+    const store = this.#store();
+    let history;
+    let health: ProviderHealth;
+    try {
+      history = historyFromAttempts(
+        store.modelOutcomes().map((o) => ({
+          model: o.model,
+          tier: o.tier,
+          status: o.outcome === 'verified' ? ('succeeded' as const) : ('failed' as const),
+        })),
+      );
+      health = new ProviderHealth({ store });
+      const esc = escalationConfig(plan.cfg.config.escalation ?? {});
+      const decisions = routeTasks(plan.graph.tasks, {
+        registry: plan.registry,
+        policy: plan.cfg.config.policy,
+        history,
+        health,
+      });
+      return buildPlanPreview(plan, decisions, esc);
+    } finally {
+      store.close();
+    }
+  }
+
+  /**
+   * Execute a plan from `plan()`: today's run from the run lock and `store.createRun` onward. A
+   * plan runs at most once. `onRunStarted` fires once the run is recorded (so status can see it).
+   */
+  async runPlan(
+    plan: EnginePlan,
+    signal?: AbortSignal,
+    hooks: { readonly onRunStarted?: (runId: string) => void } = {},
+  ): Promise<CommandOutput> {
+    if (USED_PLANS.has(plan)) return fail(`plan for run ${plan.runId} was already run`);
+    USED_PLANS.add(plan);
+    const log = this.#o.log ?? SILENT_LOGGER;
+    const progress = log.info;
+    const {
+      runId,
+      repoRoot,
+      graph,
+      source,
+      planning,
+      fixtureId,
+      planLabel,
+      agentLabel,
+      cfg,
+      registry,
+      intake,
+      runner,
+    } = plan;
+    const acpRoutes = plan.acp.routes;
+    const request = { prompt: plan.prompt };
+    const isAcp = this.#o.agent.kind === 'acp';
 
     const store = this.#store();
     let control;
@@ -406,8 +591,9 @@ export class SootEngine implements OrchestrationService {
     }
     try {
       store.createRun({ runId, intake, graph });
-      audit = new AuditLog({ runId, file: auditLogPath(this.#o.dataDir, runId) });
-      const runAudit = audit;
+      const runAudit = new AuditLog({ runId, file: auditLogPath(this.#o.dataDir, runId) });
+      plan.acp.audit = runAudit;
+      hooks.onRunStarted?.(runId);
       // Provider cooldowns recorded by earlier runs still apply (ADR-030).
       const health = new ProviderHealth({ store });
       for (const c of store.providerCooldowns(Date.now())) {
@@ -744,6 +930,11 @@ export class SootEngine implements OrchestrationService {
   }
 
   models(): Promise<CommandOutput> {
+    return Promise.resolve(this.modelsReport());
+  }
+
+  /** `soot models`, synchronously (the dashboard's project setup reads it too). */
+  modelsReport(): CommandOutput {
     let cfg: LoadedConfig;
     let registry: ModelRegistry;
     let priced: PricedRegistry;
@@ -752,7 +943,7 @@ export class SootEngine implements OrchestrationService {
       priced = loadPricedRegistry(cfg.modelsPath, this.#o.priceDate);
       registry = priced.registry;
     } catch (error) {
-      return Promise.resolve(fail((error as Error).message));
+      return fail((error as Error).message);
     }
     const selection = registry.select({});
     const excluded = new Map(selection.excluded.map((e) => [e.ref, e.reasons]));
@@ -798,7 +989,7 @@ export class SootEngine implements OrchestrationService {
         ? []
         : [unpricedWarning(priced.unpriced) ?? '']),
     ].join('\n');
-    return Promise.resolve({
+    return {
       ok: true,
       text,
       data: json({
@@ -807,7 +998,7 @@ export class SootEngine implements OrchestrationService {
         models: rows,
         unpricedModels: [...priced.unpriced],
       }) as Record<string, JsonValue>,
-    });
+    };
   }
 
   stop(runId: string, taskId?: string): Promise<CommandOutput> {
@@ -952,4 +1143,79 @@ function describePlanningCost(source: ModelDecompositionSource, cost: PlanningCo
         : 'cost unknown (usage not reported)'
       : `$${cost.costUsd.toFixed(6)}`;
   return `${source.modelRef}, ${tokens(source.usage.inputTokens)} in / ${tokens(source.usage.outputTokens)} out, ${usd}`;
+}
+
+const num = (v: unknown): number | null =>
+  v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v);
+
+/** The preview from routing decisions and the escalation limits (pure; tested). */
+export function buildPlanPreview(
+  plan: EnginePlan,
+  decisions: readonly RoutingDecision[],
+  esc: EscalationConfig,
+): PlanPreview {
+  const tasks = plan.graph.tasks.map((task, i): PlanPreviewTask => {
+    const d = decisions[i];
+    const selected = d?.candidates.find((c) => c.ref === d.selected) ?? null;
+    // Escalation and fallback only move to models the router would accept for this task.
+    const acceptable = (d?.candidates ?? []).filter((c) => c.outcome !== 'excluded');
+    const prices = acceptable.map((c) => num(c.estimate.costUsd));
+    const known = prices.filter((p): p is number => p !== null);
+    let worst: number | null =
+      acceptable.length === 0 || known.length < prices.length
+        ? null
+        : Math.max(...known) * esc.maxAttemptsPerTask;
+    if (worst !== null && esc.taskBudgetUsd !== null) worst = Math.min(worst, esc.taskBudgetUsd);
+    return {
+      taskId: task.id,
+      title: task.title,
+      complexity: task.complexity,
+      dependsOn: [...task.dependsOn],
+      model: d?.selected ?? null,
+      estimateUsd: selected === null ? null : num(selected.estimate.costUsd),
+      worstCaseUsd: worst,
+      plannedInputTokens: task.estimate.inputTokens,
+      plannedOutputTokens: task.estimate.outputTokens,
+      reason: d?.reason ?? 'not routed',
+    };
+  });
+  const sum = (vals: readonly (number | null)[]) =>
+    vals.some((v) => v !== null) ? vals.reduce<number>((n, v) => n + (v ?? 0), 0) : null;
+  const est = tasks.map((t) => t.estimateUsd);
+  const worstVals = tasks.map((t) => t.worstCaseUsd);
+  let worst = sum(worstVals);
+  if (worst !== null && esc.runBudgetUsd !== null) worst = Math.min(worst, esc.runBudgetUsd);
+  const src = plan.source;
+  const planner: PlanPreview['planner'] =
+    src.kind === 'fixture'
+      ? {
+          kind: 'fixture',
+          model: null,
+          fixtureId: src.fixtureId,
+          inputTokens: null,
+          outputTokens: null,
+          costUsd: null,
+          priced: null,
+        }
+      : {
+          kind: 'model',
+          model: src.modelRef,
+          fixtureId: null,
+          inputTokens: src.usage.inputTokens,
+          outputTokens: src.usage.outputTokens,
+          costUsd: num(plan.planning.costUsd),
+          priced: plan.planning.priceBasis !== null && plan.planning.priceBasis !== undefined,
+        };
+  return {
+    runId: plan.runId,
+    planner,
+    tasks,
+    estimateUsd: sum(est),
+    estimatePartial: est.some((v) => v === null),
+    worstCaseUsd: worst,
+    worstCasePartial: worstVals.some((v) => v === null),
+    worstCaseBasis: `up to ${String(esc.maxAttemptsPerTask)} attempts per task on the priciest model the router accepts${esc.taskBudgetUsd === null ? '' : `, capped at $${String(esc.taskBudgetUsd)} per task`}${esc.runBudgetUsd === null ? '' : `, $${String(esc.runBudgetUsd)} per run`}`,
+    policy: plan.cfg.config.policy,
+    agentLabel: plan.agentLabel,
+  };
 }

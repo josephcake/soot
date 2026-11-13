@@ -74,12 +74,27 @@ Bring your own keys, read only by the provider adapters from environment variabl
 
 ## Local dashboard (optional)
 
-`soot dashboard` (ADR-031) is off unless you run it. It binds 127.0.0.1 only, verifies the
-bound address, answers only `GET`/`HEAD` with `Host: 127.0.0.1:<port>` or `localhost:<port>`
+`soot dashboard` (ADR-031, ADR-038) is off unless you run it. It binds 127.0.0.1 only, verifies
+the bound address, answers only requests with `Host: 127.0.0.1:<port>` or `localhost:<port>`
 (other hosts get 421, against DNS rebinding), and sends a strict Content-Security-Policy. It
-reads the engine's status and cost data, makes no outbound requests, calls no provider and reads
-no keys or environment. It has no login: anyone who can reach 127.0.0.1 on this machine (other
-local users or processes) can read run prompts and results while it runs. Stop it with Ctrl-C.
+makes no outbound requests and never shows key values.
+
+- **Access token.** It prints a link that is new each start, `http://127.0.0.1:<port>/?token=…` (256 bits,
+  new on every start, never written to disk). Opening it sets an `HttpOnly; SameSite=Strict`
+  session cookie and redirects to `/`. Without it the page is an access gate and the API
+  answers 401. Scripts can send `Authorization: Bearer <token>`. Anyone who has the link can
+  use the dashboard until it stops, so treat the terminal output like a password.
+- **Read-only by default.** Plain `soot dashboard` cannot change anything. With
+  `--agent mock --mock-script <file>` or `--agent acp` it adds a prompt box that plans and runs
+  prompts at once, inside the dashboard process (Ctrl-C stops those runs too).
+- **Writes** need JSON, the exact loopback `Origin`, `Sec-Fetch-Site: same-origin` when sent,
+  and the session's `X-Soot-CSRF` header. No CORS headers are sent.
+- **Folders** come only from `soot dashboard allow <dir>`, stored in `<dataDir>/dashboard.json`
+  (0600), never in a repository and never from the browser. The page sends an opaque id; a
+  folder whose real path changed since it was allowed is refused.
+- **Keys** appear only as variable names with `set` or `missing`.
+- **Approvals** inside a dashboard run are refused in v1, including updating your working tree:
+  the result stays on `soot/<run>/integration` for you to merge.
 
 ## Known limits
 
