@@ -217,6 +217,23 @@ M7 notes (2026-11-12, ADR-029):
   cancels one task through the scheduler; its dependents are skipped and other tasks continue.
   Runs started from the IDE are unattended: approvals are refused, never given.
 
+## Planner: model-backed decomposition (cross-cutting, ADR-033)
+
+Follows up M1-03's "LLM-backed decomposer after M2". This row does not change any milestone
+status and does not depend on M2-07 for its mock-only scope.
+
+| ID   | Description                                                                                | Priority | Milestone | Dependencies | Status      | Component        | Acceptance criteria                                                                                                                                                                                                                                                                 |
+| ---- | ------------------------------------------------------------------------------------------ | -------- | --------- | ------------ | ----------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P-01 | Model-backed decomposer behind `Decomposer`, over `ModelClient`; fixtures stay the default | P1       | — (cross) | M1-03, M2-01 | Implemented | packages/planner | Unknown prompts decompose via a mock client into a validated graph; malformed or invalid output fails with `ModelDecompositionError`; no client means fixture-only with no network; recorded prompts never call the model. Verified with mocks only; real-model use waits on M2-07. |
+
+Planner notes (2026-11-12):
+
+- **P-01:** `packages/planner/src/model-decomposer.ts`; tests in
+  `packages/planner/src/model-decomposer.test.ts` (mock clients via `createMockModelClient` and
+  hand-written `ModelClient` doubles; `fetch` replaced by a spy that fails on any call). Status
+  is Implemented, not Verified: no real model has produced a decomposition, the prompt is
+  untuned, and the CLI/MCP engine still uses `FixtureDecomposer` only.
+
 ## Optional local dashboard (cross-cutting, ADR-031)
 
 A new optional local surface, not a milestone. This row does not change any milestone status.

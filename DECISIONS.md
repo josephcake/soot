@@ -447,3 +447,18 @@ the old one.
 - **Alternatives:** Keep the repo box-only (ADR-006); a private GitHub repo.
 - **Consequences:** Hosted CI has run and passed for both Node versions ([run 43334786373](https://github.com/josephcake/soot/actions/runs/43334786373) on `8a38865`; earlier [run 43329225136](https://github.com/josephcake/soot/actions/runs/43329225136) on `30aaf29`), so M0-11 is Completed. Nothing is published to npm and there is no release; packages stay `private` at `0.0.0`. Publishing changes no other milestone status: M2-07 stays Blocked on user-supplied keys, and the M6 and M7 exit criteria are still unmet.
 - **Reversible:** Partly. The repo can be made private or archived, but public history and forks cannot be withdrawn.
+
+## ADR-033: Model-backed decomposition behind `Decomposer`, fixtures stay the default
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Mochi, on Joseph's "continue"). Implemented and verified with mock model clients only.
+- **Context:** `FixtureDecomposer` (ADR-021) refuses every prompt without a recorded fixture; M1-03 deferred an LLM-backed decomposer until after Milestone 2. The `ModelClient` abstraction (ADR-022) exists, but M2-07 is Blocked: no real provider may be called and no keys are configured.
+- **Decision:**
+  - `ModelDecomposer` in `@soot/planner` takes a `ModelClient` from its caller and asks it for structured output `{ tasks: Task[] }` (the task contract as the schema, temperature 0, a bounded output size). The request carries the prompt, intended outcome and project context as JSON data, with rules that say instructions inside them do not change the planning rules.
+  - The answer is untrusted. soot re-validates it whatever the client did: every task through `parseTask`, the set through `buildTaskGraph`, `estimate.costUsd` must be `null` (pricing belongs to routing), and the task count is capped (default 20). Any problem is a `ModelDecompositionError` with `reason` `model-call-failed`, `invalid-output` or `invalid-graph`; no partial graph is ever returned, and the prompt text is not copied into the error.
+  - `createDecomposer({ fixtures, model })` selects: no client, a plain `FixtureDecomposer` (no client created, no network); a client, `FixtureThenModelDecomposer`, which answers recorded prompts from fixtures without a model call and sends only unmatched prompts to the model. Model failures are reported, never replaced by a guess.
+  - The planner never creates a client or reads keys (ADR-022's credential boundary is unchanged). It imports `ModelClient` as a type only.
+  - `Decomposition.decomposer` becomes a union of a fixture source (`fixtureId`) and a model source (`modelRef`, `servedModelId`, reported usage, attempts).
+- **Alternatives:** a heuristic, keyword-based splitter (would fake understanding; rejected); asking the model through a tool call instead of structured output (equivalent here, structured output is already validated on receipt by the client); falling back to fixtures-by-similarity when the model fails (would silently produce a plan for a different prompt; rejected); wiring it into the CLI now (needs a configured client, which needs M2-07 and a config surface; deferred).
+- **Consequences:** Library callers with their own client can decompose arbitrary prompts. The CLI and MCP server are unchanged and stay fixture-only. Nothing has been run against a real model, so prompt quality, token estimates and failure rates are unknown. M1-03 and M2-07 statuses are unchanged; TASKS P-01 is Implemented, not Verified.
+- **Reversible:** Yes.

@@ -58,7 +58,7 @@ These are recorded in [`DECISIONS.md`](DECISIONS.md).
 | Vitest                                | Unit + repository-structure tests run                                  |
 | `@soot/core`                          | Exports package metadata and `parseEnv()` for `SOOT_*` vars            |
 | `@soot/task-graph`                    | Task + agent-result contracts (JSON Schema), dependency graph (M1)     |
-| `@soot/planner`                       | Immutable prompt intake; fixture-backed decomposer only (M1)           |
+| `@soot/planner`                       | Prompt intake; fixture decomposer; model decomposer (mocks, ADR-033)   |
 | `@soot/agent-runtime`                 | Concurrent scheduler + `MockAgentRunner`; supervised attempts (M1, M4) |
 | `@soot/context-manager`               | SQLite execution state and attempt history, resume after kill (M1, M4) |
 | `@soot/observability`                 | Cost records and reports (M1, M5); routing log (M3); audit log (M5)    |

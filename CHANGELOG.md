@@ -5,6 +5,22 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (model-backed decomposition, ADR-033, TASKS P-01; mocks only, no milestone status change)
+
+- `ModelDecomposer` in `@soot/planner`: asks a caller-supplied `ModelClient` for structured
+  output shaped like the task contract and validates the answer like a fixture (`parseTask`,
+  `buildTaskGraph`, unpriced estimates, a task limit). Invalid answers fail with
+  `ModelDecompositionError` (`model-call-failed`, `invalid-output`, `invalid-graph`).
+- `createDecomposer({ fixtures, model })`: fixture-only without a client (no network);
+  fixtures first, then the model, with one. `FixtureThenModelDecomposer` implements the latter.
+- `Decomposition.decomposer` is now a union: `{ kind: 'fixture', fixtureId }` or
+  `{ kind: 'model', modelRef, servedModelId, usage, attempts }`. `FixtureDecomposer` still
+  returns the fixture form; `Decomposer.decompose` takes an optional `AbortSignal`.
+- `@soot/planner` depends on `@soot/provider-adapters` for the `ModelClient` type (type-only
+  import in production code; tests use its mock client).
+- Verified with mock model clients only. No real model has decomposed a prompt (M2-07 is
+  Blocked) and the CLI still decomposes from fixtures only.
+
 ### Changed (repository published, ADR-032; M0-11 Completed)
 
 - The repository is public at https://github.com/josephcake/soot (MIT). ADR-006 (box-only) is

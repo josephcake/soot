@@ -72,6 +72,14 @@ enough; timeouts, rate limits, outages, crashes and invalid output recover with 
 in SQLite; a task or a whole run cancels cleanly (ADR-024). Triggers rely on agents' structured
 self-report until Milestone 5 checks evidence.
 
+Model-backed decomposition (ADR-033, TASKS P-01, no milestone status change): `@soot/planner`
+has a `ModelDecomposer` that asks a caller-supplied `ModelClient` for tasks and validates the
+answer like a fixture (task contract, unique ids, known dependencies, no cycles, path rules,
+unpriced estimates); invalid answers fail with `ModelDecompositionError`. `createDecomposer`
+stays fixture-only when no client is given, and with a client still answers recorded prompts
+from fixtures. **Implemented, verified with mocks only:** no real model has decomposed a prompt
+(M2-07 Blocked), and the CLI does not use it yet.
+
 Milestone 3 (per-task routing, heuristic evaluation, ADR-023) is Completed.
 
 Milestone 2 stays In Progress (partial). Its mockable scope is verified with mocked HTTP. **No
@@ -146,7 +154,7 @@ Node 26 (M0-11 Completed).
 
 ## Known Issues
 
-- Decomposition is fixture-only: prompts without a recorded fixture are refused (`NoFixtureError`).
+- The CLI and MCP server decompose from fixtures only: prompts without a recorded fixture are refused (`NoFixtureError`). `ModelDecomposer` exists in `@soot/planner` but is verified with mock model clients only and is not wired into the CLI.
 - Agents are mocks. Since M5, "complete" means soot ran the checks on the task's real diff, but no real model has produced a diff yet.
 - No OS sandbox: worktrees isolate git state, not processes (TECHNICAL_DEBT.md).
 - Provider adapters are verified against mocked HTTP only. Real wire behaviour is unverified until M2-07.
@@ -172,5 +180,6 @@ Recorded 2026-11-12 ~12:42 PST from a real run of `bash scripts/ci.sh` in `/work
 - **Tests:** pass. 69 test files (68 passed, 1 skipped) and 492 tests (491 passed, 1 skipped, 0 failures), Vitest 5.1.0. The skipped test is the live local-endpoint test: no runtime was listening on 127.0.0.1:11434 or :1234.
 - **Typecheck / lint / format:** pass.
 - **Network audit:** the in-process suite was re-run with a global `fetch` guard; the only real requests were the two localhost probes and the dashboard tests' requests to their own 127.0.0.1 server. Subprocess tests (`soot stop`, `soot mcp`, the env/log-level/health/audit/cost CLI tests in `tests/hardening-cli.test.ts`, and the mock ACP agent processes spawned by `soot run --agent acp`) run built soot code that does not depend on the provider adapters. The only ACP agent ever spawned is soot's own mock (`node .../mock-agent-bin.js`); no vendor binary was run. No key-like environment variables were set.
+- **Re-run after ADR-033 (2026-11-12 ~4:33 PM PST):** `bash scripts/ci.sh` passed again (Node 24.22.1): 70 test files (69 passed, 1 skipped), 508 tests (507 passed, 1 skipped, the same live local-endpoint test). The global `fetch` audit above was not repeated for this run; the new planner tests replace `fetch` with a spy that fails on any call.
 - **Hosted CI:** GitHub Actions [run 43334786373](https://github.com/josephcake/soot/actions/runs/43334786373) on `8a38865` passed for Node 24 and Node 26 (started 2026-11-12 4:09 PM PT, finished 4:11 PM PT); the earlier [run 43329225136](https://github.com/josephcake/soot/actions/runs/43329225136) on `30aaf29` also passed.
 - **Quick start:** `docs/installation.md` reproduced step by step from a fresh `git clone` of this repo in `/tmp` (demo runs: unattended INCOMPLETE exit 2, interactive `y` COMPLETE exit 0 with fast-forward, Test 4 shape INCOMPLETE with the review unverified, skill installed into a temp dir).

@@ -1,25 +1,55 @@
 import { buildTaskGraph, parseTask, type Task, type TaskGraph } from '@soot/task-graph';
 import type { PromptIntake } from './intake.js';
 
-/** Where a decomposition came from. Only `fixture` exists in Milestone 1. */
-export type DecomposerKind = 'fixture';
+/**
+ * Which implementation a decomposer is. `fixture-then-model` answers recorded prompts from
+ * fixtures and asks its model only for the rest (see `createDecomposer`).
+ */
+export type DecomposerKind = 'fixture' | 'model' | 'fixture-then-model';
 
-export interface Decomposition {
+/** A decomposition taken from a recorded fixture. */
+export interface FixtureDecompositionSource {
+  readonly kind: 'fixture';
+  readonly fixtureId: string;
+}
+
+/** Token usage the model reported for a decomposition. `null` = not reported. */
+export interface DecompositionUsage {
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+}
+
+/** A decomposition a model proposed and soot validated. */
+export interface ModelDecompositionSource {
+  readonly kind: 'model';
+  /** soot model reference `provider/modelId` that was asked. */
+  readonly modelRef: string;
+  /** Model id the provider says served the request, or `null`. */
+  readonly servedModelId: string | null;
+  readonly usage: DecompositionUsage;
+  /** Model calls made, including retries (>= 1). */
+  readonly attempts: number;
+}
+
+/** Where one decomposition came from. */
+export type DecompositionSource = FixtureDecompositionSource | ModelDecompositionSource;
+
+export interface Decomposition<S extends DecompositionSource = DecompositionSource> {
   /** SHA-256 of the prompt this decomposition is for. */
   readonly promptSha256: string;
   readonly tasks: readonly Task[];
   /** The validated dependency graph built from `tasks`. */
   readonly graph: TaskGraph;
-  readonly decomposer: { readonly kind: DecomposerKind; readonly fixtureId: string };
+  readonly decomposer: S;
 }
 
 /**
  * Turns one prompt into tasks. Implementations must return tasks that pass `parseTask` and
- * form a valid graph. An LLM-backed implementation is planned after Milestone 2.
+ * form a valid graph (`buildTaskGraph`), whatever produced them.
  */
 export interface Decomposer {
   readonly kind: DecomposerKind;
-  decompose(intake: PromptIntake): Promise<Decomposition>;
+  decompose(intake: PromptIntake, signal?: AbortSignal): Promise<Decomposition>;
 }
 
 /** A recorded decomposition for one known prompt. */
@@ -35,7 +65,7 @@ export class NoFixtureError extends Error {
   constructor(promptSha256: string) {
     super(
       'No decomposition fixture matches this prompt. The fixture decomposer is deterministic ' +
-        'and does not analyze prompts; real decomposition arrives after Milestone 2.',
+        'and does not analyze prompts. Model-backed decomposition needs a configured model client.',
     );
     this.name = 'NoFixtureError';
     this.promptSha256 = promptSha256;
@@ -50,7 +80,7 @@ export function normalizePromptForMatching(prompt: string): string {
 /**
  * Deterministic decomposer backed by recorded fixtures. It performs NO language
  * understanding: a prompt either matches a fixture or `decompose` throws `NoFixtureError`.
- * It exists so the rest of the engine can be built and tested before any model is wired in.
+ * It never calls a model and is the default whenever no model client is configured.
  */
 export class FixtureDecomposer implements Decomposer {
   readonly kind = 'fixture' as const;
@@ -66,7 +96,7 @@ export class FixtureDecomposer implements Decomposer {
     }
   }
 
-  decompose(intake: PromptIntake): Promise<Decomposition> {
+  decompose(intake: PromptIntake): Promise<Decomposition<FixtureDecompositionSource>> {
     const fixture = this.#fixtures.get(normalizePromptForMatching(intake.originalPrompt));
     if (!fixture) return Promise.reject(new NoFixtureError(intake.promptSha256));
     const tasks = fixture.tasks.map(parseTask);

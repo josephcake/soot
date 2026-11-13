@@ -209,6 +209,9 @@ importers:
 
   packages/planner:
     dependencies:
+      '@soot/provider-adapters':
+        specifier: workspace:*
+        version: link:../provider-adapters
       '@soot/task-graph':
         specifier: workspace:*
         version: link:../task-graph

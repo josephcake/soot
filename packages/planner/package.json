@@ -2,7 +2,7 @@
   "name": "@soot/planner",
   "version": "0.0.0",
   "private": true,
-  "description": "Prompt intake and the Decomposer interface with a deterministic fixture-backed implementation (no model-backed decomposition yet).",
+  "description": "Prompt intake and the Decomposer interface: a deterministic fixture decomposer (default) and a model-backed decomposer over a caller-supplied ModelClient (verified with mocks only).",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -25,6 +25,7 @@
     "test": "vitest run --config ../../vitest.config.ts --project @soot/planner"
   },
   "dependencies": {
+    "@soot/provider-adapters": "workspace:*",
     "@soot/task-graph": "workspace:*",
     "zod": "^4.6.7"
   }

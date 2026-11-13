@@ -22,9 +22,13 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 
 - **[Intentional] No workspace package is a stub any more;** `cli` and `harness-adapters` are
   partial (M6). Package boundaries are kept (ADR-019).
-- **[Intentional] Decomposition is fixture-only.** `FixtureDecomposer` matches recorded
-  prompts and refuses others; there is no prompt analysis. Model-backed decomposition comes
-  after Milestone 2. Fixture token estimates are placeholders, not measurements.
+- **[Intentional] Decomposition is fixture-only in practice.** `FixtureDecomposer` matches
+  recorded prompts and refuses others; it is the default and the only decomposer the CLI and
+  MCP server use. `ModelDecomposer` (ADR-033) decomposes other prompts through a
+  caller-supplied `ModelClient` and validates the answer like a fixture, but it is **verified
+  with mock model clients only** (no real provider, M2-07 blocked), the prompt it sends is
+  untuned, and it is not wired into the CLI or config yet. Fixture token estimates are
+  placeholders, not measurements; model estimates are the model's guesses.
 - **[Intentional] Agents are mocks.** `MockAgentRunner` and the generic ACP runner
   (`AcpAgentRunner`, ADR-027) are the only runners, and the ACP runner has only driven soot's own
   mock ACP agent. In Milestone 5 the mock writes scripted files into the worktree it is given. Since M5, "complete" means soot ran the
@@ -183,7 +187,8 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   `.stop`, polled every 200 ms). A run whose process died shows as `interrupted`; there is no
   daemon and no automatic resume from the CLI yet.
 - **[Intentional] Prompts must match a recorded fixture** (spec examples or the project's
-  `fixtures` file). Arbitrary prompts are refused until model-backed decomposition exists.
+  `fixtures` file). Arbitrary prompts are refused until the CLI can be given a configured
+  model client for `ModelDecomposer` (needs M2-07 and a config surface).
 - **[Intentional] The quick start needs a clone of the repo.** The source is public on GitHub
   (ADR-032), but there is no npm package or release. The quick start was reproduced from a
   fresh clone on the build box only, not on another machine or OS.

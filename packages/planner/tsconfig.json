@@ -10,6 +10,9 @@
   "exclude": ["src/**/*.test.ts"],
   "references": [
     {
+      "path": "../provider-adapters"
+    },
+    {
       "path": "../task-graph"
     }
   ]
