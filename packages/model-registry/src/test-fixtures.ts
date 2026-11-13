@@ -12,7 +12,7 @@ export const TEST_CONFIG: RegistryConfigInput = {
       baseURL: 'http://127.0.0.1:11434/v1',
       local: true,
     },
-    { id: 'deepseek', kind: 'listed-only' },
+    { id: 'listed-vendor', kind: 'listed-only' },
   ],
   models: [
     {
@@ -54,6 +54,6 @@ export const TEST_CONFIG: RegistryConfigInput = {
       },
     },
     { provider: 'local-ollama', modelId: 'test-local-coder', capabilities: { tools: false } },
-    { provider: 'deepseek', modelId: 'test-deepseek-model', contextWindow: 128_000 },
+    { provider: 'listed-vendor', modelId: 'test-listed-model', contextWindow: 128_000 },
   ],
 };

@@ -2,12 +2,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { LanguageModelV4 } from '@ai-sdk/provider';
-import {
-  isCallable,
-  providerRestriction,
-  type ModelEntry,
-  type ProviderConfig,
-} from '@soot/model-registry';
+import { isCallable, type ModelEntry, type ProviderConfig } from '@soot/model-registry';
 import { AiSdkModelClient } from './ai-sdk-client.js';
 import { ProviderError } from './errors.js';
 import type { RetryPolicy } from './retry.js';
@@ -49,13 +44,6 @@ export function createModelClient(
 ): ModelClient {
   if (model.provider !== provider.id)
     throw new Error(`model ${model.ref} does not belong to provider ${provider.id}`);
-  const restriction = providerRestriction(provider);
-  if (restriction !== null) {
-    throw refuse(
-      provider,
-      `provider is restricted (${restriction}); soot will not send requests to it (ADR-016)`,
-    );
-  }
   if (!isCallable(provider)) throw refuse(provider, 'provider is listed-only; soot never calls it');
 
   const env = options.env ?? process.env;

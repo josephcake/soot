@@ -2,7 +2,12 @@
 import { describe, expect, it } from 'vitest';
 import { ProviderHealth } from '@soot/model-registry';
 import { routeTask, type RoutingDecision } from './router.js';
-import { makeTask, routingRegistry, ROUTING_CONFIG } from './test-fixtures.js';
+import {
+  makeTask,
+  routingRegistry,
+  ROUTING_CONFIG,
+  ROUTING_CONFIG_WITH_DEEPSEEK,
+} from './test-fixtures.js';
 
 const outcome = (d: RoutingDecision, ref: string) => d.candidates.find((c) => c.ref === ref);
 const route = (
@@ -108,11 +113,23 @@ describe('capability filter (M3-02)', () => {
     expect(d.selected).toBe('beta/test-mid');
   });
 
-  it('DeepSeek is never selected, even as the cheapest and most reliable model on paper', () => {
+  it('a listed-only model is never selected, even as the cheapest and most reliable on paper', () => {
     for (const policy of ['economy', 'balanced', 'quality'] as const) {
       const d = route({ requiredCapabilities: ['code-read', 'security-review'] }, { policy });
-      expect(d.selected).not.toBe('deepseek/test-ds');
-      expect(outcome(d, 'deepseek/test-ds')?.exclusions).toContain('restricted');
+      expect(d.selected).not.toBe('listed/test-listed');
+      expect(outcome(d, 'listed/test-listed')?.exclusions).toContain('listed-only');
+    }
+  });
+
+  it('a configured DeepSeek model is an ordinary candidate (ADR-035)', () => {
+    const registry = routingRegistry(ROUTING_CONFIG_WITH_DEEPSEEK);
+    for (const policy of ['economy', 'balanced', 'quality'] as const) {
+      const d = route(
+        { requiredCapabilities: ['code-read', 'security-review'] },
+        { policy, registry },
+      );
+      expect(outcome(d, 'deepseek/test-ds')?.exclusions).toEqual([]);
+      expect(d.selected).toBe('deepseek/test-ds');
     }
   });
 });

@@ -7,7 +7,6 @@ import {
   estimateCost,
   isCallable,
   parseRegistryConfig,
-  providerRestriction,
 } from './index.js';
 
 const registry = () => new ModelRegistry(parseRegistryConfig(TEST_CONFIG));
@@ -32,7 +31,7 @@ describe('model registry (M2-04, M2-05, M2-06)', () => {
         ref: 'local-ollama/test-local-coder',
         reasons: ['missing-capability', 'unknown-capability'],
       },
-      { ref: 'deepseek/test-deepseek-model', reasons: ['restricted', 'unknown-capability'] },
+      { ref: 'listed-vendor/test-listed-model', reasons: ['listed-only', 'unknown-capability'] },
     ]);
   });
 
@@ -77,31 +76,38 @@ describe('model registry (M2-04, M2-05, M2-06)', () => {
     expect(health.isAvailable('openai')).toBe(false);
   });
 
-  describe('DeepSeek stays off the default path (ADR-016)', () => {
-    it('is listed but never selectable or callable, however it is configured', () => {
+  describe('DeepSeek is an ordinary provider (ADR-035 lifts ADR-016)', () => {
+    it('is selectable and callable when configured as an OpenAI-compatible endpoint', () => {
       const r = new ModelRegistry(
         parseRegistryConfig({
           version: 1,
           providers: [
-            { id: 'deepseek', kind: 'listed-only' },
             {
-              id: 'cheap-compat',
+              id: 'deepseek',
               kind: 'openai-compatible',
               baseURL: 'https://api.deepseek.com/v1',
+              apiKeyEnv: 'DEEPSEEK_API_KEY',
             },
+            { id: 'deepseek-listed', kind: 'listed-only' },
           ],
           models: [
-            { provider: 'deepseek', modelId: 'a', capabilities: { tools: true } },
-            { provider: 'cheap-compat', modelId: 'b', capabilities: { tools: true } },
+            {
+              provider: 'deepseek',
+              modelId: 'a',
+              capabilities: { tools: true, structuredOutput: true },
+            },
+            { provider: 'deepseek-listed', modelId: 'b', capabilities: { tools: true } },
           ],
         }),
       );
-      expect(r.models().map((m) => m.ref)).toEqual(['deepseek/a', 'cheap-compat/b']);
-      expect(r.select().candidates).toEqual([]);
-      for (const provider of r.providers()) {
-        expect(providerRestriction(provider)).toBe('data-residency-review');
-        expect(isCallable(provider)).toBe(false);
-      }
+      const sel = r.select({ capabilities: ['structuredOutput'] });
+      expect(sel.candidates.map((m) => m.ref)).toEqual(['deepseek/a']);
+      expect(r.select().excluded).toEqual([{ ref: 'deepseek-listed/b', reasons: ['listed-only'] }]);
+      // listed-only still means never called, whatever the provider is named.
+      expect(r.providers().map((p) => [p.id, isCallable(p)])).toEqual([
+        ['deepseek', true],
+        ['deepseek-listed', false],
+      ]);
     });
   });
 

@@ -5,6 +5,22 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Changed (DeepSeek data-residency hold lifted, ADR-035 supersedes ADR-016; no milestone status change)
+
+- Joseph reviewed data residency and lifted the hold. `@soot/model-registry` no longer
+  restricts providers whose id or base URL is DeepSeek: `providerRestriction`,
+  `ProviderRestriction`, `ModelRegistry.restriction` and the `restricted` exclusion reason are
+  removed, and `isCallable` refuses only `listed-only` providers. `@soot/provider-adapters` no
+  longer refuses DeepSeek in `createModelClient`; `soot models --json` drops the `restriction`
+  field.
+- DeepSeek is optional and user-configured (`openai-compatible`, `baseURL`
+  `https://api.deepseek.com/v1`, `apiKeyEnv` `DEEPSEEK_API_KEY`); it is not a default, and the
+  demo config is unchanged. It can be routed to and named as `decomposer.model`.
+- Tests: DeepSeek is now shown selectable, routable and callable when configured (fake `fetch`
+  and fake key values only); listed-only providers are still never selected or called. No live
+  DeepSeek or other provider call was made; live use is unverified.
+- Docs: providers, configuration, README, package READMEs, routing and architecture docs.
+
 ### Changed (dashboard page order, ADR-031; no milestone status change)
 
 - The run view leads with a compact ident, the assignment graph, usage-by-model charts and a
@@ -226,7 +242,7 @@ All notable changes are recorded here by milestone. Format loosely follows
 - `@soot/model-registry`: user model config (no built-in models or prices), strict validation
   (key fields must name environment variables), provider health with cooldowns, discovery
   overlay, requirement-based selection with exclusion reasons, sourced and dated pricing,
-  and cost estimates kept separate from actuals. DeepSeek endpoints are restricted (ADR-016).
+  and cost estimates kept separate from actuals. DeepSeek endpoints are restricted (ADR-016; lifted by ADR-035).
 - `@soot/provider-adapters`: the `ModelClient` interface (chat, streaming, tool calls,
   validated structured output, usage) over the Vercel AI SDK in-process. Adapters for Anthropic,
   OpenAI (Chat Completions) and generic OpenAI-compatible endpoints. soot-owned retries with

@@ -82,7 +82,6 @@ export interface RouteContext {
 
 const EXCLUSION_TEXT: Record<RouterExclusion, string> = {
   'not-selectable': 'not selectable (configured off or discovered only)',
-  restricted: 'provider restricted by policy (ADR-016)',
   'listed-only': 'listed only, never called',
   'provider-unavailable': 'provider currently unavailable',
   'not-listed-by-provider': 'no longer listed by the provider',

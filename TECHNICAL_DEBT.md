@@ -28,6 +28,10 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   the CLI/MCP engine uses it when `decomposer.model` in `soot.config.json` names a usable
   registry model (ADR-034). It is **verified with mock model clients only** (no real provider,
   M2-07 blocked) and the prompt it sends is untuned.
+- **[Deferred] Live DeepSeek unverified (ADR-035).** The data-residency hold is lifted and a
+  configured DeepSeek provider is callable through the `openai-compatible` adapter, but no live
+  DeepSeek request has been made: wire behaviour, structured output and decomposition quality
+  are unknown. Verify together with M2-07.
 - **[Deferred] Decomposer model spend and health (ADR-034).** The decomposition call's tokens are
   saved in the run report (`decomposition.usage`) but are not priced into the cost report or
   counted against the run budget, and the call does not consult or update provider cooldowns.

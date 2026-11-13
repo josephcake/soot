@@ -19,7 +19,10 @@ import {
 } from '@soot/observability';
 import { FixtureDecomposer, SPEC_FIXTURES, createPromptIntake } from '@soot/planner';
 import type { Task } from '@soot/task-graph';
-import { routingRegistry } from '../packages/model-router/src/test-fixtures.js';
+import {
+  ROUTING_CONFIG_WITH_DEEPSEEK,
+  routingRegistry,
+} from '../packages/model-router/src/test-fixtures.js';
 
 const TEST_1 = 'Change the page title to HELLO WORLD and update the primary button to purple.';
 const TEST_2 =
@@ -137,15 +140,28 @@ describe('Milestone 3 end to end: fixture prompts → per-task routing', () => {
     expect(summary.actual.attempts).toBe(0);
   });
 
-  it('never selects DeepSeek and reroutes around an unavailable provider', async () => {
+  it('never selects a listed-only model and reroutes around an unavailable provider', async () => {
     const tasks = await decompose(TEST_2);
     const health = new ProviderHealth();
     health.markUnavailable('alpha', 'outage');
     for (const policy of ['economy', 'balanced', 'quality'] as const) {
       for (const d of routeTasks(tasks, { registry, policy, health })) {
-        expect(d.selected).not.toBe('deepseek/test-ds');
+        expect(d.selected).not.toBe('listed/test-listed');
         expect(d.selected?.startsWith('alpha/') ?? false).toBe(false);
       }
     }
+  });
+
+  it('routes to a configured DeepSeek model like any other provider, and around it when unavailable (ADR-035)', async () => {
+    const tasks = await decompose(TEST_2);
+    const withDs = routingRegistry(ROUTING_CONFIG_WITH_DEEPSEEK);
+    const health = new ProviderHealth();
+    for (const policy of ['economy', 'balanced', 'quality'] as const) {
+      for (const d of routeTasks(tasks, { registry: withDs, policy, health }))
+        expect(d.selected).toBe('deepseek/test-ds');
+    }
+    health.markUnavailable('deepseek', 'outage');
+    for (const d of routeTasks(tasks, { registry: withDs, policy: 'economy', health }))
+      expect(d.selected?.startsWith('deepseek/') ?? false).toBe(false);
   });
 });

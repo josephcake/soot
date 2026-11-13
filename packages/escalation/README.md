@@ -22,5 +22,5 @@ decides, per attempt, which model runs and what happens after a failure:
   `onEvent`).
 
 Routing goes through `@soot/model-router` with the run's policy and `ProviderHealth`, so
-DeepSeek stays excluded and unavailable providers are skipped. All thresholds are defaults in
+listed-only and unavailable providers are skipped. All thresholds are defaults in
 `EscalationConfigSchema`, not measurements.

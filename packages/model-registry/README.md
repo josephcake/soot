@@ -59,8 +59,10 @@
 - `estimateCost` (planned tokens) and `actualCostFromUsage` (reported usage) return
   `EstimatedUsd` / `ActualUsd` from `@soot/observability` with the price's provenance.
 
-## DeepSeek (ADR-016)
+## DeepSeek (ADR-035)
 
-Providers with id `deepseek*` or a `deepseek.com` base URL are restricted
-(`data-residency-review`): listed, never selected, never callable, until Joseph reviews data
-residency.
+The ADR-016 data-residency hold is lifted. There is no vendor-specific restriction: a DeepSeek
+provider (for example `kind: "openai-compatible"`, `baseURL: "https://api.deepseek.com/v1"`,
+`apiKeyEnv: "DEEPSEEK_API_KEY"`) is selectable and callable like any other configured provider.
+Only `listed-only` providers are never callable (`isCallable`). The registry still ships no
+models, so DeepSeek is never a default.

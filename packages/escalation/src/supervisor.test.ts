@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { AttemptRecord, PlanContext } from '@soot/agent-runtime';
 import { ProviderHealth } from '@soot/model-registry';
 import { RoutingLog } from '@soot/observability';
-import { ROUTING_CONFIG, makeTask, routingRegistry } from '../../model-router/src/test-fixtures.js';
+import {
+  ROUTING_CONFIG,
+  ROUTING_CONFIG_WITH_DEEPSEEK,
+  makeTask,
+  routingRegistry,
+} from '../../model-router/src/test-fixtures.js';
 import { AdaptiveSupervisor } from './supervisor.js';
 
 /** The `reason` of a fail/stop decision, for regex assertions. */
@@ -104,11 +109,20 @@ describe('AdaptiveSupervisor', () => {
     }
   });
 
-  it('never assigns DeepSeek even when it is the most reliable listed model', () => {
+  it('never assigns a listed-only model even when it is the most reliable listed model', () => {
     const s = new AdaptiveSupervisor({ registry, policy: 'quality' });
     const history = [1, 2, 3, 4].map((n) => failed(n, 'beta/test-frontier', 'reported-failure', 2));
     void s.plan(ctx(history));
     expect(s.plan(ctx()).action === 'run').toBe(true);
-    expect(s.events.some((e) => e.model?.startsWith('deepseek/') === true)).toBe(false);
+    expect(s.events.some((e) => e.model?.startsWith('listed/') === true)).toBe(false);
+  });
+
+  it('assigns a configured DeepSeek model like any other provider (ADR-035)', () => {
+    const s = new AdaptiveSupervisor({
+      registry: routingRegistry(ROUTING_CONFIG_WITH_DEEPSEEK),
+      policy: 'quality',
+    });
+    expect(s.plan(ctx()).action).toBe('run');
+    expect(s.events.some((e) => e.model === 'deepseek/test-ds')).toBe(true);
   });
 });

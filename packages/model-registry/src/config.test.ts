@@ -27,7 +27,7 @@ describe('registry config (M2-04, M2-06)', () => {
       'anthropic',
       'openai',
       'local-ollama',
-      'deepseek',
+      'listed-vendor',
     ]);
     expect(config.providers[2]).toEqual({
       id: 'local-ollama',

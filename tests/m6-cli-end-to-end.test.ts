@@ -369,7 +369,7 @@ describe('soot status / cost / models / config / stop against fixtures', () => {
   );
 
   it(
-    'lists a DeepSeek model as excluded, and never routes to it',
+    'lists a configured DeepSeek model as eligible and routes to it like any provider (ADR-035), with mock agents only',
     async () => {
       const r = (repo = createDemoRepo());
       const models = JSON.parse(r.read('models.json')) as {
@@ -404,16 +404,15 @@ describe('soot status / cost / models / config / stop against fixtures', () => {
       r.write('models.json', JSON.stringify(models));
       r.commitAll('add deepseek');
       const listed = await cli(r, ['models']);
-      expect(listed.stdout).toMatch(
-        /- deepseek\/demo-ds \(openai-compatible\) excluded: restricted/,
-      );
+      expect(listed.stdout).toMatch(/- deepseek\/demo-ds \(openai-compatible\) eligible/);
+      // Mock agent and recorded fixtures: no provider is called, and no key is in the env.
+      expect(r.env.DEEPSEEK_API_KEY).toBeUndefined();
       const run = parse(
         (await cli(r, ['run', TEST_2, ...MOCK, '--run-id', 'ds', '--json'])).stdout,
       );
       expect(
         run.report.tasks.flatMap((t) => t.modelPath).some((m) => m.startsWith('deepseek/')),
-      ).toBe(false);
-      expect(run.decisions.join('\n')).not.toMatch(/assign deepseek/);
+      ).toBe(true);
     },
     SLOW,
   );

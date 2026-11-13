@@ -50,7 +50,7 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 ## M2 — Multi-Provider Model Connectivity
 
 - **Objectives:** Invoke multiple models across providers through one abstraction, BYOK.
-- **Deliverables:** provider abstraction (Vercel AI SDK in-process, ADR-019); Anthropic and OpenAI first (ADR-017), then Google, OpenRouter (DeepSeek listed in the registry but outside the default path, ADR-016); local endpoints (Ollama/LM Studio); model registry; pricing and capability metadata.
+- **Deliverables:** provider abstraction (Vercel AI SDK in-process, ADR-019); Anthropic and OpenAI first (ADR-017), then Google, OpenRouter (DeepSeek: optional, user-configured as an OpenAI-compatible provider; the ADR-016 hold was lifted by ADR-035, and it is not a default); local endpoints (Ollama/LM Studio); model registry; pricing and capability metadata.
 - **Dependencies:** M0; M1 task schema.
 - **Acceptance / exit criteria:** at least two independent providers work with real API credentials; multiple models can be invoked; provider failures are handled; models can be selected dynamically.
 - **Note:** Real-credential verification is blocked until a user supplies their own keys (ADR-011). Mocked-provider tests are required regardless.

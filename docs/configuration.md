@@ -35,9 +35,9 @@ A model config names the variable that holds each provider's key (`apiKeyEnv`, s
 it never contains the key itself, and the config validator rejects anything that is not an
 environment-variable name. Conventional names, reserved in `.env.example` with empty values:
 
-`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (the Milestone 2 adapters), and `GEMINI_API_KEY`,
-`DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, `XAI_API_KEY` (reserved, no adapter yet).
-DeepSeek endpoints are refused by policy whatever key is set (ADR-016).
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (the Milestone 2 adapters), `DEEPSEEK_API_KEY` (used
+through the `openai-compatible` adapter when you configure a DeepSeek provider, ADR-035), and
+`GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `XAI_API_KEY` (reserved, no adapter yet).
 
 Rules (ADR-022, M2-08):
 
@@ -159,7 +159,7 @@ models in your registry file:
   picks a similar fixture.
 - The key is read only from the variable the provider's `apiKeyEnv` names, in the environment
   soot was started with (no `.env` file is read). If the model is not in the registry, its
-  provider is restricted or listed-only, it is configured without structured output, or the
+  provider is listed-only, it is configured without structured output, or the
   key variable is unset, the model is **not usable**: no client is built, nothing is sent,
   recorded prompts still work, and other prompts fail with a message that names the setting
   and the reason.

@@ -7,7 +7,7 @@ import {
   type RegistryConfig,
 } from './config.js';
 import type { ProviderHealth } from './health.js';
-import { isCallable, providerRestriction, type ProviderRestriction } from './policy.js';
+import { isCallable } from './policy.js';
 
 /** A configured (or discovered) model with its provider. */
 export interface ModelEntry extends ModelConfig {
@@ -32,7 +32,6 @@ export interface ModelRequirements {
 
 export type ExclusionReason =
   | 'not-selectable'
-  | 'restricted'
   | 'listed-only'
   | 'provider-unavailable'
   | 'not-listed-by-provider'
@@ -79,11 +78,6 @@ export class ModelRegistry {
 
   provider(id: string): ProviderConfig | undefined {
     return this.#providers.get(id);
-  }
-
-  restriction(providerId: string): ProviderRestriction | null {
-    const provider = this.#providers.get(providerId);
-    return provider === undefined ? null : providerRestriction(provider);
   }
 
   models(): readonly ModelEntry[] {
@@ -163,8 +157,7 @@ export class ModelRegistry {
     const provider = this.#providers.get(model.provider);
     if (provider === undefined) return ['provider-unavailable'];
     if (!model.selectable) reasons.push('not-selectable');
-    if (providerRestriction(provider) !== null) reasons.push('restricted');
-    else if (!isCallable(provider)) reasons.push('listed-only');
+    if (!isCallable(provider)) reasons.push('listed-only');
     if (health !== undefined && !health.isAvailable(provider.id))
       reasons.push('provider-unavailable');
     if (model.listedByProvider === false) reasons.push('not-listed-by-provider');

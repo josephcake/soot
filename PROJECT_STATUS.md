@@ -87,6 +87,12 @@ provider, key variable set); otherwise it stays fixture-only, builds no client a
 unknown prompts naming the setting and the reason. `soot config` shows whether it is usable.
 **Implemented, verified with mock clients only.**
 
+DeepSeek hold lifted (ADR-035 supersedes ADR-016, no milestone status change): Joseph reviewed
+data residency on 2026-11-12. DeepSeek is no longer restricted; configured as an
+OpenAI-compatible provider with `DEEPSEEK_API_KEY`, it is selectable, routable and usable as the
+decomposer model. It is optional and not a default. **No live DeepSeek call has been made;**
+live decomposition remains unverified and M2-07 stays Blocked.
+
 Milestone 3 (per-task routing, heuristic evaluation, ADR-023) is Completed.
 
 Milestone 2 stays In Progress (partial). Its mockable scope is verified with mocked HTTP. **No
@@ -119,7 +125,7 @@ Node 26 (M0-11 Completed).
 - [x] M2-08 Credential isolation, asserted by leak tests and a repo boundary guard
 - [x] Milestone 3 — Intelligent Model Routing (M3-01…M3-06), `@soot/model-router`:
   - M3-01 heuristic complexity and capability evaluation, with reasons
-  - M3-02 capability filter, tested per dimension (tools, structured output, vision, reasoning, streaming, context window, max output, availability, DeepSeek)
+  - M3-02 capability filter, tested per dimension (tools, structured output, vision, reasoning, streaming, context window, max output, availability, listed-only providers)
   - M3-03 per-candidate cost estimates from registry pricing (`EstimatedUsd`, `kind: 'estimate'`)
   - M3-04 best model above the reliability threshold, from priors blended with history
   - M3-05 routing explanation log (`RoutingLog` in `@soot/observability`)

@@ -235,9 +235,9 @@ export function testRegistry(): ModelRegistry {
           baseURL: 'http://127.0.0.1:65530/v1',
           local: true,
         },
-        { id: 'deepseek', kind: 'listed-only' },
+        { id: 'listed-vendor', kind: 'listed-only' },
         {
-          id: 'compat-deepseek',
+          id: 'deepseek',
           kind: 'openai-compatible',
           baseURL: 'https://api.deepseek.com/v1',
           apiKeyEnv: 'DEEPSEEK_API_KEY',
@@ -256,8 +256,8 @@ export function testRegistry(): ModelRegistry {
           capabilities: { tools: true, structuredOutput: true },
         },
         { provider: 'local', modelId: 'test-local', capabilities: { structuredOutput: true } },
+        { provider: 'listed-vendor', modelId: 'test-listed' },
         { provider: 'deepseek', modelId: 'test-ds' },
-        { provider: 'compat-deepseek', modelId: 'test-ds2' },
       ],
     }),
   );

@@ -14,7 +14,10 @@ Adapters wrap the [Vercel AI SDK](https://ai-sdk.dev) in-process (ADR-019, ADR-0
 | `openai-compatible` | Chat Completions at your `baseURL` (Ollama, LM Studio, ...) | optional                                       |
 | `listed-only`       | never called                                                | none                                           |
 
-DeepSeek endpoints are refused by policy (ADR-016), whatever `kind` they are configured as.
+Only `listed-only` providers are refused. DeepSeek has no special treatment since ADR-035
+(which lifted the ADR-016 hold): configure it as `openai-compatible` with
+`baseURL: "https://api.deepseek.com/v1"` and `apiKeyEnv: "DEEPSEEK_API_KEY"`. It is optional
+and not a default; no live DeepSeek call has been verified.
 
 ## Interface
 
@@ -69,6 +72,7 @@ auth header. It is never part of a request, response, task, log line, warning, o
 - `contract.test.ts` runs one behavioural contract against the mock test double and against
   each adapter over a scripted fake `fetch`.
 - `credentials.test.ts` covers credential isolation.
-- `fallback.test.ts` covers outage, fallback, discovery and the DeepSeek refusal.
+- `fallback.test.ts` covers outage, fallback, discovery, the listed-only refusal, and a
+  configured DeepSeek endpoint being callable (against a fake `fetch`).
 - `local-endpoint.test.ts` talks to a real Ollama/LM Studio on localhost only if one is
   running; otherwise it is **skipped**.

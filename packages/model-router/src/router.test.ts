@@ -211,8 +211,8 @@ describe('routing explanations (M3-05)', () => {
     ]);
     const text = formatRoutingEntry(entries[0] ?? (undefined as never));
     expect(text).toContain('[economy] update-button-color → alpha/test-small');
-    expect(text).toContain('deepseek/test-ds');
-    expect(text).toContain('provider restricted by policy (ADR-016)');
+    expect(text).toContain('listed/test-listed');
+    expect(text).toContain('listed only, never called');
     expect(log.toJSONL().split('\n')).toHaveLength(2);
   });
 });

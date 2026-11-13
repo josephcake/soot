@@ -25,10 +25,42 @@ unknown, and unknown is never guessed.
   (`tests/credential-boundary.test.ts`, ADR-022, ADR-025).
 - soot never offers a login and never stores credentials.
 
-## Restricted providers
+## DeepSeek (optional)
 
-DeepSeek endpoints are refused by policy pending a data-residency review (ADR-016):
-`soot models` lists such models as `excluded: restricted`, and routing never selects them.
+The data-residency hold on DeepSeek (ADR-016) was lifted on 2026-11-12 (ADR-035). DeepSeek is
+not a shipped default: soot names no vendor in its default config. If you want it, add it to
+your registry as an OpenAI-compatible provider and put your own key in `DEEPSEEK_API_KEY`:
+
+```json
+{
+  "version": 1,
+  "providers": [
+    {
+      "id": "deepseek",
+      "kind": "openai-compatible",
+      "baseURL": "https://api.deepseek.com/v1",
+      "apiKeyEnv": "DEEPSEEK_API_KEY"
+    }
+  ],
+  "models": [
+    {
+      "provider": "deepseek",
+      "modelId": "deepseek-chat",
+      "capabilities": { "tools": true, "structuredOutput": true }
+    }
+  ]
+}
+```
+
+It is then selected, routed and callable like any other provider, and can be named as the
+decomposer model (`deepseek/deepseek-chat`). Fill in pricing, context window and reliability
+yourself; unknown stays unknown. soot's tests and demos never call DeepSeek or any other live
+provider, and no live DeepSeek call has been verified yet.
+
+## Listed-only providers
+
+A provider with `kind: "listed-only"` is kept for metadata only: `soot models` lists its models
+as `excluded: listed-only`, routing never selects them, and soot never sends it a request.
 
 ## Local models
 

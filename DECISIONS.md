@@ -165,7 +165,7 @@ the old one.
 ## ADR-016: DeepSeek excluded from the default MVP path pending data-residency review
 
 - **Date:** 2026-11-12
-- **Status:** Accepted (Mochi)
+- **Status:** Superseded by ADR-035 (Joseph reviewed data residency and lifted the hold, 2026-11-12). Originally Accepted (Mochi).
 - **Context:** Sending user code to DeepSeek's hosted API raises data-residency questions Joseph has not reviewed.
 - **Decision:** DeepSeek is not part of the default MVP routing path and is not used in any demo or test that would send code to its API, until Joseph reviews data residency. The model registry may still list DeepSeek models as metadata.
 - **Alternatives:** Include by default (rejected until review); drop entirely (unnecessary: listing is harmless).
@@ -251,6 +251,7 @@ the old one.
   - **Fallback is soot's, not the SDK's:** `generateWithFallback` marks provider-level failures (outage, rate limit after retries, timeout, auth) in `ProviderHealth` with a cooldown (outage 60 s, rate limit = retry-after or 30 s, auth until fixed) and tries the next candidate. Request-level failures and aborts do not fall back.
   - **Registry:** soot ships no model names and no prices. Users configure them. Unknown metadata is `null`. Prices are per million tokens and require `source` and `asOf`. Cost estimates and actuals keep distinct branded types (ADR-021), and cached tokens without a cache price give an unknown actual rather than a guess. Discovery (`GET /models`) only adds unselectable entries with unknown metadata, and models the provider no longer lists are excluded from selection.
   - **DeepSeek (ADR-016):** any provider whose id or base URL host is DeepSeek is `restricted`. Restricted and `listed-only` providers are excluded from selection, and `createModelClient` / `discoverModelIds` refuse them before any network access.
+    - _Note (ADR-035, 2026-11-12):_ the hold is lifted. There is no `restricted` reason or `providerRestriction` any more; only `listed-only` providers are excluded and refused. A DeepSeek provider configured like any other is selectable and callable.
   - **Credentials:** keys are read in one place, the adapter layer (`readApiKey` in `createModelClient` and `discoverModelIds`), from the variable a config names (`apiKeyEnv`, validated as a variable name). The key is passed to the SDK factory and kept privately only as a redaction pattern. Clients serialize to `{ref, adapter}`. A repo guard test fails if production code elsewhere reads a key variable. Explicit keys are always passed to SDK factories, so they never fall back to reading `process.env` themselves.
   - **AI SDK warning logging is off by default** (`globalThis.AI_SDK_LOG_WARNINGS ??= false`). Warnings are returned on responses, scrubbed, instead of printed.
   - **Health is in memory** for Milestone 2. Persisting it is debt.
@@ -275,6 +276,7 @@ the old one.
     - These numbers are defaults, not measurements.
   - **No silent fallbacks.** If no model meets the threshold, the decision is `unroutable` with a reason, unless the policy opts into `onNoQualifying: 'most-reliable'`.
   - **Filtering reuses `ModelRegistry.select`**, which covers capabilities (unknown counts as missing), context window, availability, and restricted (DeepSeek) and listed-only providers. The router adds checks for max output tokens, price, the cost cap and reliability.
+    - _Note (ADR-035, 2026-11-12):_ the restricted (DeepSeek) check is gone; a configured DeepSeek model is filtered like any other.
   - **Costs are estimates end to end.** Costs come from the registry's sourced list prices, are typed `EstimatedUsd`, and are labelled `kind: 'estimate'`. Routing never writes into a task's planner estimate or into actuals.
   - **Explanations:** every decision lists every registry model with its outcome (selected, eligible, below threshold, or excluded), estimate, reliability and exclusion reasons, plus a one-sentence reason. `RoutingLog` in `@soot/observability` stores entries in memory and renders text and JSON Lines.
   - **Routing is pure and per task:** `routeTasks` maps `routeTask` over the tasks independently. The router calls no model.
@@ -297,6 +299,7 @@ the old one.
     - Reported failure, invalid output, crash: escalate at once if a strong trigger fired (complexity, unmet criteria, confidence, tool errors, token blowup); otherwise retry the same model once, then escalate as repeated failure.
     - Blocked: fail (needs human input; another model would not help). Never auto-approve (ADR-018).
   - **Escalation = re-route one tier up.** Each escalation raises the routing complexity by one level and routes through `@soot/model-router` with the run's policy and health, then picks the first usable candidate that is untried, not on a failed provider, and strictly more reliable at the new tier than the previous model. If none qualifies at the threshold, a below-threshold stronger model may be used; otherwise the task stops with a reason. DeepSeek stays excluded by the registry.
+    - _Note (ADR-035, 2026-11-12):_ DeepSeek is no longer excluded; listed-only providers still are.
   - **Context transfer** passes `priorAttempts` (attempt, model, outcome, summary, structured findings, failure message, the supervisor's note) to the next attempt. Never transcripts or credentials.
   - **Bounds:** max 5 attempts per task, max 2 escalations, optional per-task and per-run USD budgets. Spend counts reported actual cost, else the routed estimate; in-flight attempts reserve their estimate so concurrent tasks cannot overspend the run budget. An attempt whose cost cannot be estimated is refused when a budget is set.
   - **Downgrade** applies when a task starts and a prerequisite result has `signals.planReady`: route one tier lower and switch only if the model differs and the estimate drops by ≥ 30%. High-risk work (ADR-023) is never downgraded. Every skip is recorded with its reason.
@@ -480,3 +483,18 @@ the old one.
 - **Alternatives:** a CLI flag or environment variable naming the model (the project config is already the shared CLI/MCP source and is protected; a flag could follow later); a top-level `decomposerModel` string (a small object leaves room for limits without another breaking shape); silently falling back to fixtures-only when the model is unusable without saying so (hides misconfiguration; rejected); picking a default model from the registry (would spend the user's money without an explicit choice; rejected).
 - **Consequences:** Users who configure a model and key can decompose prompts with no fixture, but nothing has run against a real model, so prompt quality, token use and failure rates are unknown. Decomposition tokens appear in the run report but are not yet counted in the cost report or run budget, and the decomposer call does not consult provider cooldowns (TECHNICAL_DEBT). TASKS P-02 is Implemented, not Verified; M2-07 stays Blocked; M6 and M7 statuses are unchanged.
 - **Reversible:** Yes. Removing the field restores fixture-only behaviour.
+
+## ADR-035: DeepSeek data-residency hold lifted; DeepSeek is an optional, user-configured provider
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Joseph reviewed data residency and approved lifting the hold, 2026-11-12). Supersedes ADR-016. Implemented and verified with mocks and fake `fetch` only.
+- **Context:** ADR-016 kept DeepSeek off the default path until Joseph reviewed data residency. The registry marked any provider whose id contained `deepseek` or whose base URL host was `deepseek.com` as `restricted` (`data-residency-review`): never selected, and `createModelClient` / `discoverModelIds` refused it. Joseph has now reviewed data residency and wants to be able to use DeepSeek, including for decomposition (ADR-034).
+- **Decision:**
+  - The hold is lifted. `providerRestriction`, the `ProviderRestriction` type, `ModelRegistry.restriction` and the `restricted` exclusion reason are removed; there is no vendor-specific restriction left. `isCallable` refuses only `kind: "listed-only"`, which is still never called.
+  - DeepSeek may be configured like any other OpenAI-compatible provider: id `deepseek`, `kind: "openai-compatible"`, `baseURL: "https://api.deepseek.com/v1"`, `apiKeyEnv: "DEEPSEEK_API_KEY"`, with models such as `deepseek/deepseek-chat` described by the user (capabilities, pricing, context window). It is then selectable, routable, callable and usable as `decomposer.model`.
+  - soot still ships no default model and names no vendor in its default or demo config; `decomposer.model` is never set to DeepSeek (or any vendor) in committed config. The demo registry keeps its fictional providers.
+  - Demos and automated tests must not make live DeepSeek calls, or live calls to any provider. Tests that show DeepSeek is callable use a fake `fetch` and fake key values.
+  - BYOK still applies (ADR-011, ADR-017): the key is the user's own, read only by `@soot/provider-adapters` from the environment soot was started with (ADR-022, ADR-034).
+- **Alternatives:** an explicit opt-in flag for DeepSeek (rejected: configuring the provider and its key is already an explicit opt-in, and a vendor flag would keep vendor-specific policy in code); keeping the restriction hook with no values (rejected: dead code).
+- **Consequences:** A user who configures DeepSeek and sets `DEEPSEEK_API_KEY` can route to it and use it for decomposition. No live DeepSeek request has been made in this change, so its wire behaviour, structured-output support and decomposition quality are unverified; M2-07 stays Blocked and TASKS P-01/P-02 stay Implemented, not Verified. `soot models --json` no longer has a `restriction` field.
+- **Reversible:** Yes, by a new decision restoring a restriction.

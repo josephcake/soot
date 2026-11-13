@@ -77,8 +77,9 @@ These are recorded in [`DECISIONS.md`](DECISIONS.md).
 Anthropic, OpenAI, and generic OpenAI-compatible endpoints (Ollama, LM Studio) through the
 Vercel AI SDK in-process (ADR-017, ADR-019, ADR-022). They are tested against mocked HTTP. **No
 real provider has been called yet**: that needs your own keys (M2-07, blocked). soot ships no
-built-in model list; you configure models yourself (`@soot/model-registry`). DeepSeek
-endpoints are refused by policy (ADR-016). See
+built-in model list; you configure models yourself (`@soot/model-registry`). DeepSeek is
+optional and user-configured like any OpenAI-compatible provider (ADR-035 lifted the ADR-016
+hold); it is not a default. See
 [`packages/provider-adapters/README.md`](packages/provider-adapters/README.md).
 
 ### Supported harnesses

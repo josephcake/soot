@@ -13,8 +13,8 @@ Picks a model **per task**, never per prompt (build spec §5):
    architecture, data migration) uses the `high` reliability threshold. Every rule that
    fires is recorded as a reason, and unmapped capabilities are recorded rather than guessed.
 2. **Filter**. Uses `ModelRegistry.select` to check capabilities (unknown counts as missing),
-   context window, availability, restricted and listed-only providers (DeepSeek is never
-   selected, ADR-016), and policy provider limits. The router adds checks for max output
+   context window, availability, listed-only providers (never selected), and policy
+   provider limits. The router adds checks for max output
    tokens, unpriced models, the cost cap, and unknown reliability.
 3. **Estimate cost** (`estimateCost`) from the registry's sourced list prices and the task's
    planned tokens. The result is always labelled `kind: 'estimate'` and is an `EstimatedUsd`,

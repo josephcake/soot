@@ -108,8 +108,8 @@ const ok = (extra: MockScript = {}): MockScript => ({
 
 const allAssigned: string[] = [];
 afterEach(() => {
-  // ADR-016 / brief: DeepSeek is never assigned on any path exercised here.
-  expect(allAssigned.some((m) => m.startsWith('deepseek/'))).toBe(false);
+  // A listed-only model is never assigned on any path exercised here.
+  expect(allAssigned.some((m) => m.startsWith('listed/'))).toBe(false);
 });
 function track(r: AdaptiveRun): AdaptiveRun {
   for (const e of r.supervisor.events) if (e.model !== null) allAssigned.push(e.model);

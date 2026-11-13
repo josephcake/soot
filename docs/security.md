@@ -1,6 +1,6 @@
 # Security model
 
-What soot enforces today, and what it does not. Design records: ADR-015, ADR-016, ADR-018,
+What soot enforces today, and what it does not. Design records: ADR-015, ADR-016 (superseded by ADR-035), ADR-018,
 ADR-020, ADR-022, ADR-025, ADR-026.
 
 ## Approvals: never automatic

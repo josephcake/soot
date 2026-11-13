@@ -38,7 +38,7 @@ export {
   type RegistryConfigInput,
   type Reliability,
 } from './config.js';
-export { isCallable, providerRestriction, type ProviderRestriction } from './policy.js';
+export { isCallable } from './policy.js';
 export {
   DEFAULT_COOLDOWN_MS,
   ProviderHealth,

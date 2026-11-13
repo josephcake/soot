@@ -192,29 +192,40 @@ describe('discovery (mocked HTTP)', () => {
   });
 });
 
-describe('DeepSeek and listed-only providers are never called (ADR-016)', () => {
-  it('refuses to build clients or discover models for them, without touching the network', async () => {
+describe('listed-only providers are never called; DeepSeek is callable when configured (ADR-035)', () => {
+  it('refuses to build clients or discover models for a listed-only provider, without touching the network', async () => {
     const registry = testRegistry();
     let fetched = 0;
     const fetch = () => {
       fetched++;
       return Promise.resolve(Response.json({}));
     };
-    for (const ref of ['deepseek/test-ds', 'compat-deepseek/test-ds2']) {
-      const { provider, model } = entry(registry, ref);
-      expect(() =>
-        createModelClient(provider, model, { env: { DEEPSEEK_API_KEY: 'fake' }, fetch }),
-      ).toThrow(expect.objectContaining({ kind: 'refused' }));
-      await expect(
-        discoverModelIds(provider, { env: { DEEPSEEK_API_KEY: 'fake' }, fetch }),
-      ).rejects.toMatchObject({
-        kind: 'refused',
-      });
-    }
+    const { provider, model } = entry(registry, 'listed-vendor/test-listed');
+    expect(() => createModelClient(provider, model, { env: {}, fetch })).toThrow(
+      expect.objectContaining({ kind: 'refused' }),
+    );
+    await expect(discoverModelIds(provider, { env: {}, fetch })).rejects.toMatchObject({
+      kind: 'refused',
+    });
     expect(fetched).toBe(0);
   });
 
-  it('keeps DeepSeek off the default selection path even when it claims every capability', () => {
+  it('builds a client and discovers models for a configured DeepSeek endpoint, against a fake fetch', async () => {
+    const registry = testRegistry();
+    const urls: string[] = [];
+    const fetch = (input: string | URL | Request) => {
+      urls.push(urlOf(input));
+      return Promise.resolve(Response.json({ data: [{ id: 'test-ds' }] }));
+    };
+    const env = { DEEPSEEK_API_KEY: 'fake' };
+    const { provider, model } = entry(registry, 'deepseek/test-ds');
+    expect(() => createModelClient(provider, model, { env, fetch })).not.toThrow();
+    await expect(discoverModelIds(provider, { env, fetch })).resolves.toEqual(['test-ds']);
+    // Only the injected fake fetch was used; nothing reached the network.
+    expect(urls).toEqual(['https://api.deepseek.com/v1/models']);
+  });
+
+  it('selects DeepSeek like any other provider when it meets the requirements', () => {
     const registry = new ModelRegistry(
       parseRegistryConfig({
         version: 1,
@@ -242,6 +253,8 @@ describe('DeepSeek and listed-only providers are never called (ADR-016)', () => 
         ],
       }),
     );
-    expect(registry.select().candidates).toEqual([]);
+    expect(
+      registry.select({ capabilities: ['structuredOutput'] }).candidates.map((m) => m.ref),
+    ).toEqual(['ds/any']);
   });
 });

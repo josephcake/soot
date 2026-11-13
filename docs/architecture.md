@@ -29,7 +29,7 @@ prompt + context ─► planner.createPromptIntake ─► planner.FixtureDecompo
 tasks ─► model-router.evaluateTask (complexity, mandatory capabilities, risk; reasons)
            │
            ▼
-   model-registry.select (capabilities, context, availability, DeepSeek restricted)
+   model-registry.select (capabilities, context, availability, listed-only excluded)
            │  + router checks (max output, price, cost cap, reliability known)
            ▼
    estimateCost (list prices → EstimatedUsd) + reliability (prior ⊕ history)

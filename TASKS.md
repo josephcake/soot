@@ -241,6 +241,9 @@ Planner notes (2026-11-12):
   key string only to prove a client can be built and is never printed or called; `fetch`
   replaced by a spy that fails on any call). Implemented, not Verified: no real model has
   decomposed a prompt (M2-07 Blocked).
+- **DeepSeek (ADR-035, 2026-11-12):** the ADR-016 hold is lifted, so a user-configured DeepSeek
+  provider can be the decomposer model. That removes a policy refusal only; P-01/P-02 stay
+  Implemented, not Verified, until a real model has decomposed a prompt.
 
 ## Optional local dashboard (cross-cutting, ADR-031)
 

@@ -717,14 +717,12 @@ export class SootEngine implements OrchestrationService {
     const excluded = new Map(selection.excluded.map((e) => [e.ref, e.reasons]));
     const policy = resolvePolicy(cfg.config.policy);
     const rows = registry.models().map((m: ModelEntry) => {
-      const restriction = registry.restriction(m.provider);
       return {
         ref: m.ref,
         provider: m.provider,
         kind: registry.provider(m.provider)?.kind ?? null,
         eligible: !excluded.has(m.ref),
         excludedBecause: [...(excluded.get(m.ref) ?? [])],
-        restriction: restriction === null ? null : json(restriction),
         pricing:
           m.pricing === null
             ? null
