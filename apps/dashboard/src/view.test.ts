@@ -311,6 +311,22 @@ describe('toDashboardRun', () => {
         costUnknown: 'cost not reported for every attempt on this task',
         unpricedAttempts: null,
         unreportedAttempts: null,
+        costAttempts: [
+          {
+            model: 'p/small',
+            actualUsd: null,
+            estimatedUsd: null,
+            inputTokens: 10,
+            outputTokens: 2,
+          },
+          {
+            model: 'p/mid',
+            actualUsd: 0.003,
+            estimatedUsd: null,
+            inputTokens: 20,
+            outputTokens: 4,
+          },
+        ],
       },
       {
         id: 'b',
@@ -325,6 +341,15 @@ describe('toDashboardRun', () => {
         costUnknown: 'cost not reported for every attempt on this task',
         unpricedAttempts: null,
         unreportedAttempts: null,
+        costAttempts: [
+          {
+            model: 'p/small',
+            actualUsd: null,
+            estimatedUsd: null,
+            inputTokens: null,
+            outputTokens: null,
+          },
+        ],
       },
     ]);
   });
@@ -369,7 +394,11 @@ describe('toDashboardRun', () => {
       inputTokens: 662,
       outputTokens: 518,
       costUsd: null,
+      priced: null,
     });
+    const basis = { ref: 'x/plan', source: 'https://example.invalid', asOf: '2026-11-13' };
+    expect(planningCall({ kind: 'model', modelRef: 'x', priceBasis: basis })?.priced).toBe(true);
+    expect(planningCall({ kind: 'model', modelRef: 'x', priceBasis: null })?.priced).toBe(false);
     expect(planningCall(undefined)).toBeNull();
     expect(planningCall({ kind: 'model' })).toBeNull();
     expect(planningCall({ kind: 'fixture' })?.kind).toBe('fixture');

@@ -118,7 +118,7 @@ function load() {
     clearTimeout: () => undefined,
   };
   return runInNewContext(
-    `${APP_JS}\n;({ chart, usageBlock, assignmentBlock, donut, meter, outcomesBlock, tokensBlock, costBlock, timelineBlock, validationBlock, transitionsBlock, BLOCKS, AGG_BLOCKS, ACT_SHADES, EST_SHADES, MODEL_COLORS, MODEL_PATTERNS, drawFlow, renderPrompts, summaryBlock, taskTableBlock, moreChartsBlock, aboutBlock, detailRows, detailTotals, totalCostText, fmtDuration, fmtUsd, parseRoute, truncate, fmtDate, buildModelStyles, modelStyle, useModels, tilesFor, patternInk, notFoundBlock, promptRow, gridModel, localWindow, filterPrompts, scaleLevels, renderGrid, cellLines, GRID_LEGEND, STACK_CAP, __byId });`,
+    `${APP_JS}\n;({ chart, usageBlock, assignmentBlock, donut, meter, outcomesBlock, tokensBlock, costBlock, timelineBlock, validationBlock, transitionsBlock, BLOCKS, AGG_BLOCKS, ACT_SHADES, EST_SHADES, MODEL_COLORS, MODEL_PATTERNS, drawFlow, renderPrompts, summaryBlock, taskTableBlock, moreChartsBlock, aboutBlock, detailRows, detailTotals, fmtDuration, fmtUsd, parseRoute, truncate, fmtDate, buildModelStyles, modelStyle, useModels, tilesFor, patternInk, notFoundBlock, promptRow, gridModel, localWindow, filterPrompts, scaleLevels, renderGrid, cellLines, GRID_LEGEND, STACK_CAP, __byId });`,
     fake,
   ) as {
     chart: (title: string, kind: string, rows: unknown[], fmt: (v: number) => string) => FakeNode;
@@ -183,16 +183,7 @@ function load() {
     moreChartsBlock: (run: unknown) => FakeNode & { open?: boolean };
     aboutBlock: (run: unknown) => FakeNode;
     detailRows: (run: unknown) => { planning: unknown; tasks: unknown[] };
-    detailTotals: (rows: unknown) => {
-      inputTokens: number;
-      outputTokens: number;
-      tokensMissing: number;
-      costUsd: number | null;
-      costMissing: number;
-      unpriced: number;
-      rows: number;
-    };
-    totalCostText: (tot: unknown) => { text: string; partial: boolean; title: string };
+    detailTotals: (rows: unknown) => { cost: { usd: number | null }; rows: number };
     fmtDuration: (ms: number | null) => string | null;
     fmtUsd: (v: number | null) => string;
   };
@@ -625,144 +616,171 @@ describe('page chart blocks', () => {
     expect(titles).toContain('Cost');
   });
 
-  const pricedRun = (over: { status?: Record<string, unknown>; tasks?: unknown[] } = {}) =>
+  interface Att {
+    model: string;
+    actualUsd: number | null;
+    estimatedUsd: number | null;
+    inputTokens: number;
+    outputTokens: number;
+  }
+  // Runner reported a cost / priced model with nothing reported / model with no registry price.
+  const ACT: Att = {
+    model: 'p/small',
+    actualUsd: 0.5,
+    estimatedUsd: 0.4,
+    inputTokens: 800,
+    outputTokens: 200,
+  };
+  const EST: Att = {
+    model: 'p/mid',
+    actualUsd: null,
+    estimatedUsd: 0.0001,
+    inputTokens: 0,
+    outputTokens: 0,
+  };
+  const NOPRICE: Att = {
+    model: 'p/free',
+    actualUsd: null,
+    estimatedUsd: null,
+    inputTokens: 0,
+    outputTokens: 0,
+  };
+  const costRun = (tasks: Record<string, Att[]>, decomposition?: unknown) =>
     toDashboardRun(
       {
         runId: 'r',
         prompt: 'do it',
         agentLabel: 'mock-test-double',
         createdAt: '2026-11-12T10:00:00.000Z',
-        tasks: [
-          {
-            taskId: 'a',
-            title: 'Part A',
+        tasks: Object.entries(tasks).map(([id, atts]) => ({
+          taskId: id,
+          title: 'Task ' + id.toUpperCase(),
+          state: 'succeeded',
+          models: atts.map((x) => x.model),
+          attemptDetails: atts.map((x, i) => ({
+            attempt: i + 1,
             state: 'succeeded',
-            models: ['p/small'],
-            attemptDetails: [{ attempt: 1, state: 'succeeded', model: 'p/small' }],
-          },
-          {
-            taskId: 'b',
-            title: 'Part B',
-            state: 'succeeded',
-            models: ['p/free'],
-            attemptDetails: [{ attempt: 1, state: 'succeeded', model: 'p/free' }],
-          },
-        ],
-        ...over.status,
+            model: x.model,
+          })),
+        })),
+        ...(decomposition === undefined ? {} : { decomposition }),
       },
       {
         cost: {
-          tasks: over.tasks ?? [
-            {
-              taskId: 'a',
-              attempts: [
-                {
-                  attempt: 1,
-                  model: 'p/small',
-                  inputTokens: 800,
-                  outputTokens: 200,
-                  actualUsd: 0.5,
-                },
-              ],
-              actual: {
-                inputTokens: 800,
-                outputTokens: 200,
-                usd: 0.5,
-                unpricedAttempts: 0,
-                unreportedAttempts: 0,
-              },
+          tasks: Object.entries(tasks).map(([id, atts]) => ({
+            taskId: id,
+            attempts: atts.map((x, i) => ({ attempt: i + 1, ...x })),
+            actual: {
+              usd: null,
+              unpricedAttempts: atts.filter((x) => x.actualUsd === null).length,
+              unreportedAttempts: 0,
             },
-            {
-              taskId: 'b',
-              attempts: [
-                { attempt: 1, model: 'p/free', inputTokens: 40, outputTokens: 10, actualUsd: null },
-              ],
-              actual: {
-                inputTokens: 40,
-                outputTokens: 10,
-                usd: null,
-                unpricedAttempts: 1,
-                unreportedAttempts: 0,
-              },
-            },
-          ],
+          })),
         },
       },
     );
+  const pricedRun = () => costRun({ a: [ACT], b: [EST] });
+  const EST_WHY = "estimate from planned tokens × official price; runner didn't report usage";
 
   const rowsOf = (n: FakeNode) => all(n).filter((x) => x.tag === 'tr');
+  /** [task, tokens in, tokens out, cost] cell text and the cost cell, for task row i (0-based). */
+  const taskRow = (run: unknown, i: number) => {
+    const tds = at(rowsOf(ui.taskTableBlock(run)), i + 2).children;
+    return { cells: tds.map((td) => text(td).trim()), cost: at(tds, 4), tokIn: at(tds, 2) };
+  };
+  const totalRow = (run: unknown) => {
+    const rows = rowsOf(ui.taskTableBlock(run));
+    const tr = at(rows, rows.length - 1);
+    expect(tr.className).toBe('totals');
+    return { text: text(tr).replace(/\s+/g, ' ').trim(), cost: at(tr.children, 4) };
+  };
 
-  it('an unpriced task reads "price not set", never $0, and makes the total partial', () => {
-    const run = pricedRun();
-    const table = ui.taskTableBlock(run);
-    const rows = rowsOf(table);
-    // header, planning, a, b, totals
-    expect(rows).toHaveLength(5);
-    const b = text(at(rows, 3));
-    expect(b).toContain('Part B');
-    expect(b).toContain('price not set');
-    expect(b).not.toMatch(/\$0(\.0+)?\b/);
-    expect(text(at(rows, 2))).toContain('$0.50');
-    const total = at(rows, 4);
-    expect(total.className).toBe('totals');
-    expect(text(total)).toContain('$0.50');
-    expect(text(total)).toContain('partial');
-    const totalCost = all(total).find((x) => x.tag === 'td' && x.title.startsWith('Partial'));
-    expect(totalCost?.title).toBe(
-      'Partial: 1 of 2 rows have no cost (price not set or not reported), so they are not in this total.',
-    );
-    // The summary repeats the same total.
-    const summary = text(ui.summaryBlock(run));
-    expect(summary).toContain('$0.50');
-    expect(summary).toContain('partial');
+  it('a reported actual cost is shown as is, with its tokens', () => {
+    const run = costRun({ a: [ACT] });
+    const row = taskRow(run, 0);
+    expect(row.cells.slice(2)).toEqual(['800', '200', '$0.50']);
+    expect(row.cost.title).toBe('$0.500000');
+    const total = totalRow(run);
+    expect(total.text).toBe('Total 800 200 $0.50');
+    expect(total.cost.title).toBe('Rows: 1 actual, 0 estimated, 0 unpriced.');
   });
 
-  it('totals add every row with numbers: tasks plus the planning call', () => {
-    const run = pricedRun({
-      status: {
-        decomposition: {
+  it('a priced model with nothing reported shows the router estimate and "not reported" tokens', () => {
+    const run = costRun({ b: [EST] });
+    const row = taskRow(run, 0);
+    expect(row.cells.slice(2)).toEqual(['not reported', 'not reported', '~$0.0001 est.']);
+    expect(row.cost.title).toBe(EST_WHY);
+    expect(all(row.cost).some((n) => n.className === 'muted-val')).toBe(true);
+    expect(row.tokIn.className).toBe('num muted-val');
+    expect(row.cells.join(' ')).not.toContain('price not set');
+    expect(totalRow(run).text).toBe('Total — — ~$0.0001 est.');
+    // A priced model (estimated elsewhere in the run) with no estimate either: not reported.
+    const missing = costRun({ b: [EST], d: [{ ...NOPRICE, model: 'p/mid' }] });
+    expect(taskRow(missing, 1).cells[4]).toBe('not reported');
+    expect(totalRow(missing).text).toBe('Total — — ~$0.0001 est. partial');
+  });
+
+  it('only a model with no registry price reads "price not set", never $0', () => {
+    const run = costRun({ c: [NOPRICE] });
+    const row = taskRow(run, 0);
+    expect(row.cells.slice(2)).toEqual(['not reported', 'not reported', 'price not set']);
+    expect(row.cells.join(' ')).not.toMatch(/\$0(\.0+)?\b/);
+    expect(totalRow(run).text).toBe('Total — — price not set');
+  });
+
+  it('total labels: actual only, with est., with partial, with both', () => {
+    expect(totalRow(costRun({ a: [ACT] })).text).toBe('Total 800 200 $0.50');
+    expect(totalRow(costRun({ a: [ACT], b: [EST] })).text).toBe('Total 800 200 ~$0.50 est.');
+    expect(totalRow(costRun({ a: [ACT], c: [NOPRICE] })).text).toBe('Total 800 200 $0.50 partial');
+    const both = costRun({ a: [ACT], b: [EST], c: [NOPRICE] });
+    const total = totalRow(both);
+    expect(total.text).toBe('Total 800 200 ~$0.50 est. partial');
+    expect(total.cost.title).toBe(
+      'Rows: 1 actual, 1 estimated, 1 unpriced. Estimates are planned tokens × official price. Rows with no amount are not in this total.',
+    );
+    const tot = ui.detailTotals(ui.detailRows(both));
+    expect(tot.cost.usd).toBeCloseTo(0.5001, 10);
+    // The summary tile reads the same as the Totals row.
+    const summary = text(ui.summaryBlock(both));
+    expect(summary).toContain('~$0.50 est. partial');
+  });
+
+  it('a retried task adds its actual and estimated attempts', () => {
+    const run = costRun({ a: [EST, ACT] });
+    expect(taskRow(run, 0).cells.slice(2)).toEqual(['800', '200', '~$0.50 est.']);
+  });
+
+  it('the planning row: actual when priced, not reported, or price not set', () => {
+    const plan = (extra: Record<string, unknown>) =>
+      costRun(
+        { a: [ACT] },
+        {
           kind: 'model',
           modelRef: 'p/plan',
           servedModelId: 'plan-1',
           usage: { inputTokens: 100, outputTokens: 30 },
-          costUsd: 0.25,
           attempts: 1,
+          ...extra,
         },
-      },
-    });
-    const tot = ui.detailTotals(ui.detailRows(run));
-    expect(tot).toEqual({
-      inputTokens: 940,
-      outputTokens: 240,
-      tokensMissing: 0,
-      costUsd: 0.75,
-      costMissing: 1,
-      unpriced: 1,
-      rows: 3,
-    });
-    expect(ui.totalCostText(tot)).toMatchObject({ text: '$0.75', partial: true });
-    const rows = rowsOf(ui.taskTableBlock(run));
-    const planning = at(rows, 1);
-    expect(planning.className).toBe('planning');
-    const p = text(planning);
+      );
+    const basis = { ref: 'p/plan', source: 'https://example.invalid', asOf: '2026-11-13' };
+    const priced = plan({ costUsd: 0.25, priceBasis: basis });
+    const p = text(at(rowsOf(ui.taskTableBlock(priced)), 1)).replace(/\s+/g, ' ');
     expect(p).toContain('Planning');
-    expect(p).toContain('plan');
-    expect(p).toContain('100');
-    expect(p).toContain('30');
-    expect(p).toContain('$0.25');
-    expect(text(at(rows, 4))).toMatch(/940.*240.*\$0\.75/);
+    expect(p).toContain('100 30 $0.25');
+    expect(totalRow(priced).text).toBe('Total 900 230 $0.75');
+    const unreported = plan({ costUsd: null, priceBasis: basis });
+    expect(text(at(rowsOf(ui.taskTableBlock(unreported)), 1))).toContain('not reported');
+    expect(totalRow(unreported).text).toBe('Total 900 230 $0.50 partial');
+    const unpriced = plan({ costUsd: null, priceBasis: null });
+    expect(text(at(rowsOf(ui.taskTableBlock(unpriced)), 1))).toContain('price not set');
+    expect(totalRow(unpriced).cost.title).toBe(
+      'Rows: 1 actual, 0 estimated, 1 unpriced. Rows with no amount are not in this total.',
+    );
   });
 
-  it('a fully priced run has a plain total; nothing priced reads "price not set"', () => {
-    const full = { inputTokens: 1, outputTokens: 1, tokensMissing: 0, unpriced: 0, rows: 2 };
-    expect(ui.totalCostText({ ...full, costUsd: 1.234, costMissing: 0 })).toMatchObject({
-      text: '$1.23',
-      partial: false,
-    });
-    expect(ui.totalCostText({ ...full, costUsd: null, costMissing: 2, unpriced: 2 })).toMatchObject(
-      { text: 'price not set', partial: false },
-    );
-    expect(ui.totalCostText({ ...full, costUsd: null, costMissing: 2 }).text).toBe('not reported');
+  it('fmtUsd never rounds a real amount to $0.00', () => {
+    expect(ui.fmtUsd(1.234)).toBe('$1.23');
     expect(ui.fmtUsd(0.0009)).toBe('$0.0009');
     expect(ui.fmtUsd(0.00001)).toBe('<$0.0001');
     expect(ui.fmtUsd(0)).toBe('$0.00');
@@ -776,10 +794,7 @@ describe('page chart blocks', () => {
     expect(text(planning).trim()).toBe('Planning not recorded');
     expect(text(ui.aboutBlock(run))).toContain('does not include its planning call');
     // A fixture plan made no model call: shown as such and never makes the total partial.
-    const fixture = pricedRun({
-      status: { decomposition: { kind: 'fixture', usage: null, attempts: 0 } },
-      tasks: [],
-    });
+    const fixture = costRun({}, { kind: 'fixture', usage: null, attempts: 0 });
     expect(text(at(rowsOf(ui.taskTableBlock(fixture)), 1))).toContain('no model call');
   });
 

@@ -110,10 +110,17 @@ soot dashboard --open          # also open a browser (off by default)
 - **Prompt detail:** a selected prompt shows a summary (total cost, tokens in / out, task count,
   status, duration such as `2m 14s`, the prompt with its full text one click away), then one
   table: a Planning row, one row per task (task, who took it: model swatch + name and the
-  runner tag, tokens in, tokens out, cost) and a Totals row. A model with no registry price
-  reads `price not set`, never `$0`; if any row has no cost the total reads `$X.XX partial`
-  with a tooltip saying how many rows are left out. The planning row uses
-  `status.decomposition` when the status data carries it and says `not recorded` otherwise.
+  runner tag, tokens in, tokens out, cost) and a Totals row. Each task's cost is, per attempt:
+  the runner-reported actual; else, when the model is priced, the router's estimate (planned
+  tokens × official price, the same `estimatedUsd` the Overview charts) shown muted as
+  `~$0.0001 est.`, with that row's tokens reading `not reported` instead of 0; else
+  `price not set`, only when the model has no registry price (the router estimates every
+  priced model, so no estimate means no price), never `$0`. A priced model with neither reads
+  `not reported`. The Totals row and the summary tile add actuals and estimates, adding `est.`
+  when an estimate is included and `partial` when some rows have no amount; the tooltip
+  counts actual, estimated and unpriced rows. The planning row uses `status.decomposition`
+  (its `costUsd`, and `priceBasis` to tell priced from unpriced) and says `not recorded` when
+  absent.
   The per-run charts sit under a closed "More charts" toggle, and every caveat is in one
   "About these numbers" footnote at the bottom.
 - **Page:** plain HTML, one stylesheet, one script, no framework (ADR-009): each section is a

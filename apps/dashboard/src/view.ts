@@ -180,6 +180,25 @@ export interface PlanningCall {
   readonly outputTokens: number | null;
   /** Reported or priced cost; null when no price was recorded (never read as 0). */
   readonly costUsd: number | null;
+  /**
+   * Whether the planning model has a registry price: from the saved `priceBasis` (an object when
+   * priced, `null` when not). `null` when the report predates price bases.
+   */
+  readonly priced: boolean | null;
+}
+
+/** One attempt's money, straight from `soot cost --json` (`cost.tasks[].attempts[]`). */
+export interface AttemptCost {
+  readonly model: string | null;
+  /** Runner-reported actual; null when the runner reported no cost. */
+  readonly actualUsd: number | null;
+  /**
+   * The router's estimate (planned tokens × registry price), the same number the Overview charts
+   * as "estimated USD (router, not spent)". Null when the model has no price.
+   */
+  readonly estimatedUsd: number | null;
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
 }
 
 export interface TaskBreakdown {
@@ -204,6 +223,8 @@ export interface TaskBreakdown {
   readonly unpricedAttempts: number | null;
   /** Attempts that reported no usage at all; null = no data. */
   readonly unreportedAttempts: number | null;
+  /** Per-attempt actual and estimated cost; empty when there is no cost data. */
+  readonly costAttempts: readonly AttemptCost[];
 }
 
 export const SAVINGS_NOTE =
@@ -255,16 +276,31 @@ function taskBreakdown(
   cost: Readonly<Record<string, unknown>> | null,
 ): TaskBreakdown[] {
   const byId = new Map(usage.byTask.map((r) => [r.label, r]));
-  const actualById = new Map(
-    arr(rec(cost?.cost).tasks)
-      .map(rec)
-      .map((c) => [str(c.taskId), rec(c.actual)] as const),
+  const costTasks = arr(rec(cost?.cost).tasks).map(rec);
+  const actualById = new Map(costTasks.map((c) => [str(c.taskId), rec(c.actual)] as const));
+  const attemptsById = new Map(
+    costTasks.map(
+      (c) =>
+        [
+          str(c.taskId),
+          arr(c.attempts)
+            .map(rec)
+            .map((a): AttemptCost => ({
+              model: strOrNull(a.model),
+              actualUsd: num(a.actualUsd),
+              estimatedUsd: num(a.estimatedUsd),
+              inputTokens: num(a.inputTokens),
+              outputTokens: num(a.outputTokens),
+            })),
+        ] as const,
+    ),
   );
   return tasks.map((t) => {
     const row = byId.get(t.id);
     const actual = actualById.get(t.id);
     const unpricedAttempts = actual === undefined ? null : num(actual.unpricedAttempts);
     const unreportedAttempts = actual === undefined ? null : num(actual.unreportedAttempts);
+    const costAttempts = attemptsById.get(t.id) ?? [];
     if (row === undefined) {
       return {
         id: t.id,
@@ -279,6 +315,7 @@ function taskBreakdown(
         costUnknown: 'no cost data recorded for this task',
         unpricedAttempts,
         unreportedAttempts,
+        costAttempts,
       };
     }
     const input = row.actual.inputTokens;
@@ -301,6 +338,7 @@ function taskBreakdown(
         row.actual.usd === null ? 'cost not reported for every attempt on this task' : null,
       unpricedAttempts,
       unreportedAttempts,
+      costAttempts,
     };
   });
 }
@@ -316,6 +354,7 @@ export function planningCall(v: unknown): PlanningCall | null {
       inputTokens: null,
       outputTokens: null,
       costUsd: null,
+      priced: null,
     };
   }
   if (d.kind !== 'model' || typeof d.modelRef !== 'string') return null;
@@ -327,6 +366,14 @@ export function planningCall(v: unknown): PlanningCall | null {
     inputTokens: num(usage.inputTokens),
     outputTokens: num(usage.outputTokens),
     costUsd: num(d.costUsd),
+    priced:
+      d.priceBasis === null
+        ? false
+        : typeof d.priceBasis === 'object'
+          ? true
+          : num(d.costUsd) !== null
+            ? true
+            : null,
   };
 }
 

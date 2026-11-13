@@ -212,6 +212,8 @@ a.cell:hover, a.cell:focus-visible { outline: 2px solid var(--cream); outline-of
 .dstat.big .v { font-size: 32px; line-height: 1.1; }
 .dstat .k { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-top: 4px; }
 .dstat .tag { font-size: 13px; }
+.est-label { font-size: 12px; color: var(--muted); margin-left: 4px; }
+.dstat.big .est-label { font-size: 13px; }
 .partial { font-size: 12px; color: var(--muted); margin-left: var(--s1); border-bottom: 1px dotted var(--muted); vertical-align: middle; }
 .dstat.big .partial { font-size: 13px; }
 .dmeta { font-size: 12px; color: var(--muted); }
@@ -1410,72 +1412,163 @@ function fmtDuration(ms) {
 }
 
 const PRICE_NOT_SET_WHY = 'This model has no price in your model registry, so soot cannot work out a cost. Add a price to the registry to see it.';
+const EST_WHY = "estimate from planned tokens × official price; runner didn't report usage";
 
-// A row's cost: priced (a number), unpriced (no registry price), unreported, or none (no data).
-function taskCost(t) {
-  if (t.costUsd !== null) return { usd: t.costUsd, kind: 'priced' };
-  if (t.unpricedAttempts !== null && t.unpricedAttempts > 0) return { usd: null, kind: 'unpriced' };
-  if (t.unreportedAttempts !== null && t.unreportedAttempts > 0) return { usd: null, kind: 'unreported' };
-  return { usd: null, kind: 'none' };
+// Money parts of one row (or of the whole table): the known USD plus how many attempts were
+// runner-reported actuals, router estimates, unpriced, unreported, or had no data.
+const noCost = () => ({ usd: null, actual: 0, estimated: 0, unpriced: 0, unreported: 0, none: 0, free: 0 });
+function addPart(c, kind, v) {
+  c[kind] += 1;
+  if (v !== null && v !== undefined) c.usd = (c.usd === null ? 0 : c.usd) + v;
+  return c;
+}
+
+// Models the router priced somewhere in this run (an estimate exists, so the registry has a price).
+function pricedModels(r) {
+  const s = new Set();
+  for (const t of r.taskBreakdown) for (const a of t.costAttempts || []) if (a.estimatedUsd !== null && a.model) s.add(a.model);
+  if (r.planning && r.planning.priced === true && r.planning.model) s.add(r.planning.model);
+  return s;
+}
+
+// One task's cost, attempt by attempt:
+// 1. the runner reported a cost → that actual;
+// 2. no report but the router estimated it (the model is priced) → the estimate;
+// 3. neither, and the model is priced elsewhere in the run → not reported;
+// 4. otherwise the model has no registry price → price not set.
+function taskCost(t, priced) {
+  const c = noCost();
+  const attempts = t.costAttempts || [];
+  if (attempts.length === 0) return addPart(c, 'none', null);
+  for (const a of attempts) {
+    if (a.actualUsd !== null) addPart(c, 'actual', a.actualUsd);
+    else if (a.estimatedUsd !== null) addPart(c, 'estimated', a.estimatedUsd);
+    else if (a.model && priced.has(a.model)) addPart(c, 'unreported', null);
+    else addPart(c, 'unpriced', null);
+  }
+  return c;
+}
+
+// Tokens the runner really reported: an attempt with a cost or a non-zero count. A 0 / 0 with
+// no cost is "not reported", never 0.
+function taskTokens(t) {
+  const reported = (t.costAttempts || []).filter((a) => a.actualUsd !== null || (a.inputTokens || 0) + (a.outputTokens || 0) > 0);
+  if (reported.length === 0) return { inputTokens: null, outputTokens: null };
+  return {
+    inputTokens: reported.reduce((n, a) => n + (a.inputTokens || 0), 0),
+    outputTokens: reported.reduce((n, a) => n + (a.outputTokens || 0), 0),
+  };
+}
+
+function planningCost(p) {
+  const c = noCost();
+  if (p.costUsd !== null) return addPart(c, 'actual', p.costUsd);
+  if (p.priced === true) return addPart(c, 'unreported', null);
+  if (p.priced === false) return addPart(c, 'unpriced', null);
+  return addPart(c, 'none', null);
+}
+
+// A row's single kind, for counting rows in the totals tooltip.
+function rowKind(c) {
+  if (c.free > 0) return 'free';
+  if (c.unpriced > 0) return 'unpriced';
+  if (c.unreported > 0 || c.none > 0) return 'unreported';
+  if (c.estimated > 0) return 'estimated';
+  return 'actual';
 }
 
 // Table rows for one run: the planning call (null when not recorded) and one row per task.
 function detailRows(r) {
   const uniq = (list) => list.filter((m, i) => list.indexOf(m) === i);
-  const tasks = r.taskBreakdown.map((t) => ({
-    name: t.title || t.id,
-    id: t.id,
-    state: t.state,
-    models: uniq(t.models),
-    runner: t.runner,
-    inputTokens: t.tokens === null ? null : t.tokens.inputTokens,
-    outputTokens: t.tokens === null ? null : t.tokens.outputTokens,
-    cost: taskCost(t),
-  }));
+  const priced = pricedModels(r);
+  const tasks = r.taskBreakdown.map((t) => {
+    const tok = taskTokens(t);
+    return {
+      name: t.title || t.id,
+      id: t.id,
+      state: t.state,
+      models: uniq(t.models),
+      runner: t.runner,
+      inputTokens: tok.inputTokens,
+      outputTokens: tok.outputTokens,
+      cost: taskCost(t, priced),
+    };
+  });
   const p = r.planning || null;
   const planning = p === null ? null : p.kind === 'fixture'
-    ? { name: 'Planning', models: [], fixture: true, inputTokens: null, outputTokens: null, cost: { usd: null, kind: 'free' } }
-    : { name: 'Planning', models: [p.model], servedModel: p.servedModel, inputTokens: p.inputTokens, outputTokens: p.outputTokens, cost: p.costUsd !== null ? { usd: p.costUsd, kind: 'priced' } : { usd: null, kind: 'none' } };
+    ? { name: 'Planning', models: [], fixture: true, inputTokens: null, outputTokens: null, cost: addPart(noCost(), 'free', null) }
+    : { name: 'Planning', models: [p.model], servedModel: p.servedModel, inputTokens: p.inputTokens, outputTokens: p.outputTokens, cost: planningCost(p) };
   return { planning: planning, tasks: tasks };
 }
 
-// Totals over the rows that have numbers. A fixture plan made no call, so it never makes a
-// total partial. Any other row without a cost makes the cost total partial.
+// Totals: actual costs plus estimates. A fixture plan made no call and is not counted.
 function detailTotals(rows) {
   const all = (rows.planning ? [rows.planning] : []).concat(rows.tasks);
-  const counted = all.filter((x) => x.cost.kind !== 'free');
+  const counted = all.filter((x) => x.cost.free === 0);
   const tok = counted.filter((x) => x.inputTokens !== null && x.outputTokens !== null);
-  const priced = counted.filter((x) => x.cost.kind === 'priced');
+  const cost = noCost();
+  for (const x of counted) {
+    for (const k of ['actual', 'estimated', 'unpriced', 'unreported', 'none']) cost[k] += x.cost[k];
+    if (x.cost.usd !== null) cost.usd = (cost.usd === null ? 0 : cost.usd) + x.cost.usd;
+  }
+  const kinds = counted.map((x) => rowKind(x.cost));
+  const n = (k) => kinds.filter((x) => x === k).length;
   return {
-    inputTokens: tok.reduce((n, x) => n + x.inputTokens, 0),
-    outputTokens: tok.reduce((n, x) => n + x.outputTokens, 0),
+    inputTokens: tok.reduce((s, x) => s + x.inputTokens, 0),
+    outputTokens: tok.reduce((s, x) => s + x.outputTokens, 0),
     tokensMissing: counted.length - tok.length,
-    costUsd: priced.length === 0 ? null : priced.reduce((n, x) => n + x.cost.usd, 0),
-    costMissing: counted.length - priced.length,
-    unpriced: counted.filter((x) => x.cost.kind === 'unpriced').length,
+    cost: cost,
     rows: counted.length,
+    actualRows: n('actual'),
+    estimatedRows: n('estimated'),
+    unpricedRows: n('unpriced'),
+    unreportedRows: n('unreported'),
   };
 }
 
-// What the total cost reads as: "$0.54", "$0.54 partial", "price not set" or "not reported".
+// How a cost reads: "$0.54", "~$0.0001" with "est.", a "partial" mark when some parts have no
+// amount, or "price not set" / "not reported" / "not recorded" when nothing has an amount.
+function costView(c) {
+  if (c.usd === null) {
+    if (c.free > 0) return { text: 'no model call', est: false, partial: false, muted: true, title: 'The plan came from a recorded fixture; no model was called.' };
+    if (c.unpriced > 0) return { text: 'price not set', est: false, partial: false, muted: true, title: PRICE_NOT_SET_WHY };
+    if (c.unreported > 0) return { text: 'not reported', est: false, partial: false, muted: true, title: 'The model is priced, but no cost was reported and no estimate was recorded.' };
+    return { text: c.none > 0 ? 'not recorded' : DASH, est: false, partial: false, muted: true, title: 'No cost was recorded for this.' };
+  }
+  const est = c.estimated > 0;
+  const partial = c.unpriced + c.unreported + c.none > 0;
+  return {
+    text: (est ? '~' : '') + fmtUsd(c.usd),
+    est: est,
+    partial: partial,
+    muted: est,
+    title: est ? EST_WHY : usd(c.usd),
+  };
+}
+
+// The total's label and tooltip, counting rows by kind.
 function totalCostText(tot) {
-  if (tot.costUsd === null) return { text: tot.rows === 0 ? DASH : tot.unpriced > 0 ? 'price not set' : 'not reported', partial: false, title: tot.unpriced > 0 ? PRICE_NOT_SET_WHY : '' };
-  if (tot.costMissing === 0) return { text: fmtUsd(tot.costUsd), partial: false, title: usd(tot.costUsd) };
-  return { text: fmtUsd(tot.costUsd), partial: true, title: 'Partial: ' + tot.costMissing + ' of ' + tot.rows + ' rows have no cost (price not set or not reported), so they are not in this total.' };
+  const v = tot.rows === 0 ? { text: DASH, est: false, partial: false, muted: false, title: '' } : costView(tot.cost);
+  if (tot.rows === 0) return v;
+  const parts = [tot.actualRows + ' actual', tot.estimatedRows + ' estimated', tot.unpricedRows + ' unpriced'];
+  if (tot.unreportedRows > 0) parts.push(tot.unreportedRows + ' not reported');
+  const notes = [];
+  if (v.est) notes.push('Estimates are planned tokens × official price.');
+  if (v.partial) notes.push('Rows with no amount are not in this total.');
+  return Object.assign({}, v, { muted: false, title: 'Rows: ' + parts.join(', ') + '.' + (notes.length ? ' ' + notes.join(' ') : '') });
+}
+
+function appendCost(node, v) {
+  node.append(el('span', v.muted ? 'muted-val' : '', v.text));
+  if (v.est) node.append(el('span', 'est-label', 'est.'));
+  if (v.partial) node.append(el('span', 'partial', 'partial'));
 }
 
 function costTd(cost) {
   const td = el('td', 'num');
-  if (cost.kind === 'priced') { td.textContent = fmtUsd(cost.usd); td.title = usd(cost.usd); return td; }
-  const map = {
-    unpriced: ['price not set', PRICE_NOT_SET_WHY],
-    unreported: ['not reported', 'The runner did not report usage for every attempt.'],
-    none: ['not recorded', 'No cost was recorded for this.'],
-    free: ['no model call', 'The plan came from a recorded fixture; no model was called.'],
-  };
-  const m = map[cost.kind];
-  td.append(el('span', 'muted-val', m[0]));
-  td.title = m[1];
+  const v = costView(cost);
+  appendCost(td, v);
+  td.title = v.title;
   return td;
 }
 
@@ -1513,15 +1606,18 @@ function summaryBlock(r) {
   const tot = detailTotals(detailRows(r));
   const cost = totalCostText(tot);
   const strip = el('div', 'dsum');
-  const cell = (label, value, cls, title, partial) => {
+  const cell = (label, value, cls, title) => {
     const c = el('div', 'dstat' + (cls ? ' ' + cls : ''));
     const v = el('div', 'v', value);
     if (title) v.title = title;
-    if (partial) v.append(el('span', 'partial', 'partial'));
     c.append(v, el('div', 'k', label));
     return c;
   };
-  const costCell = cell('Total cost', cost.text, 'big', cost.title, cost.partial);
+  const costCell = el('div', 'dstat big');
+  const costValue = el('div', 'v');
+  appendCost(costValue, cost);
+  costValue.title = cost.title;
+  costCell.append(costValue, el('div', 'k', 'Total cost'));
   const tokens = tot.rows === 0 || tot.tokensMissing === tot.rows ? 'not reported' : fmtInt(tot.inputTokens) + ' / ' + fmtInt(tot.outputTokens);
   const statusCell = el('div', 'dstat');
   const pill = el('div', 'v');
@@ -1588,9 +1684,9 @@ function taskTableBlock(r) {
   const foot = el('tfoot');
   const fr = el('tr', 'totals');
   const cost = totalCostText(tot);
-  const costCell = el('td', 'num', cost.text);
+  const costCell = el('td', 'num');
+  appendCost(costCell, cost);
   costCell.title = cost.title;
-  if (cost.partial) costCell.append(el('span', 'partial', 'partial'));
   const tin = el('td', 'num', tot.rows === tot.tokensMissing ? DASH : fmtInt(tot.inputTokens));
   const tout = el('td', 'num', tot.rows === tot.tokensMissing ? DASH : fmtInt(tot.outputTokens));
   if (tot.tokensMissing > 0) { tin.title = tout.title = tot.tokensMissing + ' row(s) did not report tokens'; }
@@ -1650,8 +1746,9 @@ function aboutNotes(r) {
       : 'Planning: the model that split the prompt into tasks. Its cost is shown only when soot recorded one.';
   return [
     'Who took it: the model or models each task ran on, in order. The runner (agent) is recorded once per run, not per task: ' + (r.agent.label || 'unknown (no saved report yet)') + '.',
-    'Cost: what the runner reported, priced with your model registry. "price not set" means a model has no price in the registry; soot never counts that as $0. A "partial" total adds up only the rows that have a cost.',
-    '"not reported": the runner did not report usage for every attempt on that task.',
+    'Cost: the actual cost when the runner reported one. When it did not but the model is priced, the row shows the router\'s estimate ("~$0.0001 est.": planned tokens × official price, the same estimate the Overview charts) and its tokens read "not reported".',
+    '"price not set" means the model has no price in your model registry; soot never counts that as $0. soot reads this from the router: it estimates every priced model, so no estimate means no price.',
+    'Totals add actual costs and estimates. "est." means an estimate is included; "partial" means some rows have no amount (price not set or not reported) and are left out.',
     planning,
     'Duration: ' + r.duration.basis + '.',
     'Estimates are never shown as actuals. Mock runs report fictional amounts.',
