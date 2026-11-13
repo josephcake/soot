@@ -201,7 +201,48 @@ a.cell:hover, a.cell:focus-visible { outline: 2px solid var(--cream); outline-of
 .gtip { position: absolute; z-index: 5; max-width: 320px; background: var(--raised); border: 1px solid var(--orange); padding: var(--s1); font-size: 12px; white-space: pre-line; color: var(--cream); pointer-events: none; box-shadow: 4px 4px 0 #000; }
 .filter-chip { display: inline-flex; flex-wrap: wrap; gap: var(--s1); align-items: center; border: 1px solid var(--orange); background: var(--raised); padding: 4px var(--s1); margin-bottom: var(--s2); color: var(--cream); font-size: 12px; }
 .filter-chip .clear { text-decoration: none; border-left: 1px solid var(--line-2); padding-left: var(--s1); }
+.dsum-block { display: flex; flex-direction: column; gap: var(--s2); }
+.prompt-line { color: var(--cream); font-size: 14px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+.full-prompt summary, .more-charts > summary, .about > summary { cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--orange); }
+.full-prompt .prompt { margin-top: var(--s1); }
+.dsum { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)); gap: var(--s2); }
+.dstat { border: 1px solid var(--line); border-top: 4px solid var(--line-2); background: var(--page); padding: var(--s1) var(--s2); min-width: 0; }
+.dstat.big { border-top-color: var(--orange); }
+.dstat .v { color: var(--cream); font-size: 18px; line-height: 1.3; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dstat.big .v { font-size: 32px; line-height: 1.1; }
+.dstat .k { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-top: 4px; }
+.dstat .tag { font-size: 13px; }
+.partial { font-size: 12px; color: var(--muted); margin-left: var(--s1); border-bottom: 1px dotted var(--muted); vertical-align: middle; }
+.dstat.big .partial { font-size: 13px; }
+.dmeta { font-size: 12px; color: var(--muted); }
+.table-scroll { overflow-x: auto; }
+.dtable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dtable th { text-align: left; font-weight: normal; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: var(--s1); border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+.dtable td { padding: var(--s1); border-bottom: 1px solid var(--line); vertical-align: middle; }
+.dtable .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dtable td.task { min-width: 12em; }
+.dtable .tname { color: var(--cream); margin-bottom: 4px; }
+.dtable tr.planning td { background: #100e0d; color: var(--muted); }
+.dtable tr.totals td { border-top: 2px solid var(--line-2); border-bottom: 0; color: var(--cream); font-size: 14px; }
+.dtable tbody tr:hover td { background: var(--raised); }
+.muted-val { color: var(--muted); }
+.more-charts > .grid { margin-top: var(--s2); }
+.about { font-size: 12px; color: var(--muted); }
+.about ul { margin: var(--s1) 0 0; padding-left: var(--s2); }
+.about li { margin: 4px 0; }
 @media (max-width: 760px) {
+  .dsum { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dsum .dstat.big, .dsum .dstat:nth-child(2) { grid-column: 1 / -1; }
+  .dtable tr.totals .partial { display: block; margin-left: 0; border-bottom: 0; }
+  .dtable { font-size: 12px; }
+  .dtable td.task { min-width: 0; }
+  .dtable thead, .dtable tbody, .dtable tfoot { display: block; }
+  .dtable tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+  .dtable td, .dtable th { border-bottom: 0; }
+  .dtable td.task, .dtable td.who, .dtable td[colspan] { grid-column: 1 / -1; }
+  .dtable th:nth-child(1), .dtable th:nth-child(2), .dtable td.empty { display: none; }
+  .dtable tr.totals td { border-top: 0; }
+  .dtable tfoot tr { border-top: 2px solid var(--line-2); border-bottom: 0; }
   .block { grid-column: 1 / -1; }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pgrid { --c: 16px; }
@@ -715,71 +756,6 @@ function assignmentBlock(r) {
     }
     s.append(layer);
   }
-  return s;
-}
-
-function identBlock(r) {
-  const s = section('Prompt', true);
-  s.append(el('div', 'prompt', r.prompt));
-  const duration = r.duration.ms === null ? (r.running ? 'running' : 'unknown') : (r.duration.ms / 1000).toFixed(1) + ' s';
-  const meta = el('div', 'tags');
-  meta.append(stateTag(r.state + (r.running ? ' (running)' : '')), timeEl(r.createdAt), el('span', 'note', duration), tag(r.runId, 40));
-  s.append(meta);
-  return s;
-}
-
-function taskBreakdownBlock(r) {
-  const s = section('Tasks in this prompt', true);
-  const head = el('div', 'note tags');
-  head.append(el('span', '', 'Runner is recorded per run, not per task:'), r.agent.label ? tag(r.agent.label, 96) : el('span', 'unknown', 'unknown (no saved report yet)'));
-  if (r.agent.kind) head.append(tag(r.agent.kind, 24));
-  s.append(head);
-  if (r.taskBreakdown.length === 0) {
-    s.append(el('div', 'unknown', '(no tasks)'));
-    return s;
-  }
-  for (const t of r.taskBreakdown) {
-    const row = el('div', 'task-row');
-    const left = el('div', '');
-    const idLine = el('div', 'tags');
-    idLine.append(el('span', 't', t.id), stateTag(t.state));
-    left.append(idLine);
-    if (t.title) left.append(el('div', '', t.title));
-    const mid = el('div', '');
-    const chain = el('div', 'model-chain');
-    chain.append(el('span', 'note', 'model:'));
-    if (t.models.length === 0) chain.append(el('span', 'unknown', 'not started'));
-    t.models.forEach((m, i) => {
-      if (i > 0) chain.append(el('span', 'via', '→'));
-      chain.append(modelLabel(m));
-    });
-    chain.append(el('span', 'note', '· ' + t.attempts + ' attempt(s)'));
-    mid.append(chain);
-    const runner = el('div', 'tags');
-    runner.append(el('span', 'note', 'runner:'), t.runner ? tag(t.runner, 28) : el('span', 'unknown', 'unknown'));
-    mid.append(runner);
-    const right = el('div', 'r');
-    if (t.tokens === null) {
-      right.append(el('div', 'unknown', t.tokensUnknown || 'tokens unknown'));
-    } else {
-      right.append(el('div', '', fmtInt(t.tokens.total) + ' tok'), el('div', 'note', fmtInt(t.tokens.inputTokens) + ' in / ' + fmtInt(t.tokens.outputTokens) + ' out'));
-    }
-    if (t.costUsd === null) {
-      right.append(el('div', 'unknown', t.costUnknown || 'cost unknown'));
-    } else {
-      right.append(el('div', '', usd(t.costUsd)));
-    }
-    row.append(left, mid, right);
-    s.append(row);
-  }
-  const tk = r.tokens.actual;
-  const tokLine = tk === null
-    ? 'total tokens unknown (no cost data)'
-    : 'total tokens  ' + fmtInt(tk.inputTokens + tk.outputTokens) + '  (' + fmtInt(tk.inputTokens) + ' in / ' + fmtInt(tk.outputTokens) + ' out)' + (tk.unreportedAttempts > 0 ? '; ' + tk.unreportedAttempts + ' attempt(s) unreported' : '');
-  const costLine = r.cost.actualUsd === null
-    ? (r.cost.unpricedAttempts ? 'total cost unknown (' + r.cost.unpricedAttempts + ' unpriced attempt(s))' : 'total cost unknown')
-    : 'total cost  ' + usd(r.cost.actualUsd);
-  s.append(el('pre', 'note', tokLine + '\n' + costLine));
   return s;
 }
 
@@ -1410,18 +1386,231 @@ async function getJson(path) {
   return j;
 }
 
-const BLOCKS = [
-  (r) => identBlock(r),
-  (r) => taskBreakdownBlock(r),
+// ---- Prompt detail: summary, one plain table, then collapsed extras ------------------------
+
+// "$0.54", "$0.0009"; never rounds a real non-zero amount to "$0.00".
+function fmtUsd(v) {
+  if (v === null || v === undefined) return DASH;
+  if (v === 0) return '$0.00';
+  if (Math.abs(v) < 0.0001) return '<$0.0001';
+  if (Math.abs(v) < 0.01) return '$' + v.toFixed(4);
+  return '$' + v.toFixed(2);
+}
+
+// "850ms", "4.2s", "2m 14s", "1h 3m"; null → null.
+function fmtDuration(ms) {
+  if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) return null;
+  if (ms < 1000) return Math.round(ms) + 'ms';
+  if (ms < 10000) return (ms / 1000).toFixed(1) + 's';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm ' + (s % 60) + 's';
+  return Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
+}
+
+const PRICE_NOT_SET_WHY = 'This model has no price in your model registry, so soot cannot work out a cost. Add a price to the registry to see it.';
+
+// A row's cost: priced (a number), unpriced (no registry price), unreported, or none (no data).
+function taskCost(t) {
+  if (t.costUsd !== null) return { usd: t.costUsd, kind: 'priced' };
+  if (t.unpricedAttempts !== null && t.unpricedAttempts > 0) return { usd: null, kind: 'unpriced' };
+  if (t.unreportedAttempts !== null && t.unreportedAttempts > 0) return { usd: null, kind: 'unreported' };
+  return { usd: null, kind: 'none' };
+}
+
+// Table rows for one run: the planning call (null when not recorded) and one row per task.
+function detailRows(r) {
+  const uniq = (list) => list.filter((m, i) => list.indexOf(m) === i);
+  const tasks = r.taskBreakdown.map((t) => ({
+    name: t.title || t.id,
+    id: t.id,
+    state: t.state,
+    models: uniq(t.models),
+    runner: t.runner,
+    inputTokens: t.tokens === null ? null : t.tokens.inputTokens,
+    outputTokens: t.tokens === null ? null : t.tokens.outputTokens,
+    cost: taskCost(t),
+  }));
+  const p = r.planning || null;
+  const planning = p === null ? null : p.kind === 'fixture'
+    ? { name: 'Planning', models: [], fixture: true, inputTokens: null, outputTokens: null, cost: { usd: null, kind: 'free' } }
+    : { name: 'Planning', models: [p.model], servedModel: p.servedModel, inputTokens: p.inputTokens, outputTokens: p.outputTokens, cost: p.costUsd !== null ? { usd: p.costUsd, kind: 'priced' } : { usd: null, kind: 'none' } };
+  return { planning: planning, tasks: tasks };
+}
+
+// Totals over the rows that have numbers. A fixture plan made no call, so it never makes a
+// total partial. Any other row without a cost makes the cost total partial.
+function detailTotals(rows) {
+  const all = (rows.planning ? [rows.planning] : []).concat(rows.tasks);
+  const counted = all.filter((x) => x.cost.kind !== 'free');
+  const tok = counted.filter((x) => x.inputTokens !== null && x.outputTokens !== null);
+  const priced = counted.filter((x) => x.cost.kind === 'priced');
+  return {
+    inputTokens: tok.reduce((n, x) => n + x.inputTokens, 0),
+    outputTokens: tok.reduce((n, x) => n + x.outputTokens, 0),
+    tokensMissing: counted.length - tok.length,
+    costUsd: priced.length === 0 ? null : priced.reduce((n, x) => n + x.cost.usd, 0),
+    costMissing: counted.length - priced.length,
+    unpriced: counted.filter((x) => x.cost.kind === 'unpriced').length,
+    rows: counted.length,
+  };
+}
+
+// What the total cost reads as: "$0.54", "$0.54 partial", "price not set" or "not reported".
+function totalCostText(tot) {
+  if (tot.costUsd === null) return { text: tot.rows === 0 ? DASH : tot.unpriced > 0 ? 'price not set' : 'not reported', partial: false, title: tot.unpriced > 0 ? PRICE_NOT_SET_WHY : '' };
+  if (tot.costMissing === 0) return { text: fmtUsd(tot.costUsd), partial: false, title: usd(tot.costUsd) };
+  return { text: fmtUsd(tot.costUsd), partial: true, title: 'Partial: ' + tot.costMissing + ' of ' + tot.rows + ' rows have no cost (price not set or not reported), so they are not in this total.' };
+}
+
+function costTd(cost) {
+  const td = el('td', 'num');
+  if (cost.kind === 'priced') { td.textContent = fmtUsd(cost.usd); td.title = usd(cost.usd); return td; }
+  const map = {
+    unpriced: ['price not set', PRICE_NOT_SET_WHY],
+    unreported: ['not reported', 'The runner did not report usage for every attempt.'],
+    none: ['not recorded', 'No cost was recorded for this.'],
+    free: ['no model call', 'The plan came from a recorded fixture; no model was called.'],
+  };
+  const m = map[cost.kind];
+  td.append(el('span', 'muted-val', m[0]));
+  td.title = m[1];
+  return td;
+}
+
+const tokTd = (v) => {
+  const td = el('td', 'num', v === null ? 'not reported' : fmtInt(v));
+  if (v === null) td.className = 'num muted-val';
+  return td;
+};
+
+function whoCell(row) {
+  const td = el('td', 'who');
+  const line = el('div', 'model-chain');
+  if (row.models.length === 0) line.append(el('span', 'muted-val', row.fixture ? 'recorded plan' : 'not started'));
+  row.models.forEach((m, i) => {
+    if (i > 0) line.append(el('span', 'via', '→'));
+    line.append(modelLabel(m, isNoModel(m) ? 'no model' : short(m)));
+  });
+  if (row.runner) line.append(tag(row.runner, 22));
+  td.append(line);
+  const full = row.models.map((m) => m || 'no model').join(' → ');
+  td.title = (full || '') + (row.servedModel && row.servedModel !== short(row.models[0] || '') ? ' (served as ' + row.servedModel + ')' : '') + (row.runner ? ' · runner: ' + row.runner : '');
+  return td;
+}
+
+function summaryBlock(r) {
+  const s = el('section', 'block wide dsum-block');
+  const text = el('div', 'prompt-line', r.prompt);
+  text.title = r.prompt;
+  s.append(text);
+  if (r.prompt.length > 140) {
+    const d = el('details', 'full-prompt');
+    d.append(el('summary', '', 'Show full prompt'), el('div', 'prompt', r.prompt));
+    s.append(d);
+  }
+  const tot = detailTotals(detailRows(r));
+  const cost = totalCostText(tot);
+  const strip = el('div', 'dsum');
+  const cell = (label, value, cls, title, partial) => {
+    const c = el('div', 'dstat' + (cls ? ' ' + cls : ''));
+    const v = el('div', 'v', value);
+    if (title) v.title = title;
+    if (partial) v.append(el('span', 'partial', 'partial'));
+    c.append(v, el('div', 'k', label));
+    return c;
+  };
+  const costCell = cell('Total cost', cost.text, 'big', cost.title, cost.partial);
+  const tokens = tot.rows === 0 || tot.tokensMissing === tot.rows ? 'not reported' : fmtInt(tot.inputTokens) + ' / ' + fmtInt(tot.outputTokens);
+  const statusCell = el('div', 'dstat');
+  const pill = el('div', 'v');
+  pill.append(stateTag(r.state + (r.running ? ' (running)' : '')));
+  statusCell.append(pill, el('div', 'k', 'Status'));
+  const dur = fmtDuration(r.duration.ms);
+  strip.append(
+    costCell,
+    cell('Tokens in / out', tokens, '', tot.tokensMissing > 0 ? tot.tokensMissing + ' row(s) did not report tokens' : ''),
+    cell('Tasks', String(r.taskCount)),
+    statusCell,
+    cell('Duration', dur || (r.running ? 'running' : DASH)),
+  );
+  s.append(strip);
+  const meta = el('div', 'tags dmeta');
+  meta.append(timeEl(r.createdAt), tag(r.runId, 40));
+  s.append(meta);
+  return s;
+}
+
+function taskTableBlock(r) {
+  const s = section('Tasks', true);
+  const rows = detailRows(r);
+  const wrap = el('div', 'table-scroll');
+  const table = el('table', 'dtable');
+  const head = el('thead');
+  const hr = el('tr');
+  for (const [h, num] of [['Task', false], ['Who took it', false], ['Tokens in', true], ['Tokens out', true], ['Cost', true]]) {
+    const th = el('th', num ? 'num' : '', h);
+    th.setAttribute('scope', 'col');
+    hr.append(th);
+  }
+  head.append(hr);
+  const body = el('tbody');
+  const rowEl = (row, cls) => {
+    const tr = el('tr', cls || '');
+    const name = el('td', 'task');
+    name.append(el('div', 'tname', row.name));
+    if (row.id && row.id !== row.name) name.title = row.id;
+    if (row.state) name.append(stateTag(row.state));
+    tr.append(name, whoCell(row), tokTd(row.inputTokens), tokTd(row.outputTokens), costTd(row.cost));
+    return tr;
+  };
+  if (rows.planning) {
+    body.append(rowEl(rows.planning, 'planning'));
+  } else {
+    const tr = el('tr', 'planning');
+    const td = el('td', '', 'Planning');
+    const nr = el('td', 'muted-val', 'not recorded');
+    nr.setAttribute('colspan', '4');
+    nr.title = 'This run does not include its planning call, so it is not in the totals.';
+    tr.append(td, nr);
+    body.append(tr);
+  }
+  if (rows.tasks.length === 0) {
+    const tr = el('tr');
+    const td = el('td', 'muted-val', 'No tasks.');
+    td.setAttribute('colspan', '5');
+    tr.append(td);
+    body.append(tr);
+  }
+  for (const row of rows.tasks) body.append(rowEl(row));
+  const tot = detailTotals(rows);
+  const foot = el('tfoot');
+  const fr = el('tr', 'totals');
+  const cost = totalCostText(tot);
+  const costCell = el('td', 'num', cost.text);
+  costCell.title = cost.title;
+  if (cost.partial) costCell.append(el('span', 'partial', 'partial'));
+  const tin = el('td', 'num', tot.rows === tot.tokensMissing ? DASH : fmtInt(tot.inputTokens));
+  const tout = el('td', 'num', tot.rows === tot.tokensMissing ? DASH : fmtInt(tot.outputTokens));
+  if (tot.tokensMissing > 0) { tin.title = tout.title = tot.tokensMissing + ' row(s) did not report tokens'; }
+  fr.append(el('td', 'task', 'Total'), el('td', 'who empty'), tin, tout, costCell);
+  foot.append(fr);
+  table.append(head, body, foot);
+  wrap.append(table);
+  s.append(wrap);
+  return s;
+}
+
+const CHART_BLOCKS = [
   (r) => assignmentBlock(r),
-  (r) => usageBlock('Usage by model (also the cost-by-model numbers)', r.usage.byModel, r.usage.note, { byModel: true }),
-  (r) => block('How to read the charts', [r.usage.note, 'Hatched cream = estimate, solid orange = reported actual; they never share a chart or a donut. Each magnitude chart is scaled to its own largest known value. Unknown is written as unknown, with no bar or slice.', r.savings.note]),
+  (r) => timelineBlock(r),
+  (r) => usageBlock('Usage by model', r.usage.byModel, r.usage.note, { byModel: true }),
   (r) => outcomesBlock(r),
   (r) => costBlock(r),
   (r) => tokensBlock(r),
   (r) => usageBlock('Usage by task', r.usage.byTask, r.usage.note),
   (r) => usageBlock('Usage by runner (agent/bot)', r.usage.byAgent, 'Runner unknown until the run has a saved report.'),
-  (r) => timelineBlock(r),
   (r) => validationBlock(r),
   (r) => transitionsBlock(r),
   (r) => block('Task graph (' + r.taskCount + ' tasks)', r.graph.layers.flatMap((ids, l) => {
@@ -1439,13 +1628,49 @@ const BLOCKS = [
     'id       ' + r.runId,
     'state    ' + r.state + (r.running ? ' (running)' : ''),
     'started  ' + (fmtDate(r.duration.startedAt) || 'unknown') + (r.duration.startedAt ? '  (' + r.duration.startedAt + ')' : ''),
-    'duration ' + (r.duration.ms === null ? (r.running ? 'running' : 'unknown') : (r.duration.ms / 1000).toFixed(1) + ' s') + '  (' + r.duration.basis + ')',
-    '',
-    'Prompt:',
-    r.prompt,
+    'duration ' + (fmtDuration(r.duration.ms) || (r.running ? 'running' : 'unknown')),
   ]),
-  (r) => block('Savings', [r.savings.note]),
 ];
+
+function moreChartsBlock(r) {
+  const d = el('details', 'block wide more-charts');
+  d.append(el('summary', '', 'More charts'));
+  const g = el('div', 'grid');
+  g.append(...CHART_BLOCKS.map((b) => b(r)));
+  d.append(g);
+  return d;
+}
+
+function aboutNotes(r) {
+  const rows = detailRows(r);
+  const planning = rows.planning === null
+    ? 'Planning: this run does not include its planning call, so it is not in the totals.'
+    : rows.planning.fixture
+      ? 'Planning: the plan came from a recorded fixture; no model was called to plan this prompt.'
+      : 'Planning: the model that split the prompt into tasks. Its cost is shown only when soot recorded one.';
+  return [
+    'Who took it: the model or models each task ran on, in order. The runner (agent) is recorded once per run, not per task: ' + (r.agent.label || 'unknown (no saved report yet)') + '.',
+    'Cost: what the runner reported, priced with your model registry. "price not set" means a model has no price in the registry; soot never counts that as $0. A "partial" total adds up only the rows that have a cost.',
+    '"not reported": the runner did not report usage for every attempt on that task.',
+    planning,
+    'Duration: ' + r.duration.basis + '.',
+    'Estimates are never shown as actuals. Mock runs report fictional amounts.',
+    'Charts (under More charts): hatched cream = estimate, solid orange = reported actual; they never share a chart. Each chart is scaled to its own largest known value. Unknown is written as unknown, with no bar.',
+    r.usage.note,
+    r.savings.note,
+  ];
+}
+
+function aboutBlock(r) {
+  const d = el('details', 'block wide about');
+  d.append(el('summary', '', 'About these numbers'));
+  const ul = el('ul', '');
+  for (const n of aboutNotes(r)) ul.append(el('li', '', n));
+  d.append(ul);
+  return d;
+}
+
+const BLOCKS = [summaryBlock, taskTableBlock, moreChartsBlock, aboutBlock];
 
 function notFoundBlock(runId) {
   const s = section('Prompt not found', true);
@@ -1466,7 +1691,9 @@ async function showRun(runId) {
   }
   try {
     const { run } = await getJson('/api/runs/' + encodeURIComponent(runId));
+    const open = Array.from(main.children || []).filter((c) => c.tagName === 'DETAILS' && c.open).map((c) => c.className);
     main.replaceChildren(...BLOCKS.map((b) => b(run)));
+    for (const c of Array.from(main.children || [])) if (c.tagName === 'DETAILS' && open.includes(c.className)) c.open = true;
     return !!run.running;
   } catch (e) {
     if (/not found|404/i.test(e.message)) {

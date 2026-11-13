@@ -157,11 +157,29 @@ export interface DashboardRun {
   };
   readonly savings: { readonly claimed: false; readonly note: string };
   /**
+   * The planning (decomposition) call, when the status data carries it: `null` when not
+   * recorded. A fixture plan made no model call (`kind: 'fixture'`).
+   */
+  readonly planning: PlanningCall | null;
+  /**
    * Per-task tokens, models and the run's runner. soot records one agent/harness
    * per run, not per task; `runner` is that run-level label. Tokens come from
    * the cost report's per-task actuals; null when not reported.
    */
   readonly taskBreakdown: readonly TaskBreakdown[];
+}
+
+export interface PlanningCall {
+  readonly kind: 'model' | 'fixture';
+  /** Registry reference, e.g. `provider/model`; null for a fixture plan. */
+  readonly model: string | null;
+  /** The model id the provider said it served, when reported. */
+  readonly servedModel: string | null;
+  /** Reported usage; null when not reported. */
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+  /** Reported or priced cost; null when no price was recorded (never read as 0). */
+  readonly costUsd: number | null;
 }
 
 export interface TaskBreakdown {
@@ -182,6 +200,10 @@ export interface TaskBreakdown {
   readonly tokensUnknown: string | null;
   /** Why cost is unknown; null when every attempt on this task is priced. */
   readonly costUnknown: string | null;
+  /** Attempts whose model has no price in the registry (from the cost report); null = no data. */
+  readonly unpricedAttempts: number | null;
+  /** Attempts that reported no usage at all; null = no data. */
+  readonly unreportedAttempts: number | null;
 }
 
 export const SAVINGS_NOTE =
@@ -230,10 +252,19 @@ function taskBreakdown(
   tasks: readonly TaskView[],
   usage: UsageCharts,
   runner: string | null,
+  cost: Readonly<Record<string, unknown>> | null,
 ): TaskBreakdown[] {
   const byId = new Map(usage.byTask.map((r) => [r.label, r]));
+  const actualById = new Map(
+    arr(rec(cost?.cost).tasks)
+      .map(rec)
+      .map((c) => [str(c.taskId), rec(c.actual)] as const),
+  );
   return tasks.map((t) => {
     const row = byId.get(t.id);
+    const actual = actualById.get(t.id);
+    const unpricedAttempts = actual === undefined ? null : num(actual.unpricedAttempts);
+    const unreportedAttempts = actual === undefined ? null : num(actual.unreportedAttempts);
     if (row === undefined) {
       return {
         id: t.id,
@@ -246,6 +277,8 @@ function taskBreakdown(
         costUsd: null,
         tokensUnknown: 'no cost data recorded for this task',
         costUnknown: 'no cost data recorded for this task',
+        unpricedAttempts,
+        unreportedAttempts,
       };
     }
     const input = row.actual.inputTokens;
@@ -266,8 +299,35 @@ function taskBreakdown(
       tokensUnknown: tokens === null ? 'tokens not reported for every attempt on this task' : null,
       costUnknown:
         row.actual.usd === null ? 'cost not reported for every attempt on this task' : null,
+      unpricedAttempts,
+      unreportedAttempts,
     };
   });
+}
+
+/** The saved report's `decomposition` record, when the status data includes it. */
+export function planningCall(v: unknown): PlanningCall | null {
+  const d = rec(v);
+  if (d.kind === 'fixture') {
+    return {
+      kind: 'fixture',
+      model: null,
+      servedModel: null,
+      inputTokens: null,
+      outputTokens: null,
+      costUsd: null,
+    };
+  }
+  if (d.kind !== 'model' || typeof d.modelRef !== 'string') return null;
+  const usage = rec(d.usage);
+  return {
+    kind: 'model',
+    model: d.modelRef,
+    servedModel: strOrNull(d.servedModelId),
+    inputTokens: num(usage.inputTokens),
+    outputTokens: num(usage.outputTokens),
+    costUsd: num(d.costUsd),
+  };
 }
 
 export function toRunList(status: SourceResult): readonly RunListItem[] {
@@ -477,6 +537,7 @@ export function toDashboardRun(
       problems: arr(status.problems).map((p) => str(p)),
     },
     savings: { claimed: false, note: SAVINGS_NOTE },
-    taskBreakdown: taskBreakdown(tasks, usage, agentLabel),
+    taskBreakdown: taskBreakdown(tasks, usage, agentLabel, cost),
+    planning: planningCall(status.decomposition),
   };
 }

@@ -107,11 +107,15 @@ soot dashboard --open          # also open a browser (off by default)
   container (charts 2-up, one column under 760px), square 1px-hairline panels.
 - **Logo:** the page header and favicon use the pixel soot mark from `docs/brand/`
   (`GET /logo.png`, `GET /mark.png`).
-- **Prompt detail order:** a selected prompt leads with the full prompt text, the per-task breakdown, the
-  assignment graph, usage-by-model charts, and a short "how to read the charts" legend, then
-  outcomes, cost, tokens, usage by task and by runner, the duration timeline, validation and
-  transitions. Text details (task graph, tasks and models, active agents, the full prompt, the
-  savings note) come after.
+- **Prompt detail:** a selected prompt shows a summary (total cost, tokens in / out, task count,
+  status, duration such as `2m 14s`, the prompt with its full text one click away), then one
+  table: a Planning row, one row per task (task, who took it: model swatch + name and the
+  runner tag, tokens in, tokens out, cost) and a Totals row. A model with no registry price
+  reads `price not set`, never `$0`; if any row has no cost the total reads `$X.XX partial`
+  with a tooltip saying how many rows are left out. The planning row uses
+  `status.decomposition` when the status data carries it and says `not recorded` otherwise.
+  The per-run charts sit under a closed "More charts" toggle, and every caveat is in one
+  "About these numbers" footnote at the bottom.
 - **Page:** plain HTML, one stylesheet, one script, no framework (ADR-009): each section is a
   text block. All text is set with `textContent`. It polls while a run is running.
 - **Safety:** GET/HEAD only, `Host` must be `127.0.0.1:<port>` or `localhost:<port>`, strict

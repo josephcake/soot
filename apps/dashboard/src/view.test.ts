@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SAVINGS_NOTE, toDashboardRun, toRunList } from './view.js';
+import { SAVINGS_NOTE, planningCall, toDashboardRun, toRunList } from './view.js';
 
 const status = {
   runId: 'r1',
@@ -309,6 +309,8 @@ describe('toDashboardRun', () => {
         costUsd: null,
         tokensUnknown: null,
         costUnknown: 'cost not reported for every attempt on this task',
+        unpricedAttempts: null,
+        unreportedAttempts: null,
       },
       {
         id: 'b',
@@ -321,7 +323,55 @@ describe('toDashboardRun', () => {
         costUsd: null,
         tokensUnknown: 'tokens not reported for every attempt on this task',
         costUnknown: 'cost not reported for every attempt on this task',
+        unpricedAttempts: null,
+        unreportedAttempts: null,
       },
     ]);
+  });
+
+  it('reads per-task unpriced counts from the cost report and the planning call from status', () => {
+    const v = toDashboardRun(
+      {
+        runId: 'r',
+        prompt: 'p',
+        tasks: [{ taskId: 'a', state: 'failed', attemptDetails: [] }],
+        decomposition: {
+          kind: 'model',
+          modelRef: 'x/plan',
+          servedModelId: 'plan-7',
+          usage: { inputTokens: 662, outputTokens: 518 },
+          attempts: 1,
+        },
+      },
+      {
+        cost: {
+          tasks: [
+            {
+              taskId: 'a',
+              attempts: [],
+              actual: {
+                inputTokens: 0,
+                outputTokens: 0,
+                usd: null,
+                unpricedAttempts: 3,
+                unreportedAttempts: 0,
+              },
+            },
+          ],
+        },
+      },
+    );
+    expect(v.taskBreakdown[0]).toMatchObject({ unpricedAttempts: 3, unreportedAttempts: 0 });
+    expect(v.planning).toEqual({
+      kind: 'model',
+      model: 'x/plan',
+      servedModel: 'plan-7',
+      inputTokens: 662,
+      outputTokens: 518,
+      costUsd: null,
+    });
+    expect(planningCall(undefined)).toBeNull();
+    expect(planningCall({ kind: 'model' })).toBeNull();
+    expect(planningCall({ kind: 'fixture' })?.kind).toBe('fixture');
   });
 });

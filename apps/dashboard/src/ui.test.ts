@@ -118,7 +118,7 @@ function load() {
     clearTimeout: () => undefined,
   };
   return runInNewContext(
-    `${APP_JS}\n;({ chart, usageBlock, assignmentBlock, donut, meter, outcomesBlock, tokensBlock, costBlock, timelineBlock, validationBlock, transitionsBlock, BLOCKS, AGG_BLOCKS, ACT_SHADES, EST_SHADES, MODEL_COLORS, MODEL_PATTERNS, drawFlow, renderPrompts, taskBreakdownBlock, identBlock, parseRoute, truncate, fmtDate, buildModelStyles, modelStyle, useModels, tilesFor, patternInk, notFoundBlock, promptRow, gridModel, localWindow, filterPrompts, scaleLevels, renderGrid, cellLines, GRID_LEGEND, STACK_CAP, __byId });`,
+    `${APP_JS}\n;({ chart, usageBlock, assignmentBlock, donut, meter, outcomesBlock, tokensBlock, costBlock, timelineBlock, validationBlock, transitionsBlock, BLOCKS, AGG_BLOCKS, ACT_SHADES, EST_SHADES, MODEL_COLORS, MODEL_PATTERNS, drawFlow, renderPrompts, summaryBlock, taskTableBlock, moreChartsBlock, aboutBlock, detailRows, detailTotals, totalCostText, fmtDuration, fmtUsd, parseRoute, truncate, fmtDate, buildModelStyles, modelStyle, useModels, tilesFor, patternInk, notFoundBlock, promptRow, gridModel, localWindow, filterPrompts, scaleLevels, renderGrid, cellLines, GRID_LEGEND, STACK_CAP, __byId });`,
     fake,
   ) as {
     chart: (title: string, kind: string, rows: unknown[], fmt: (v: number) => string) => FakeNode;
@@ -178,8 +178,23 @@ function load() {
     __byId: Record<string, FakeNode>;
     drawFlow: (canvas: FakeNode, overview: unknown) => void;
     renderPrompts: (prompts: unknown[]) => void;
-    taskBreakdownBlock: (run: unknown) => FakeNode;
-    identBlock: (run: unknown) => FakeNode;
+    summaryBlock: (run: unknown) => FakeNode;
+    taskTableBlock: (run: unknown) => FakeNode;
+    moreChartsBlock: (run: unknown) => FakeNode & { open?: boolean };
+    aboutBlock: (run: unknown) => FakeNode;
+    detailRows: (run: unknown) => { planning: unknown; tasks: unknown[] };
+    detailTotals: (rows: unknown) => {
+      inputTokens: number;
+      outputTokens: number;
+      tokensMissing: number;
+      costUsd: number | null;
+      costMissing: number;
+      unpriced: number;
+      rows: number;
+    };
+    totalCostText: (tot: unknown) => { text: string; partial: boolean; title: string };
+    fmtDuration: (ms: number | null) => string | null;
+    fmtUsd: (v: number | null) => string;
   };
 }
 
@@ -573,49 +588,49 @@ describe('page chart blocks', () => {
     expect(bars(ui.transitionsBlock(baseRun({ events: [] })))).toEqual([]);
   });
 
-  it('the run view leads with the prompt, its task breakdown, then charts', () => {
+  it('the prompt page is a summary, one task table, then collapsed charts and notes', () => {
     const run = baseRun();
     const sections = ui.BLOCKS.map((b) => b(run));
-    expect(sections.map((s) => s.children[0]?.textContent)).toEqual([
-      'Prompt',
-      'Tasks in this prompt',
-      'Assignment: prompt → tasks → models',
-      'Usage by model (also the cost-by-model numbers)',
-      'How to read the charts',
-      'Success and failure',
-      'Cost',
-      'Token usage',
-      'Usage by task',
-      'Usage by runner (agent/bot)',
-      'Duration (attempt timeline)',
-      'Validation',
-      'Model transitions',
-      'Task graph (2 tasks)',
-      'Tasks and models',
-      'Active agents',
-      'Run details',
-      'Savings',
+    expect(sections.map((s) => [s.tag, s.className])).toEqual([
+      ['section', 'block wide dsum-block'],
+      ['section', 'block wide'],
+      ['details', 'block wide more-charts'],
+      ['details', 'block wide about'],
     ]);
-    const ident = text(at(sections, 0));
-    expect(ident).toContain('incomplete');
-    expect(ident).toMatch(/Nov 12/);
-    expect(ident).not.toContain('2026-11-12T10:00:00.000Z');
-    expect(ident).toContain('p');
-    const details = text(at(sections, 16));
-    expect(details).toContain('Prompt:');
-    expect(details).toContain('p');
-    expect(at(sections, 0).className).toBe('block wide');
-    expect(at(sections, 1).className).toBe('block wide');
-    expect(at(sections, 2).className).toBe('block wide');
+    expect(at(sections, 1).children[0]?.textContent).toBe('Tasks');
+    expect(at(sections, 2).children[0]?.textContent).toBe('More charts');
+    expect(at(sections, 3).children[0]?.textContent).toBe('About these numbers');
+    const summary = text(at(sections, 0));
+    for (const k of ['Total cost', 'Tokens in / out', 'Tasks', 'Status', 'Duration']) {
+      expect(summary).toContain(k);
+    }
+    expect(summary).toContain('incomplete');
+    expect(summary).toMatch(/Nov 12/);
+    expect(summary).not.toContain('2026-11-12T10:00:00.000Z');
+    // The honest-limit notes live only in the footnote, not inline on the page.
+    expect(text(at(sections, 3))).toContain('not per task');
+    expect(text(at(sections, 1))).not.toContain('not per task');
   });
 
-  it('task breakdown lists each task with runner, models, and recorded tokens or a reason', () => {
-    const run = toDashboardRun(
+  it('charts are collapsed under "More charts" by default and keep every chart', () => {
+    const d = ui.moreChartsBlock(baseRun());
+    expect(d.tag).toBe('details');
+    expect(d.open).toBeUndefined();
+    expect(d.attrs.open).toBeUndefined();
+    const titles = all(d)
+      .filter((n) => n.tag === 'section')
+      .map((n) => n.children[0]?.textContent);
+    expect(titles).toContain('Assignment: prompt → tasks → models');
+    expect(titles).toContain('Duration (attempt timeline)');
+    expect(titles).toContain('Cost');
+  });
+
+  const pricedRun = (over: { status?: Record<string, unknown>; tasks?: unknown[] } = {}) =>
+    toDashboardRun(
       {
         runId: 'r',
         prompt: 'do it',
         agentLabel: 'mock-test-double',
-        agent: 'mock-test-double',
         createdAt: '2026-11-12T10:00:00.000Z',
         tasks: [
           {
@@ -625,44 +640,165 @@ describe('page chart blocks', () => {
             models: ['p/small'],
             attemptDetails: [{ attempt: 1, state: 'succeeded', model: 'p/small' }],
           },
+          {
+            taskId: 'b',
+            title: 'Part B',
+            state: 'succeeded',
+            models: ['p/free'],
+            attemptDetails: [{ attempt: 1, state: 'succeeded', model: 'p/free' }],
+          },
         ],
+        ...over.status,
       },
       {
         cost: {
-          tasks: [
+          tasks: over.tasks ?? [
             {
               taskId: 'a',
-              estimated: { inputTokens: 10, outputTokens: 1 },
               attempts: [
-                { attempt: 1, model: 'p/small', inputTokens: 8, outputTokens: 2, actualUsd: 0.001 },
+                {
+                  attempt: 1,
+                  model: 'p/small',
+                  inputTokens: 800,
+                  outputTokens: 200,
+                  actualUsd: 0.5,
+                },
               ],
+              actual: {
+                inputTokens: 800,
+                outputTokens: 200,
+                usd: 0.5,
+                unpricedAttempts: 0,
+                unreportedAttempts: 0,
+              },
+            },
+            {
+              taskId: 'b',
+              attempts: [
+                { attempt: 1, model: 'p/free', inputTokens: 40, outputTokens: 10, actualUsd: null },
+              ],
+              actual: {
+                inputTokens: 40,
+                outputTokens: 10,
+                usd: null,
+                unpricedAttempts: 1,
+                unreportedAttempts: 0,
+              },
             },
           ],
-          totals: {
-            estimated: { inputTokens: 10, outputTokens: 1, usd: 0.01 },
-            actual: {
-              inputTokens: 8,
-              outputTokens: 2,
-              usd: 0.001,
-              unpricedAttempts: 0,
-              unreportedAttempts: 0,
-            },
-          },
         },
       },
     );
-    const t = text(ui.taskBreakdownBlock(run));
-    expect(t).toContain('Runner is recorded per run, not per task: mock-test-double');
-    expect(t).toMatch(/\ba\s+succeeded\b/);
-    expect(t).toContain('Part A');
-    expect(t).toContain('runner: mock-test-double');
-    expect(t).toMatch(/model:\s+p\/small/);
-    expect(t).toContain('10 tok');
-    expect(t).toContain('8 in / 2 out');
-    expect(t).toContain('$0.001000');
-    expect(t).toContain('total tokens  10');
-    const bare = text(ui.taskBreakdownBlock(baseRun()));
-    expect(bare).toContain('no cost data recorded for this task');
+
+  const rowsOf = (n: FakeNode) => all(n).filter((x) => x.tag === 'tr');
+
+  it('an unpriced task reads "price not set", never $0, and makes the total partial', () => {
+    const run = pricedRun();
+    const table = ui.taskTableBlock(run);
+    const rows = rowsOf(table);
+    // header, planning, a, b, totals
+    expect(rows).toHaveLength(5);
+    const b = text(at(rows, 3));
+    expect(b).toContain('Part B');
+    expect(b).toContain('price not set');
+    expect(b).not.toMatch(/\$0(\.0+)?\b/);
+    expect(text(at(rows, 2))).toContain('$0.50');
+    const total = at(rows, 4);
+    expect(total.className).toBe('totals');
+    expect(text(total)).toContain('$0.50');
+    expect(text(total)).toContain('partial');
+    const totalCost = all(total).find((x) => x.tag === 'td' && x.title.startsWith('Partial'));
+    expect(totalCost?.title).toBe(
+      'Partial: 1 of 2 rows have no cost (price not set or not reported), so they are not in this total.',
+    );
+    // The summary repeats the same total.
+    const summary = text(ui.summaryBlock(run));
+    expect(summary).toContain('$0.50');
+    expect(summary).toContain('partial');
+  });
+
+  it('totals add every row with numbers: tasks plus the planning call', () => {
+    const run = pricedRun({
+      status: {
+        decomposition: {
+          kind: 'model',
+          modelRef: 'p/plan',
+          servedModelId: 'plan-1',
+          usage: { inputTokens: 100, outputTokens: 30 },
+          costUsd: 0.25,
+          attempts: 1,
+        },
+      },
+    });
+    const tot = ui.detailTotals(ui.detailRows(run));
+    expect(tot).toEqual({
+      inputTokens: 940,
+      outputTokens: 240,
+      tokensMissing: 0,
+      costUsd: 0.75,
+      costMissing: 1,
+      unpriced: 1,
+      rows: 3,
+    });
+    expect(ui.totalCostText(tot)).toMatchObject({ text: '$0.75', partial: true });
+    const rows = rowsOf(ui.taskTableBlock(run));
+    const planning = at(rows, 1);
+    expect(planning.className).toBe('planning');
+    const p = text(planning);
+    expect(p).toContain('Planning');
+    expect(p).toContain('plan');
+    expect(p).toContain('100');
+    expect(p).toContain('30');
+    expect(p).toContain('$0.25');
+    expect(text(at(rows, 4))).toMatch(/940.*240.*\$0\.75/);
+  });
+
+  it('a fully priced run has a plain total; nothing priced reads "price not set"', () => {
+    const full = { inputTokens: 1, outputTokens: 1, tokensMissing: 0, unpriced: 0, rows: 2 };
+    expect(ui.totalCostText({ ...full, costUsd: 1.234, costMissing: 0 })).toMatchObject({
+      text: '$1.23',
+      partial: false,
+    });
+    expect(ui.totalCostText({ ...full, costUsd: null, costMissing: 2, unpriced: 2 })).toMatchObject(
+      { text: 'price not set', partial: false },
+    );
+    expect(ui.totalCostText({ ...full, costUsd: null, costMissing: 2 }).text).toBe('not reported');
+    expect(ui.fmtUsd(0.0009)).toBe('$0.0009');
+    expect(ui.fmtUsd(0.00001)).toBe('<$0.0001');
+    expect(ui.fmtUsd(0)).toBe('$0.00');
+  });
+
+  it('the planning row says "not recorded" when the run does not include it', () => {
+    const run = pricedRun();
+    expect(ui.detailRows(run).planning).toBeNull();
+    const planning = at(rowsOf(ui.taskTableBlock(run)), 1);
+    expect(planning.className).toBe('planning');
+    expect(text(planning).trim()).toBe('Planning not recorded');
+    expect(text(ui.aboutBlock(run))).toContain('does not include its planning call');
+    // A fixture plan made no model call: shown as such and never makes the total partial.
+    const fixture = pricedRun({
+      status: { decomposition: { kind: 'fixture', usage: null, attempts: 0 } },
+      tasks: [],
+    });
+    expect(text(at(rowsOf(ui.taskTableBlock(fixture)), 1))).toContain('no model call');
+  });
+
+  it('who took it shows each model (with its swatch) and the runner tag', () => {
+    const rows = rowsOf(ui.taskTableBlock(pricedRun()));
+    const a = at(rows, 2);
+    expect(text(a)).toContain('small');
+    expect(text(a)).toContain('mock-test-double');
+    expect(all(a).some((n) => n.className.startsWith('sw'))).toBe(true);
+  });
+
+  it('formats duration for people', () => {
+    expect(ui.fmtDuration(null)).toBeNull();
+    expect(ui.fmtDuration(850)).toBe('850ms');
+    expect(ui.fmtDuration(4200)).toBe('4.2s');
+    expect(ui.fmtDuration(14_000)).toBe('14s');
+    expect(ui.fmtDuration(134_000)).toBe('2m 14s');
+    expect(ui.fmtDuration(3_780_000)).toBe('1h 3m');
+    expect(text(ui.summaryBlock(baseRun()))).toContain('Duration');
   });
 
   it('drawFlow paints a no-data block when there are no runs, and fills prompt text safely', () => {
