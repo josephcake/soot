@@ -6,7 +6,7 @@
  * `MockAgentRunner`, a scripted TEST DOUBLE. Milestone 4: multi-attempt execution driven by an
  * `AttemptSupervisor` (retries, reassignment with context transfer, attempt timeouts, retry
  * backoff that cancellation clears). Milestone 5: task workspaces (worktrees) and approval
- * gates that never auto-approve. No real model or harness runner exists yet.
+ * gates that never auto-approve. The direct-API runner lives in the CLI (ADR-039).
  */
 
 export const PACKAGE_NAME = '@soot/agent-runtime';

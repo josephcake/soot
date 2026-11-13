@@ -75,7 +75,8 @@ It is then selected, routed and callable like any other provider, and can be nam
 decomposer model (`deepseek/deepseek-flash`). Its price comes from soot's catalog
 (DeepSeek's peak rate; off-peak is half and is not modeled). Fill in context window and
 reliability yourself; unknown stays unknown. soot's tests and demos never call DeepSeek or any other live
-provider, and no live DeepSeek call has been verified yet.
+provider. Live calls (planning, and task work with `--agent api`) were made with the user's key
+on 2026-11-13 (ADR-039).
 
 ## Listed-only providers
 

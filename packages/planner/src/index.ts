@@ -4,7 +4,7 @@
  * Milestone 1: prompt intake (immutable original prompt + project context + intended
  * outcome) and the `Decomposer` interface with a deterministic, fixture-backed
  * implementation (the default). `ModelDecomposer` (ADR-033) decomposes other prompts through a
- * caller-supplied `ModelClient`; it is verified with mock clients only, never a real provider.
+ * caller-supplied `ModelClient`; verified with mock clients and run live via the CLI (ADR-039).
  */
 
 export const PACKAGE_NAME = '@soot/planner';

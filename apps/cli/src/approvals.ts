@@ -9,7 +9,8 @@ import {
 /*
  * Approvals for the CLI (ADR-018). Interactive: each request is printed and the run waits for
  * the person to type y or n on stdin (anything else, or end of input, is a denial). Unattended:
- * every request is unavailable, so the task is refused. There is no flag to approve everything.
+ * every request is unavailable, so the task is refused. There is no flag to approve everything;
+ * `--apply` pre-approves only landing a fully verified result (see `withApply`).
  */
 
 export interface ApprovalIo {
@@ -59,3 +60,19 @@ export function interactiveApprovals(io: ApprovalIo): { gate: ApprovalGate; clos
 }
 
 export const unattendedApprovals = (): ApprovalGate => UNATTENDED_APPROVALS;
+
+/**
+ * `--apply` (ADR-039): the person pre-approves exactly one action for this invocation,
+ * fast-forwarding their checked-out branch to the integrated result. soot asks only after
+ * every merged task was verified and final validation passed, and still refuses when the
+ * working tree is dirty or HEAD moved. Every other request goes to `base` unchanged.
+ */
+export function withApply(base: ApprovalGate): ApprovalGate {
+  return {
+    mode: base.mode,
+    request: (request, signal) =>
+      request.action === 'integrate-into-working-tree'
+        ? Promise.resolve('approved' as const)
+        : base.request(request, signal),
+  };
+}

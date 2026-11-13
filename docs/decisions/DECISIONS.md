@@ -667,3 +667,77 @@ the old one.
   M2-07. The plan preview and the run share one decomposition, so what is shown is what runs.
 - **Reversible:** Yes. Without `--agent` nothing can be written; removing the token check
   restores ADR-031's read-only page.
+
+## ADR-039: Direct-API task runner (`--agent api`), landing verified results with `--apply`, runner-tagged routing history, link file
+
+- **Date:** 2026-11-13
+- **Status:** Accepted (Joseph: "make sure it pass / do a test so we actually send to models /
+  let's get some real data").
+- **Context:** Until now every task ran on the scripted mock or an ACP agent; no routed model
+  ever did a task's work, so soot had no real token or cost data. Two smaller problems showed up
+  on the way. (1) A dashboard smoke run left a real task "unroutable": mock outcomes are stored
+  against the routed model ref (ADR-030 routing feedback), so failures of the no-op test double
+  lowered the reliability of real models. Unknown context windows also excluded hosted models
+  that had no `contextWindow` configured. (2) Unattended runs could never land a verified result
+  (ADR-018), so every dashboard run ended "incomplete", and `soot dashboard` wrote its token link
+  into any file its output was redirected to.
+- **Decision:**
+  - **`--agent api`** (`ApiAgentRunner`, `apps/cli/src/api-runner.ts`). Per attempt it builds a
+    client for the routed model with `createModelClient` (keys stay inside
+    `@soot/provider-adapters`, ADR-022), sends the task's instructions, acceptance criteria,
+    allowed and readable files with their current contents (per-file 64 KiB, total 256 KiB),
+    prerequisite summaries and earlier attempts' findings (never the original prompt), and asks
+    for JSON `{summary, edits: [{path, content}], notes?}` with **complete file contents**.
+    Whole files over diffs or search/replace: no hunk matching to fail, easy to validate, fine
+    for the small files tasks are planned around. Every path must be relative, normalized,
+    inside the worktree, not under `.git`, and not through a symlink; one bad path fails the
+    attempt and nothing is written. soot then commits, checks, merges and reports exactly as
+    for any runner, so scope, no-change and validation rules are unchanged.
+  - **Usage and cost** are the provider's reported tokens summed over the attempt's calls,
+    priced with `actualCostFromUsage` (configured price, else the ADR-037 catalog). Missing
+    usage makes the cost unknown, never 0.
+  - **Failures.** A reply that is not the JSON object gets one repair round (the model sees its
+    reply and the parse error); a second bad reply, or a reply cut off at the output limit,
+    fails the attempt with its usage. Empty `edits` is a success with no change, which soot
+    records as `no-changes`. Timeouts, 429s, 5xx and missing keys surface as `ProviderError`s
+    so the supervisor retries, falls back or escalates (ADR-024). An `openai-compatible`
+    provider that names an `apiKeyEnv` whose variable is unset is now refused (`auth`) instead
+    of sending an unauthenticated request; keyless endpoints omit `apiKeyEnv`.
+  - **Dashboard** `soot dashboard --agent api` uses the same runner; the label says "api (routed
+    models, called directly)".
+  - **Routing history is tagged with its runner** (state schema v5:
+    `model_outcomes.runner`). `api` and `acp` runs read only `api`/`acp` outcomes; mock runs
+    read everything, so the fixture demo of routing feedback still works. Rows from before v5
+    are `unknown` and no longer shape real-model routing.
+  - **Unknown context window:** a hosted (non-local) model with no `contextWindow` is assumed
+    to take `HOSTED_CONTEXT_FLOOR` (32,000) tokens, so ordinary tasks can route to it; larger
+    tasks and local endpoints still need the window configured. Reliability priors stay the
+    user's: soot ships none and still excludes a model with no prior and too little history.
+  - **`--apply`** (`soot run`, `soot dashboard`) pre-approves exactly one action for that
+    invocation: fast-forwarding the checked-out branch to the integrated result. The workflow
+    asks only after every merged task was verified and final validation passed, and still
+    refuses when the working tree is dirty or HEAD moved. Every other approval is unchanged
+    (asked interactively or refused). Without `--apply` a verified result stays on
+    `soot/<run>/integration` and the run is `incomplete` with that reason, as before.
+  - **Token link:** printed only when stdout is a terminal. It is always written to
+    `<dataDir>/dashboard-link-<port>.txt` (0600, atomic) and removed when the dashboard stops;
+    SIGTERM now stops the CLI as cleanly as Ctrl-C. `--open` opens the link either way. JSON
+    output gives `url` without the token when stdout is not a terminal, plus `linkFile`.
+- **Verification:** unit tests against a fake OpenAI-compatible server (request content,
+  whole-file writes, exact usage and cost, repair round, unusable replies, empty edits, refused
+  paths and symlinks, timeout, 429, missing key); an end-to-end `soot run --agent api --apply`
+  on the demo app with the fake server (complete, landed) and without `--apply` (left on the
+  integration branch). Live on 2026-11-13 with the user's keys on a throwaway demo repo:
+  planner deepseek/deepseek-flash, tasks on deepseek/deepseek-flash and xai/grok-4.7, all
+  verified by the project's tests and landed with `--apply`, once from `soot run` and twice
+  from the dashboard.
+- **Alternatives:** unified diffs or search/replace blocks (smaller replies, but models often
+  produce hunks that do not apply; can be added for large files later); tool calling with a
+  file-edit tool loop (more round trips and spend; not needed for single-shot edits); counting
+  `verified` tasks as `complete` when the working tree is not updated (would hide that nothing
+  landed); approving integration in every unattended run (contradicts ADR-018); shipping
+  default reliability priors for vendor models (would be guesses).
+- **Consequences:** soot can now do real work with the user's own keys and records real token
+  and cost data per attempt. Model output quality is whatever the routed model produces; soot
+  only accepts it when its own checks pass. Large files (over 64 KiB) are not sent, so tasks on
+  them fail rather than guess. Stored outcomes from mock runs no longer influence real routing.

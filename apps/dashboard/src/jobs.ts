@@ -14,9 +14,11 @@ import { randomBytes } from 'node:crypto';
 export const MAX_PROMPT_BYTES = 256 * 1024;
 
 export interface RunnerInfo {
-  readonly kind: 'mock' | 'acp';
+  readonly kind: 'mock' | 'acp' | 'api';
   /** Honest label, e.g. "mock (test double)". */
   readonly label: string;
+  /** Started with `--apply`: a fully verified result is landed on the folder's branch (ADR-039). */
+  readonly lands?: boolean;
 }
 
 export interface PlannerInfo {

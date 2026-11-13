@@ -291,6 +291,15 @@ describe('prompt box helpers', () => {
     expect(said).toBe('Running · 1 of 2 tasks done');
     // No approve or confirm step anywhere on the card.
     expect(t).not.toMatch(/approve and run|confirm/i);
+    expect(t).toContain('Approval-needing actions are refused.');
+  });
+
+  it('with --apply the live card says verified results land on the branch', () => {
+    const lands = job({
+      runner: { kind: 'api', label: 'api (routed models, called directly)', lands: true },
+    });
+    const t = text(ui.liveCard(lands, RUN).card);
+    expect(t).toContain('Verified results land on your branch (--apply)');
   });
 
   it('when finished: no Stop, a details link and dismiss, and the run problem is shown', () => {

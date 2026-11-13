@@ -5,7 +5,7 @@ import { createLogger } from '@soot/core';
 // Type only (erased at build): the dashboard module itself is loaded lazily in `soot dashboard`.
 import type * as Dashboard from '@soot/dashboard';
 import type { CommandOutput } from '@soot/harness-adapters';
-import { interactiveApprovals, unattendedApprovals } from './approvals.js';
+import { interactiveApprovals, unattendedApprovals, withApply } from './approvals.js';
 import { allowProject, disallowProject, projectId, readAllowlist } from './dashboard-allowlist.js';
 import type { createComposerAgent } from './dashboard-agent.js';
 import { SootEngine, runtimeFromEnv, type AgentMode } from './engine.js';
@@ -19,6 +19,8 @@ export interface CliIo {
   readonly stderr: (text: string) => void;
   readonly stdin: Readable;
   readonly stdinIsTTY: boolean;
+  /** Whether stdout is a terminal; the dashboard prints its access link only then. */
+  readonly stdoutIsTTY?: boolean;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly cwd: string;
   readonly signal?: AbortSignal;
@@ -29,7 +31,7 @@ export interface CliIo {
 export const USAGE = `soot ${VERSION} — task-level orchestration for coding harnesses
 
 Usage:
-  soot run "<prompt>" [--repo <dir>] [--agent mock --mock-script <file> | --agent acp] [--run-id <id>] [--interactive]
+  soot run "<prompt>" [--repo <dir>] [--agent api | --agent mock --mock-script <file> | --agent acp] [--run-id <id>] [--interactive] [--apply]
   soot status [<run-id>]
   soot cost [<run-id>]
   soot models
@@ -37,7 +39,7 @@ Usage:
   soot stop <run-id> [--task <task-id>]
   soot mcp [--agent mock --mock-script <file> | --agent acp]   MCP server on stdio (unattended)
   soot install-skill [--target <dir>] [--harness agents,claude,grok] [--force]
-  soot dashboard [--port <n>] [--open] [--agent mock --mock-script <file> | --agent acp]
+  soot dashboard [--port <n>] [--open] [--agent api | --agent mock --mock-script <file> | --agent acp] [--apply]
                                 optional local dashboard on 127.0.0.1 (default port 8787)
   soot dashboard allow <dir> | disallow <dir> | list   folders the dashboard may run prompts in
 
@@ -49,21 +51,27 @@ Global options:
 Environment: SOOT_DATA_DIR (state directory), SOOT_LOG_LEVEL (silent|error|warn|info|debug,
 default info; log lines go to stderr). No .env file is read.
 
-Agents: --agent mock runs a scripted test double (no model is called). --agent acp runs each
-task through the ACP agent command configured as "acpAgent" in soot.config.json (generic ACP
-driver; no harness is verified). soot never approves anything for you: with --interactive (or
-a terminal) it asks; otherwise approval-needing work is refused.
+Agents: --agent api sends each task to the model the router picked, through soot's provider
+adapters, and writes the whole-file edits it returns into the task's worktree (keys come from
+the variables your models file names). --agent mock runs a scripted test double (no model is
+called). --agent acp runs each task through the ACP agent command configured as "acpAgent" in
+soot.config.json (generic ACP driver; no harness is verified). soot never approves anything for
+you: with --interactive (or a terminal) it asks; otherwise approval-needing work is refused.
+--apply pre-approves one thing only: fast-forwarding your branch to the result once every task
+is verified and final validation passed (refused if your working tree is dirty).
 
 Decomposition: recorded fixtures. Prompts with no fixture go to the optional "decomposer"
-model in soot.config.json, only when its key variable is set (verified with mock clients only;
-"soot config" shows whether it is usable). Without it, such prompts are refused.
+model in soot.config.json, only when its key variable is set ("soot config" shows whether it
+is usable). Without it, such prompts are refused.
 
 Dashboard: off unless you run "soot dashboard". It binds 127.0.0.1 only, fails if the port is
-taken (no other port is tried), and opens a browser only with --open. It prints a new
-link with an access token; open that link (it sets a session cookie). Without --agent it is
+taken (no other port is tried), and opens a browser only with --open. Each start makes a new
+access link with a token. On a terminal it is printed; otherwise (output redirected) it is only
+written to a 0600 file in the data dir, and --open still opens it. Without --agent it is
 read-only. With --agent it adds a prompt box that plans and runs prompts right away, only in
 folders added with "soot dashboard allow <dir>" (never from the browser). Runs live in the
-dashboard process: stopping the dashboard stops them. Approval-needing actions are refused.
+dashboard process: stopping the dashboard stops them. Approval-needing actions are refused;
+with --apply a fully verified result is landed on the folder's branch.
 Every other command is headless and never loads it.
 
 Exit codes: 0 ok / run complete, 1 error, 2 run incomplete, 3 run cancelled.`;
@@ -83,6 +91,7 @@ const OPTIONS = {
   force: { type: 'boolean' },
   port: { type: 'string' },
   open: { type: 'boolean' },
+  apply: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
   version: { type: 'boolean' },
 } as const;
@@ -98,7 +107,12 @@ function agentMode(agent: string | undefined, script: string | undefined): Agent
     if (script !== undefined) throw new UsageError('--mock-script is only for --agent mock');
     return { kind: 'acp' };
   }
-  if (agent !== 'mock') throw new UsageError(`unknown agent "${agent}" (available: mock, acp)`);
+  if (agent === 'api') {
+    if (script !== undefined) throw new UsageError('--mock-script is only for --agent mock');
+    return { kind: 'api' };
+  }
+  if (agent !== 'mock')
+    throw new UsageError(`unknown agent "${agent}" (available: api, mock, acp)`);
   if (script === undefined) throw new UsageError('--agent mock needs --mock-script <file>');
   return { kind: 'mock', script };
 }
@@ -149,9 +163,15 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
     );
     const agent = agentMode(values.agent, values['mock-script']);
     const interactive = command === 'run' && (values.interactive === true || io.stdinIsTTY);
-    const approvals = interactive
+    if (values.apply === true && command !== 'run' && command !== 'dashboard')
+      throw new UsageError('--apply is only for soot run and soot dashboard');
+    if (values.apply === true && agent.kind === 'none')
+      throw new UsageError('--apply needs --agent');
+    const base = interactive
       ? interactiveApprovals({ input: io.stdin, ask: io.stderr })
       : { gate: unattendedApprovals(), close: () => undefined };
+    const approvals =
+      values.apply === true ? { gate: withApply(base.gate), close: base.close } : base;
     const engine = new SootEngine({
       cwd: io.cwd,
       dataDir,
@@ -243,9 +263,10 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
             if (
               values.port !== undefined ||
               values.open !== undefined ||
-              values.agent !== undefined
+              values.agent !== undefined ||
+              values.apply !== undefined
             )
-              throw new UsageError(`dashboard ${sub} takes no --port, --open or --agent`);
+              throw new UsageError(`dashboard ${sub} takes no --port, --open, --agent or --apply`);
             if (sub === 'list') {
               if (dir !== undefined) throw new UsageError('dashboard list takes no arguments');
               const projects = readAllowlist(dataDir);
@@ -330,6 +351,7 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
                   : agent,
               env: io.env,
               log,
+              apply: values.apply === true,
             });
           }
           const server = await dashboard.startDashboard({
@@ -341,13 +363,22 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
             composer === undefined
               ? 'read-only'
               : `prompt box on, runner: ${composer.runner.label}; runs stop when the dashboard stops`;
+          // The access link holds the session token. Print it only to a terminal; when output
+          // is redirected (a log file), write it to a 0600 file instead (ADR-039).
+          const showLink = io.stdoutIsTTY === true;
+          const { writeLinkFile, removeLinkFile } = await import('./dashboard-link.js');
+          const linkFile = writeLinkFile(dataDir, server.address.port, server.url);
+          const where = showLink
+            ? `soot dashboard: ${server.url}\n  open this link (it holds an access token, new each start)`
+            : `soot dashboard: ${server.baseUrl}\n  access link (with its token) is in ${linkFile} (0600); not printed because output is not a terminal${values.open === true ? '; opening it in your browser' : ''}`;
           print(
             io,
             {
               ok: true,
-              text: `soot dashboard: ${server.url}\n  open this link (it holds an access token, new each start); 127.0.0.1 only, ${mode}; Ctrl-C stops it`,
+              text: `${where}; 127.0.0.1 only, ${mode}; Ctrl-C stops it`,
               data: {
-                url: server.url,
+                url: showLink ? server.url : server.baseUrl,
+                linkFile,
                 writes: composer !== undefined,
                 runner: composer === undefined ? null : { ...composer.runner },
                 address: server.address.address,
@@ -379,6 +410,7 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
               );
           });
           await server.close();
+          removeLinkFile(linkFile);
           return 0;
         }
         default:

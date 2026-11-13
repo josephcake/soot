@@ -79,10 +79,12 @@ These are recorded in [`docs/decisions/DECISIONS.md`](docs/decisions/DECISIONS.m
 
 ### Supported providers
 
-**Implemented, verified with mocks only.** Milestone 2 (in progress) adds adapters for
-Anthropic, OpenAI, and generic OpenAI-compatible endpoints (Ollama, LM Studio) through the
-Vercel AI SDK in-process (ADR-017, ADR-019, ADR-022). They are tested against mocked HTTP. **No
-real provider has been called yet**: that needs your own keys (M2-07, blocked). soot ships no
+**Implemented.** Milestone 2 (in progress) adds adapters for Anthropic, OpenAI, and generic
+OpenAI-compatible endpoints (Ollama, LM Studio) through the Vercel AI SDK in-process (ADR-017,
+ADR-019, ADR-022), tested against mocked HTTP. With your own keys, `soot run --agent api`
+sends each task to its routed model (ADR-039); this has been run live with DeepSeek
+(`deepseek-flash`, also as planner) and xAI (`grok-4.7`) only. Anthropic and OpenAI have not
+been called live. soot ships no
 built-in model list; you configure models yourself (`@soot/model-registry`). Prices for
 popular models come from a sourced catalog of official list prices (ADR-037); refresh them
 with the [update-model-pricing prompt](skills/update-model-pricing/SKILL.md). DeepSeek is
@@ -109,14 +111,16 @@ compatibility is claimed until tested.
 
 soot is headless by default. `soot dashboard` starts an optional local page on 127.0.0.1
 (port 8787; `--port <n>` to change it; `--open` to open a browser). Open the access link it
-prints; it holds an access token. With `--agent mock --mock-script <file>` or `--agent acp`,
+prints (on a terminal; otherwise it is in a 0600 file in the data dir); it holds an access
+token. With `--agent api` (add `--apply` to land verified results), `--agent mock
+--mock-script <file>` or `--agent acp`,
 the landing page is a prompt box: pick a folder you allowed with
 `soot dashboard allow <dir>`, type a prompt, press Enter, and it plans and runs right away,
 showing each task's model, state and cost so far, with Stop. Without `--agent` it is
 read-only. Overview and Prompts show every recorded run: where tasks went, each task's
 model, runner, tokens and cost. Unknown costs stay unknown and no savings are claimed. No
 other command starts or loads it ([`apps/dashboard`](apps/dashboard/README.md), ADR-031,
-ADR-038).
+ADR-038, ADR-039).
 
 ## Try it (no keys)
 

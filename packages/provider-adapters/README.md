@@ -1,23 +1,24 @@
 # @soot/provider-adapters
 
-> **Status: partial (Milestone 2 mockable scope implemented).** Verified with mocked HTTP and a
-> scripted test double only. **No real provider has been called**: real-key verification
-> (M2-07) is blocked until the user supplies their own keys.
+> **Status: partial (Milestone 2).** Verified with mocked HTTP and a scripted test double. The
+> `openai-compatible` adapter has been called live with the user's keys against DeepSeek
+> (`deepseek-flash`) and xAI (`grok-4.7`) on 2026-11-13 (`soot run --agent api`, ADR-039).
+> The `anthropic` and `openai` adapters have not been called live.
 
 soot's provider abstraction. Callers use one interface, `ModelClient`, whatever the provider.
 Adapters wrap the [Vercel AI SDK](https://ai-sdk.dev) in-process (ADR-019, ADR-022).
 
-| Adapter (`kind`)    | Wire API                                                    | Key variable (BYOK)                            |
-| ------------------- | ----------------------------------------------------------- | ---------------------------------------------- |
-| `anthropic`         | Anthropic Messages (`@ai-sdk/anthropic`)                    | named by `apiKeyEnv`, e.g. `ANTHROPIC_API_KEY` |
-| `openai`            | OpenAI Chat Completions (`@ai-sdk/openai`)                  | named by `apiKeyEnv`, e.g. `OPENAI_API_KEY`    |
-| `openai-compatible` | Chat Completions at your `baseURL` (Ollama, LM Studio, ...) | optional                                       |
-| `listed-only`       | never called                                                | none                                           |
+| Adapter (`kind`)    | Wire API                                                    | Key variable (BYOK)                               |
+| ------------------- | ----------------------------------------------------------- | ------------------------------------------------- |
+| `anthropic`         | Anthropic Messages (`@ai-sdk/anthropic`)                    | named by `apiKeyEnv`, e.g. `ANTHROPIC_API_KEY`    |
+| `openai`            | OpenAI Chat Completions (`@ai-sdk/openai`)                  | named by `apiKeyEnv`, e.g. `OPENAI_API_KEY`       |
+| `openai-compatible` | Chat Completions at your `baseURL` (Ollama, LM Studio, ...) | optional; if `apiKeyEnv` is named, it must be set |
+| `listed-only`       | never called                                                | none                                              |
 
 Only `listed-only` providers are refused. DeepSeek has no special treatment since ADR-035
 (which lifted the ADR-016 hold): configure it as `openai-compatible` with
 `baseURL: "https://api.deepseek.com/v1"` and `apiKeyEnv: "DEEPSEEK_API_KEY"`. It is optional
-and not a default; no live DeepSeek call has been verified.
+and not a default. Live DeepSeek calls (planning and task work) were made on 2026-11-13.
 
 ## Interface
 

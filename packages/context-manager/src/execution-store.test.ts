@@ -199,10 +199,39 @@ describe('execution store: attempt history (Milestone 4)', () => {
     migrated.close();
     const check = new DatabaseSync(join(dataDir, STATE_DB_FILE));
     expect(check.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get()).toEqual({
-      value: '4',
+      value: '5',
     });
-    check.exec(`UPDATE meta SET value = '5' WHERE key = 'schema_version';`);
+    check.exec(`UPDATE meta SET value = '6' WHERE key = 'schema_version';`);
     check.close();
-    expect(() => openExecutionStore({ dataDir })).toThrow(/Unsupported state schema version 5/);
+    expect(() => openExecutionStore({ dataDir })).toThrow(/Unsupported state schema version 6/);
+  });
+
+  it('migrates v4 model outcomes to v5: old rows get runner "unknown", new rows keep theirs', () => {
+    const dataDir = tempDir();
+    openExecutionStore({ dataDir }).close();
+    const db = new DatabaseSync(join(dataDir, STATE_DB_FILE));
+    db.exec(`DROP TABLE model_outcomes;
+      CREATE TABLE model_outcomes (run_id TEXT NOT NULL, task_id TEXT NOT NULL, attempt INTEGER NOT NULL,
+        model TEXT NOT NULL, tier TEXT NOT NULL, outcome TEXT NOT NULL, reason TEXT NOT NULL,
+        recorded_at TEXT NOT NULL, PRIMARY KEY (run_id, task_id, attempt));
+      INSERT INTO model_outcomes VALUES ('r1', 't', 1, 'p/m', 'low', 'failed', 'x', '2026-01-01T00:00:00Z');
+      UPDATE meta SET value = '4' WHERE key = 'schema_version';`);
+    db.close();
+    const store = openExecutionStore({ dataDir });
+    store.recordModelOutcome({
+      runId: 'r2',
+      taskId: 't',
+      attempt: 1,
+      model: 'p/m',
+      tier: 'low',
+      outcome: 'verified',
+      reason: 'ok',
+      runner: 'api',
+    });
+    expect(store.modelOutcomes().map((o) => [o.runId, o.runner])).toEqual([
+      ['r1', 'unknown'],
+      ['r2', 'api'],
+    ]);
+    store.close();
   });
 });

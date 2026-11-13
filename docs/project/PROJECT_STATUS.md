@@ -98,9 +98,12 @@ live decomposition remains unverified and M2-07 stays Blocked.
 
 Milestone 3 (per-task routing, heuristic evaluation, ADR-023) is Completed.
 
-Milestone 2 stays In Progress (partial). Its mockable scope is verified with mocked HTTP. **No
-real provider has been called and no real key has been used.** M2-07 is Blocked, so routed
-tasks cannot yet run on real providers. Project name `soot` (ADR-013).
+Milestone 2 stays In Progress (partial). Its mockable scope is verified with mocked HTTP.
+Real-model execution (ADR-039, 2026-11-13): `--agent api` runs each task on its routed model.
+With the user's keys, DeepSeek (`deepseek-flash`, planner and tasks) and xAI (`grok-4.7`) were
+called live on a throwaway demo repo; every task was verified by the project's tests and the
+result landed with `--apply`. Anthropic and OpenAI have not been called live. Whether this
+completes M2-07 is Mochi's call; its status is not changed here. Project name `soot` (ADR-013).
 
 The repository is public at https://github.com/josephcake/soot under MIT (ADR-032, published
 2026-11-12). Hosted GitHub Actions CI runs on every push to `main` and passed for Node 24 and

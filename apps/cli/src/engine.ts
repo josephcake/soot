@@ -77,6 +77,8 @@ import {
 } from './decomposer-model.js';
 import { holdRun, requestStop, requestTaskStop, runningInfo } from './control.js';
 import { loadMockScript } from './mock-script.js';
+import { ApiAgentRunner } from './api-runner.js';
+import { createModelClient } from '@soot/provider-adapters';
 
 /*
  * The soot engine behind the CLI and the MCP server: one prompt → recorded-fixture
@@ -85,17 +87,32 @@ import { loadMockScript } from './mock-script.js';
  *
  * Honest limits (Milestone 6): decomposition uses recorded fixtures; prompts with no fixture go
  * to the optional "decomposer" model from soot.config.json only when a client can be built for
- * it (ADR-034; verified with mock clients only, no real provider has decomposed a prompt). Agents: the scripted mock, or a
- * user-configured ACP agent through the generic ACP driver (ADR-027; verified only with soot's
- * own mock ACP agent). No model runner exists (M2-07 Blocked), so `run` refuses unless the
- * caller explicitly picks `--agent mock` or `--agent acp`.
+ * it (ADR-034). Agents: the direct-API runner (each task on its routed model, ADR-039), the
+ * scripted mock, or a user-configured ACP agent through the generic ACP driver (ADR-027;
+ * verified only with soot's own mock ACP agent). `run` refuses unless the caller explicitly
+ * picks `--agent api`, `--agent mock` or `--agent acp`.
  */
 
 export type AgentMode =
   | { readonly kind: 'none' }
   | { readonly kind: 'mock'; readonly script: string }
   /** Spawn the `acpAgent` command from the project config (generic ACP driver, ADR-027). */
-  | { readonly kind: 'acp' };
+  | { readonly kind: 'acp' }
+  /** Call each task's routed model directly through soot's provider adapters (ADR-039). */
+  | { readonly kind: 'api' };
+
+/**
+ * Stored outcomes that may shape routing for this runner (ADR-039). Test-double (mock) outcomes
+ * and rows from before the runner was recorded never shape real-model routing; mock runs still
+ * see everything, so fixture demos of routing feedback keep working.
+ */
+export function routingOutcomes(
+  outcomes: readonly ModelOutcome[],
+  agent: AgentMode['kind'],
+): ModelOutcome[] {
+  if (agent === 'mock' || agent === 'none') return [...outcomes];
+  return outcomes.filter((o) => o.runner === 'api' || o.runner === 'acp');
+}
 
 export interface EngineOptions {
   /** Working directory for relative paths (repo, config, mock script). */
@@ -310,14 +327,41 @@ export class SootEngine implements OrchestrationService {
     return join(this.#o.dataDir, 'reports', `${runId}.json`);
   }
 
-  #runner(cfg: LoadedConfig, onRoute: (r: AcpRouteRecord) => void): AgentRunner | string {
+  #runner(
+    cfg: LoadedConfig,
+    registry: ModelRegistry,
+    onRoute: (r: AcpRouteRecord) => void,
+  ): AgentRunner | string {
     const { agent } = this.#o;
     if (agent.kind === 'none') {
       return (
-        'no agent runner selected: real model execution needs provider keys (M2-07, blocked). Use ' +
-        '--agent mock --mock-script <file> for a fixture run, or --agent acp with an "acpAgent" ' +
-        `command in ${CONFIG_FILE}.`
+        'no agent runner selected: pick --agent api (each task goes to its routed model; needs ' +
+        'the provider keys named in your models file), --agent mock --mock-script <file> for a ' +
+        `fixture run, or --agent acp with an "acpAgent" command in ${CONFIG_FILE}.`
       );
+    }
+    if (agent.kind === 'api') {
+      const factory = this.#o.modelClientFactory ?? createModelClient;
+      const env = this.#o.modelEnv ?? process.env;
+      return new ApiAgentRunner({
+        clientFor: (ref) => {
+          const model = registry.get(ref);
+          const provider = model === undefined ? undefined : registry.provider(model.provider);
+          if (model === undefined || provider === undefined)
+            throw new Error(`model "${ref}" is not in ${cfg.modelsPath}`);
+          return factory(provider, model, { env });
+        },
+        priceUsage: (ref, usage) => {
+          const model = registry.get(ref);
+          if (model === undefined) return null;
+          const { costUsd } = actualCostFromUsage(model, usage);
+          return costUsd === null ? null : Number(costUsd);
+        },
+        requestTimeoutMs: Math.min(
+          cfg.config.attemptTimeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS,
+          600_000,
+        ),
+      });
     }
     if (agent.kind === 'acp') {
       const spec = cfg.config.acpAgent;
@@ -348,6 +392,8 @@ export class SootEngine implements OrchestrationService {
       return `acp (${describeCommand(cfg.config.acpAgent)}; generic ACP driver; routed models are applied only when the agent offers a "model" option, see ACP model routing)`;
     }
     if (agent.kind === 'mock') return 'mock-test-double (test double, no model is called)';
+    if (agent.kind === 'api')
+      return 'api (direct model calls: each task goes to its routed model; the model returns whole-file edits)';
     return agent.kind;
   }
 
@@ -400,7 +446,7 @@ export class SootEngine implements OrchestrationService {
     }
     // ACP (ADR-028): whether each attempt's routed model was applied by the agent.
     const acp: PlanAcpState = { routes: [], audit: null };
-    const runner = this.#runner(cfg, (r) => {
+    const runner = this.#runner(cfg, registry, (r) => {
       acp.routes.push(r);
       acp.audit?.record('model-route', r.taskId, {
         attempt: r.attempt,
@@ -452,7 +498,7 @@ export class SootEngine implements OrchestrationService {
         }
         return failed(
           fail(
-            `${error.message} ${recorded} To decompose other prompts with a model from your models file, set "decomposer": {"model": "<provider/modelId>"} in ${CONFIG_FILE} (verified with mock clients only).`,
+            `${error.message} ${recorded} To decompose other prompts with a model from your models file, set "decomposer": {"model": "<provider/modelId>"} in ${CONFIG_FILE}.`,
             { promptSha256: error.promptSha256 },
           ),
         );
@@ -512,7 +558,7 @@ export class SootEngine implements OrchestrationService {
     let health: ProviderHealth;
     try {
       history = historyFromAttempts(
-        store.modelOutcomes().map((o) => ({
+        routingOutcomes(store.modelOutcomes(), this.#o.agent.kind).map((o) => ({
           model: o.model,
           tier: o.tier,
           status: o.outcome === 'verified' ? ('succeeded' as const) : ('failed' as const),
@@ -605,7 +651,7 @@ export class SootEngine implements OrchestrationService {
         `soot: debug: config ${cfg.path}; models ${cfg.modelsPath}; attempt timeout ${String(cfg.config.attemptTimeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS)} ms${cfg.config.attemptTimeoutMs === undefined ? ' (default)' : ''}; audit ${runAudit.file ?? ''}`,
       );
       // Routing feedback (M5-07): soot-verified outcomes from earlier runs shape this run's routing.
-      const outcomes = store.modelOutcomes();
+      const outcomes = routingOutcomes(store.modelOutcomes(), this.#o.agent.kind);
       const history = historyFromAttempts(
         outcomes.map((o) => ({
           model: o.model,
@@ -659,21 +705,26 @@ export class SootEngine implements OrchestrationService {
           for (const id of pendingTaskStops.splice(0)) cancelTask(id);
         },
         // Routing history is credited to a model only when that model did the work: always for
-        // the mock (routed model is its label), for ACP only where the agent applied the route.
-        outcomes: isAcp
-          ? {
-              recordModelOutcome: (o: ModelOutcome) => {
-                const applied = acpRoutes.some(
-                  (r) =>
-                    r.applied &&
-                    r.taskId === o.taskId &&
-                    r.attempt === o.attempt &&
-                    r.routed === o.model,
-                );
-                if (applied) store.recordModelOutcome(o);
-              },
+        // the api runner, for ACP only where the agent applied the route; mock outcomes are kept
+        // but tagged, and only mock runs read them back.
+        // The runner is stored with each outcome so test-double results never shape
+        // real-model routing (ADR-039).
+        outcomes: {
+          recordModelOutcome: (o: ModelOutcome) => {
+            if (isAcp) {
+              const applied = acpRoutes.some(
+                (r) =>
+                  r.applied &&
+                  r.taskId === o.taskId &&
+                  r.attempt === o.attempt &&
+                  r.routed === o.model,
+              );
+              if (applied) store.recordModelOutcome({ ...o, runner: 'acp' });
+              return;
             }
-          : store,
+            store.recordModelOutcome({ ...o, runner: this.#o.agent.kind });
+          },
+        },
         prompt: request.prompt,
         ...(this.#o.gitEnv === undefined ? {} : { gitEnv: this.#o.gitEnv }),
       });

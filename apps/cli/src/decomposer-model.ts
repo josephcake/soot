@@ -58,7 +58,7 @@ export function describeDecomposerModel(d: DecomposerModel): string {
     case 'not-configured':
       return 'recorded fixtures only (no "decomposer" model configured)';
     case 'usable':
-      return `fixtures first, then ${d.ref} for prompts with no fixture (client can be built; not called by this command; verified with mock clients only)`;
+      return `fixtures first, then ${d.ref} for prompts with no fixture (client can be built; not called by this command)`;
     case 'unusable':
       return `fixtures only: ${d.ref} is configured but not usable (${d.reason})`;
   }

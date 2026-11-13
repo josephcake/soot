@@ -57,6 +57,7 @@ export {
 export {
   ModelRegistry,
   modelRef,
+  HOSTED_CONTEXT_FLOOR,
   type ExclusionReason,
   type ModelEntry,
   type ModelRequirements,

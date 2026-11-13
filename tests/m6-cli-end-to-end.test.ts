@@ -202,9 +202,7 @@ describe('soot run: refusals and guards', () => {
     const r = (repo = createDemoRepo());
     const noAgent = await cli(r, ['run', TEST_1]);
     expect(noAgent.code).toBe(1);
-    expect(noAgent.stderr).toMatch(
-      /no agent runner selected: real model execution needs provider keys \(M2-07, blocked\)/,
-    );
+    expect(noAgent.stderr).toMatch(/no agent runner selected: pick --agent api/);
     const unknown = await cli(r, ['run', 'Rewrite everything in Rust.', ...MOCK]);
     expect(unknown.code).toBe(1);
     expect(unknown.stderr).toMatch(/No decomposition fixture matches this prompt/);

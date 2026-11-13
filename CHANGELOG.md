@@ -5,6 +5,33 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (real model execution: `--agent api`, `--apply`, ADR-039)
+
+- `soot run --agent api` and `soot dashboard --agent api`: each task goes to its routed model
+  through soot's provider adapters, which returns whole-file edits as JSON. soot validates
+  every path (inside the worktree, no `..`, `.git` or symlinks), writes the files, then
+  commits, checks, merges and reports as usual. Usage is the provider's reported tokens; cost
+  is that times the list price. One repair round for a reply that is not the JSON object;
+  empty edits count as no change; timeouts, 429s and missing keys go to the supervisor.
+- `--apply` (`soot run`, `soot dashboard`): pre-approves only fast-forwarding your branch to a
+  fully verified, validated result on a clean tree. Without it the result stays on
+  `soot/<run>/integration`, as before.
+- First live runs (2026-11-13, user's keys, throwaway demo repo): planner
+  `deepseek/deepseek-flash`, tasks on `deepseek/deepseek-flash` and `xai/grok-4.7`, all verified
+  by the project's tests and landed, from `soot run` and from the dashboard.
+
+### Changed (ADR-039)
+
+- Routing history records the runner (state schema v5). Real runners (`api`, `acp`) ignore
+  mock outcomes, so test-double failures no longer make real models unroutable.
+- A hosted model with no `contextWindow` is assumed to take 32,000 tokens
+  (`HOSTED_CONTEXT_FLOOR`); local endpoints still need the window configured.
+- An `openai-compatible` provider whose named `apiKeyEnv` is unset is refused (`auth`) instead
+  of being called without a key.
+- `soot dashboard` prints its token link only to a terminal. It always writes it to
+  `<dataDir>/dashboard-link-<port>.txt` (0600), removed on stop; SIGTERM now stops as cleanly
+  as Ctrl-C. JSON output has `linkFile`, and `url` has no token when not on a terminal.
+
 ### Added (dashboard prompt box, ADR-038; mock runner only)
 
 - `soot dashboard --agent mock|acp` adds a prompt box, now the dashboard's landing page: pick

@@ -94,10 +94,25 @@ command soot could run to verify it, so soot does not mark it complete.
    outside the repository.
 2. Today soot decomposes **recorded** prompts (the build spec examples, plus your own under
    `fixtures`). Other prompts need an optional `decomposer` model in `soot.config.json`
-   ([configuration](configuration.md#decomposer-model-optional-adr-034); verified with mock
-   clients only, no real model has run it). The only agent is the scripted mock. `soot run` without
-   `--agent mock` refuses: real providers need keys (M2-07, blocked) and harness runners are
-   not implemented.
+   ([configuration](configuration.md#decomposer-model-optional-adr-034)). Pick a runner:
+   `--agent api` sends each task to its routed model with your keys (see below),
+   `--agent mock` is the scripted test double, `--agent acp` is an ACP agent you configure.
+   `soot run` with no `--agent` refuses.
+
+## Run tasks on real models (`--agent api`, ADR-039)
+
+Configure your providers and models (with your own `reliability` priors) in the models file and
+put the keys in the variables they name, then:
+
+```sh
+soot run "<prompt>" --agent api            # result left on soot/<run>/integration unless approved
+soot run "<prompt>" --agent api --apply    # also fast-forward your branch once everything verified
+```
+
+Each task's routed model receives the task and its files and returns whole-file contents; soot
+validates the paths, commits in the task's worktree, runs your checks, merges, and reports the
+provider's reported tokens and the cost at list price. `--apply` approves only landing a fully
+verified result on a clean working tree; nothing else is approved for you.
 
 ## Install the agent skill
 

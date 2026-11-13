@@ -6,6 +6,7 @@
  * allow (CLI) → `soot dashboard --agent mock` → link (new each start) → cookie + CSRF → POST a prompt
  * (it plans and runs at once) → poll the job until the run finishes → the run is recorded.
  */
+import { readFileSync } from 'node:fs';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { TEST_1, createDemoRepo, type DemoRepo } from './helpers/demo-repo.js';
@@ -93,7 +94,10 @@ describe('soot dashboard --agent mock: the prompt box', () => {
       });
       const port = d.info?.port as number;
       const base = `http://127.0.0.1:${String(port)}`;
-      const token = new URL(String(d.info?.url)).searchParams.get('token') ?? '';
+      // Not a terminal: the link (with its token) is only in the 0600 link file (ADR-039).
+      expect(String(d.info?.url)).not.toContain('token=');
+      const link = readFileSync(String(d.info?.linkFile), 'utf8').trim();
+      const token = new URL(link).searchParams.get('token') ?? '';
       const bodies: string[] = [];
       const read = async (res: Response) => {
         const t = await res.text();

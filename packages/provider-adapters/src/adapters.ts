@@ -112,6 +112,9 @@ export function createModelClient(
       languageModel = createOpenAI({ apiKey, ...baseURL, ...fetchOption }).chat(model.modelId);
       break;
     case 'openai-compatible':
+      // Keyless endpoints (local runtimes) omit apiKeyEnv; a named but unset key is an error,
+      // not an unauthenticated request.
+      if (provider.apiKeyEnv !== undefined && apiKey === undefined) throw missingKey();
       languageModel = createOpenAICompatible({
         name: provider.id,
         baseURL: provider.baseURL ?? '',

@@ -168,7 +168,7 @@ describe('"decomposer" configured and usable (mock clients only)', () => {
     r.env.ANTHROPIC_API_KEY = FAKE_KEY;
     const text = await cli(r, ['config']);
     expect(text.stdout).toMatch(
-      /Decomposition: fixtures first, then anthropic\/claude-haiku-5-5 for prompts with no fixture \(client can be built; not called by this command; verified with mock clients only\)/,
+      /Decomposition: fixtures first, then anthropic\/claude-haiku-5-5 for prompts with no fixture \(client can be built; not called by this command\)/,
     );
     const asJson = await cli(r, ['config', '--json']);
     expect(JSON.parse(asJson.stdout)).toMatchObject({

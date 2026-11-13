@@ -193,11 +193,12 @@ models in your registry file:
   and the reason.
 - `soot config` (and `--json`, field `decomposer`) shows the setting and whether it is usable,
   without printing any key. Checking builds a client but makes no request.
-- Only decomposition uses this model. Execution still needs `--agent mock` or `--agent acp`,
-  and routing is unchanged. Decomposition tokens are recorded in the run report
-  (`decomposition.usage`) but are not yet counted in the cost report or run budget.
-- **Status:** implemented and verified with mock model clients only. No real model has
-  decomposed a prompt (M2-07 is blocked on user-supplied keys).
+- Only decomposition uses this model. Execution needs `--agent api` (each task on its routed
+  model, ADR-039), `--agent mock` or `--agent acp`; routing is unchanged. Decomposition tokens
+  are recorded in the run report (`decomposition.usage`, priced) but are not yet counted in the
+  cost report or run budget.
+- **Status:** implemented, verified with mock model clients, and run live with
+  `deepseek/deepseek-flash` (2026-11-13).
 
 ## CLI state files
 

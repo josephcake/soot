@@ -29,7 +29,7 @@ export const STATE_DB_FILE = 'soot.sqlite';
  * `provider_cooldowns` and `attempt_spend` (ADR-030). Older databases are migrated in place
  * (every change only adds tables).
  */
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 /** Spend attributed to one attempt for budgets: a reported actual, or the routed estimate. */
 export interface AttemptSpend {
@@ -97,6 +97,11 @@ export interface ModelOutcome {
   readonly tier: Complexity;
   readonly outcome: 'verified' | 'failed';
   readonly reason: string;
+  /**
+   * Runner that did the work (ADR-039): `mock` (test double), `api`, `acp`, or `unknown` for
+   * rows stored before schema v5. Real-model routing ignores test-double outcomes.
+   */
+  readonly runner?: string;
 }
 
 export interface CreateRunInput {
@@ -191,6 +196,7 @@ export class ExecutionStore {
         outcome TEXT NOT NULL,
         reason TEXT NOT NULL,
         recorded_at TEXT NOT NULL,
+        runner TEXT NOT NULL DEFAULT 'unknown',
         PRIMARY KEY (run_id, task_id, attempt)
       );
       CREATE TABLE IF NOT EXISTS provider_cooldowns (
@@ -217,8 +223,16 @@ export class ExecutionStore {
       this.#db
         .prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
         .run('schema_version', String(SCHEMA_VERSION));
-    } else if ([1, 2, 3].includes(Number(version.value))) {
-      // v1/v2/v3 → v4: the only changes are new tables, created above.
+    } else if ([1, 2, 3, 4].includes(Number(version.value))) {
+      // v1–v3 → v4 added tables (created above). v4 → v5 adds model_outcomes.runner.
+      const columns = this.#db.prepare('PRAGMA table_info(model_outcomes)').all() as {
+        name: string;
+      }[];
+      if (!columns.some((c) => c.name === 'runner')) {
+        this.#db.exec(
+          "ALTER TABLE model_outcomes ADD COLUMN runner TEXT NOT NULL DEFAULT 'unknown'",
+        );
+      }
       this.#db
         .prepare('UPDATE meta SET value = ? WHERE key = ?')
         .run(String(SCHEMA_VERSION), 'schema_version');
@@ -237,8 +251,8 @@ export class ExecutionStore {
     this.#db
       .prepare(
         `INSERT OR REPLACE INTO model_outcomes
-           (run_id, task_id, attempt, model, tier, outcome, reason, recorded_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (run_id, task_id, attempt, model, tier, outcome, reason, recorded_at, runner)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         outcome.runId,
@@ -249,6 +263,7 @@ export class ExecutionStore {
         outcome.outcome,
         outcome.reason,
         this.#now().toISOString(),
+        outcome.runner ?? 'unknown',
       );
   }
 
@@ -256,7 +271,7 @@ export class ExecutionStore {
   modelOutcomes(): ModelOutcome[] {
     const rows = this.#db
       .prepare(
-        `SELECT run_id, task_id, attempt, model, tier, outcome, reason FROM model_outcomes
+        `SELECT run_id, task_id, attempt, model, tier, outcome, reason, runner FROM model_outcomes
          ORDER BY recorded_at, run_id, task_id, attempt`,
       )
       .all() as {
@@ -267,6 +282,7 @@ export class ExecutionStore {
       tier: string;
       outcome: string;
       reason: string;
+      runner: string;
     }[];
     return rows.map((r) => ({
       runId: r.run_id,
@@ -276,6 +292,7 @@ export class ExecutionStore {
       tier: ComplexitySchema.parse(r.tier),
       outcome: r.outcome === 'verified' ? 'verified' : 'failed',
       reason: r.reason,
+      runner: r.runner,
     }));
   }
 

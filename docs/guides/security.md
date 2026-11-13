@@ -79,13 +79,16 @@ the bound address, answers only requests with `Host: 127.0.0.1:<port>` or `local
 (other hosts get 421, against DNS rebinding), and sends a strict Content-Security-Policy. It
 makes no outbound requests and never shows key values.
 
-- **Access token.** It prints a link that is new each start, `http://127.0.0.1:<port>/?token=…` (256 bits,
-  new on every start, never written to disk). Opening it sets an `HttpOnly; SameSite=Strict`
+- **Access token.** Each start makes a new link, `http://127.0.0.1:<port>/?token=…` (256
+  bits). It is printed only when output is a terminal; it is always written to
+  `<dataDir>/dashboard-link-<port>.txt` (0600) and that file is removed when the dashboard
+  stops (Ctrl-C or SIGTERM), so redirecting output to a log file does not copy the token there
+  (ADR-039). `--open` opens it either way. Opening it sets an `HttpOnly; SameSite=Strict`
   session cookie and redirects to `/`. Without it the page is an access gate and the API
   answers 401. Scripts can send `Authorization: Bearer <token>`. Anyone who has the link can
-  use the dashboard until it stops, so treat the terminal output like a password.
+  use the dashboard until it stops, so treat it like a password.
 - **Read-only by default.** Plain `soot dashboard` cannot change anything. With
-  `--agent mock --mock-script <file>` or `--agent acp` it adds a prompt box that plans and runs
+  `--agent api`, `--agent mock --mock-script <file>` or `--agent acp` it adds a prompt box that plans and runs
   prompts at once, inside the dashboard process (Ctrl-C stops those runs too).
 - **Writes** need JSON, the exact loopback `Origin`, `Sec-Fetch-Site: same-origin` when sent,
   and the session's `X-Soot-CSRF` header. No CORS headers are sent.
@@ -93,8 +96,20 @@ makes no outbound requests and never shows key values.
   (0600), never in a repository and never from the browser. The page sends an opaque id; a
   folder whose real path changed since it was allowed is refused.
 - **Keys** appear only as variable names with `set` or `missing`.
-- **Approvals** inside a dashboard run are refused in v1, including updating your working tree:
-  the result stays on `soot/<run>/integration` for you to merge.
+- **Approvals** inside a dashboard run are refused, including updating your working tree:
+  the result stays on `soot/<run>/integration` for you to merge. Starting it with `--apply`
+  pre-approves only that one step, and only for a fully verified result on a clean tree.
+
+## Direct-API runner (`--agent api`, ADR-039)
+
+- Each task's routed model gets the task, its allowed and readable files (current contents),
+  and earlier attempts' findings. It never gets the original prompt, other tasks' transcripts,
+  keys, or a shell: it can only return whole-file contents.
+- Every returned path must stay inside the task's worktree (no absolute paths, `..`, `.git`
+  or symlinks); one bad path fails the attempt and nothing is written. soot's usual scope,
+  protected-path and check rules then apply before anything is merged.
+- File contents are sent to the provider you configured for that model. Do not route tasks
+  over files you would not send to that provider.
 
 ## Known limits
 

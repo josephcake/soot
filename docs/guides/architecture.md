@@ -1,7 +1,7 @@
 # Architecture and Repository Layout
 
 > **Current state (Milestones 1–5):** integrations has the Milestone 5 scope (worktrees,
-> soot-run validation, serial integration, reports); escalation has Milestone 4. task-graph, planner (fixture decomposer by default; a model-backed decomposer verified with mocks only, ADR-033, selectable in the CLI/MCP engine through `decomposer` in soot.config.json, ADR-034),
+> soot-run validation, serial integration, reports); escalation has Milestone 4. task-graph, planner (fixture decomposer by default; a model-backed decomposer verified with mocks and run live with deepseek-flash, ADR-033, selectable in the CLI/MCP engine through `decomposer` in soot.config.json, ADR-034),
 > agent-runtime (scheduler + mock runner), context-manager (SQLite state), and observability
 > (cost records, routing log) have their Milestone 1 scope; model-registry and
 > provider-adapters have the Milestone 2 mockable scope; model-router has Milestone 3. The rest of the design below is the _plan_ from
@@ -149,7 +149,7 @@ and file-conflict management.
 │   └── dashboard/            # optional local dashboard, `soot dashboard`, 127.0.0.1 only (ADR-031)
 ├── packages/
 │   ├── core/                 # foundation: package metadata, SOOT_* env parsing, logger (real, tested)
-│   ├── planner/              # prompt intake, fixture + model decomposers (M1, partial; model: mocks only)
+│   ├── planner/              # prompt intake, fixture + model decomposers (M1, partial)
 │   ├── task-graph/           # task/result contracts + JSON Schema, dependency graph (M1, partial)
 │   ├── model-registry/       # partial (M2) — user model config, availability, selection, sourced pricing
 │   ├── model-router/         # partial (M3) — per-task routing, policies, explanations
@@ -180,11 +180,11 @@ and file-conflict management.
 
 | Path                          | Status            | First real milestone | Responsibility                                             |
 | ----------------------------- | ----------------- | -------------------- | ---------------------------------------------------------- |
-| `apps/cli/`                   | partial           | M6                   | `soot` CLI, SootEngine, config, skill installer            |
+| `apps/cli/`                   | partial           | M6                   | `soot` CLI, SootEngine, direct-API runner, config, skill   |
 | `apps/vscode-extension/`      | partial (M7)      | M7                   | Editor view over the CLI; no orchestration                 |
 | `apps/dashboard/`             | optional          | — (ADR-031)          | Local page + JSON API; prompt box with `--agent` (ADR-038) |
 | `packages/core/`              | foundation (real) | M0                   | Package metadata, `parseEnv`, leveled logger               |
-| `packages/planner/`           | partial (M1)      | M1                   | Prompt intake; fixture + model decomposers (mocks)         |
+| `packages/planner/`           | partial (M1)      | M1                   | Prompt intake; fixture + model decomposers                 |
 | `packages/task-graph/`        | partial (M1)      | M1                   | Task/result contracts, JSON Schema, DAG                    |
 | `packages/model-registry/`    | partial (M2)      | M2                   | User model config, availability, sourced pricing           |
 | `packages/model-router/`      | partial (M3)      | M3                   | Per-task routing, cost/reliability policies                |

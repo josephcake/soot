@@ -2269,7 +2269,8 @@ function liveCard(job, run) {
   for (const t of m.tasks) ul.append(li(t, '', job.state === 'running' && !!job.runId && !TERMINAL_TASK.includes(t.state) && !job.stopRequested));
   card.append(ul);
   const foot = el('div', 'cmp-foot');
-  foot.append(el('span', '', liveJob(job) ? 'This run lives in soot dashboard: stopping the dashboard stops it. Approval-needing actions are refused.' : finishNote(job, run)));
+  const landing = job.runner && job.runner.lands ? ' Verified results land on your branch (--apply); other approval-needing actions are refused.' : ' Approval-needing actions are refused.';
+  foot.append(el('span', '', liveJob(job) ? 'This run lives in soot dashboard: stopping the dashboard stops it.' + landing : finishNote(job, run)));
   const acts = el('span', 'acts');
   if (job.runId) {
     const a = el('a', 'btn small', 'details');

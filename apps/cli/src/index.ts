@@ -4,7 +4,7 @@
  * Milestone 6 (partial): the `soot` command (run, status, cost, models, config, stop, mcp,
  * install-skill) and the engine behind it and the MCP server. Fixture-backed: decomposition
  * uses recorded fixtures, plus an optional configured decomposer model for other prompts
- * (ADR-034, verified with mock clients only). Agent runners: the scripted mock and the generic
+ * (ADR-034). Agent runners: the direct-API runner (ADR-039), the scripted mock and the generic
  * ACP driver.
  */
 

@@ -28,6 +28,11 @@ declared profile, your registry, and soot's own record of past outcomes.
 These are untuned defaults, not measurements. If nothing qualifies, the task is unroutable
 with a reason (no silent fallback).
 
+A model needs a reliability prior in your models file (`reliability: {low, medium, high,
+source}`) or enough recorded history; soot ships no priors. A hosted model with no
+`contextWindow` is assumed to take 32,000 tokens (`HOSTED_CONTEXT_FLOOR`), so ordinary tasks
+can route to it; local endpoints and larger tasks need the window configured (ADR-039).
+
 ## History comes from soot's verdicts
 
 After each attempt soot records its **own** verdict with the model and tier in `soot.sqlite`:
@@ -35,6 +40,10 @@ After each attempt soot records its **own** verdict with the model and tier in `
 outside the lease or to protected paths, no changes, or the agent failed). Agent claims never
 count. `soot run` loads these outcomes before routing, so a model that keeps failing soot's
 checks at a tier stops being chosen for that tier (`tests/m6-cli-end-to-end.test.ts`).
+
+Each outcome also records the runner. Runs with `--agent api` or `--agent acp` use only
+`api`/`acp` outcomes, so test-double (mock) results never lower a real model's reliability;
+mock runs still read everything (ADR-039).
 
 ## During a run
 

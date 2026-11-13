@@ -1,17 +1,18 @@
 import type { Logger } from '@soot/core';
-import { unattendedApprovals } from './approvals.js';
+import { unattendedApprovals, withApply } from './approvals.js';
 import { CONFIG_FILE } from './config.js';
 import { projectId, readAllowlist, resolveProject } from './dashboard-allowlist.js';
 import { SootEngine, type AgentMode } from './engine.js';
 
 /*
- * The composer's agent for `soot dashboard --agent mock|acp` (ADR-038): plans and runs prompts
+ * The composer's agent for `soot dashboard --agent api|mock|acp` (ADR-038, ADR-039): plans and runs prompts
  * in allowlisted folders with the same engine as `soot run`, inside the dashboard process.
  *
  * - Folders come only from `<dataDir>/dashboard.json` (written by `soot dashboard allow`); the
  *   browser sends an opaque id, resolved here.
  * - The runner is fixed when the dashboard starts. Approvals inside a run are unattended in v1:
- *   approval-needing actions are refused, never granted.
+ *   approval-needing actions are refused, never granted, except that `--apply` (chosen when the
+ *   dashboard starts) lands a fully verified result on the folder's branch.
  * - Keys: only variable names and set / missing leave this module. Values are read by the
  *   provider adapters inside the engine, never here.
  *
@@ -33,6 +34,8 @@ export interface ComposerAgentOptions {
   readonly agent: Exclude<AgentMode, { kind: 'none' }>;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly log?: Logger;
+  /** `--apply`: land a fully verified result on the folder's checked-out branch (ADR-039). */
+  readonly apply?: boolean;
 }
 
 /** Assumed tokens for one planning call, for the rough cost on the submit button only. */
@@ -49,17 +52,28 @@ function planErrorCode(data: Record<string, unknown>): string {
 }
 
 export function createComposerAgent(o: ComposerAgentOptions) {
+  const landing = o.apply === true ? '; lands verified results (--apply)' : '';
   const runner =
     o.agent.kind === 'mock'
-      ? { kind: 'mock' as const, label: 'mock (test double)' }
-      : { kind: 'acp' as const, label: 'acp (agent command from each project config)' };
+      ? { kind: 'mock' as const, label: `mock (test double)${landing}`, lands: o.apply === true }
+      : o.agent.kind === 'api'
+        ? {
+            kind: 'api' as const,
+            label: `api (routed models, called directly)${landing}`,
+            lands: o.apply === true,
+          }
+        : {
+            kind: 'acp' as const,
+            label: `acp (agent command from each project config)${landing}`,
+            lands: o.apply === true,
+          };
 
   const engineFor = (path: string) =>
     new SootEngine({
       cwd: path,
       dataDir: o.dataDir,
       agent: o.agent,
-      approvals: unattendedApprovals(),
+      approvals: o.apply === true ? withApply(unattendedApprovals()) : unattendedApprovals(),
       gitEnv: { ...o.env },
       agentEnv: { ...o.env },
       modelEnv: { ...o.env },
@@ -123,7 +137,7 @@ export function createComposerAgent(o: ComposerAgentOptions) {
           ? plannerOf(data, models?.data ?? null)
           : { model: null, status: 'not-configured' as const, reason: null, roughCostUsd: null },
         runnerLabel:
-          o.agent.kind === 'mock'
+          o.agent.kind !== 'acp'
             ? runner.label
             : typeof acp.command === 'string'
               ? `acp (${acp.command})`

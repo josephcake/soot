@@ -1,7 +1,7 @@
 # @soot/dashboard
 
-> **Status: optional local surface (ADR-031, ADR-038).** Not a milestone. Tested against mock
-> runs only.
+> **Status: optional local surface (ADR-031, ADR-038, ADR-039).** Not a milestone. Tested
+> against mock runs and a fake provider; run live once with `--agent api` (DeepSeek and xAI).
 
 A local dashboard for soot on this machine: a prompt box (the landing page) plus views of every
 run. It is **off unless you run `soot dashboard`**; soot is headless by default, and no other
@@ -11,6 +11,8 @@ loads this package.
 ```
 soot dashboard allow ~/code/my-app            # once: folders the prompt box may work in
 soot dashboard list                           # what is allowed (disallow <dir> removes one)
+soot dashboard --agent api                    # prompt box on, each task runs on its routed model
+soot dashboard --agent api --apply            # ...and lands fully verified results on the branch
 soot dashboard --agent mock --mock-script mock-agent.json   # prompt box on, scripted test double
 soot dashboard --agent acp                    # prompt box on, each project's "acpAgent"
 soot dashboard                                # read-only: runs only, the prompt box is off
@@ -18,9 +20,11 @@ soot dashboard --port 9000                    # another port; fails if it is tak
 soot dashboard --open                         # also open a browser (off by default)
 ```
 
-It prints `http://127.0.0.1:<port>/?token=…`. **Open that link**: it signs the browser in with
-a session cookie and drops the token from the address bar. Without it you get an access gate.
-Every start prints a new token.
+On a terminal it prints `http://127.0.0.1:<port>/?token=…`. **Open that link**: it signs the
+browser in with a session cookie and drops the token from the address bar. Without it you get
+an access gate. Every start makes a new token. When output is redirected (a log file), the
+link is not printed; it is in `<dataDir>/dashboard-link-<port>.txt` (0600, removed on stop),
+and `--open` still opens it (ADR-039).
 
 ## Prompt box (ADR-038)
 

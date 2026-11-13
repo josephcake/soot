@@ -1,9 +1,9 @@
 # @soot/planner
 
 > **Status: partial (Milestone 1 scope implemented, plus a model-backed decomposer).** The
-> default decomposer is a deterministic fixture lookup. `ModelDecomposer` (ADR-033) has been
-> verified with **mock model clients only**: no real provider has decomposed a prompt (M2-07 is
-> blocked), and the CLI does not use it yet.
+> default decomposer is a deterministic fixture lookup. `ModelDecomposer` (ADR-033) is verified
+> with mock model clients and used by the CLI when a `decomposer` model is configured (ADR-034);
+> it has decomposed live prompts with `deepseek/deepseek-flash` (2026-11-13, ADR-039).
 
 ## Prompt intake
 

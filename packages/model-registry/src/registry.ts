@@ -52,6 +52,13 @@ export interface Selection {
   }[];
 }
 
+/**
+ * Context window assumed for a hosted (non-local) model whose window is not configured: tasks
+ * planned at or below this many tokens may still route to it (ADR-039). Hosted chat models
+ * offered today take far more; anything larger needs a configured `contextWindow`.
+ */
+export const HOSTED_CONTEXT_FLOOR = 32_000;
+
 export const modelRef = (provider: string, modelId: string): string => `${provider}/${modelId}`;
 
 /**
@@ -173,8 +180,14 @@ export class ModelRegistry {
         reasons.push('unknown-capability');
     }
     if (req.minContextWindow !== undefined) {
-      if (model.contextWindow === null) reasons.push('unknown-context-window');
-      else if (model.contextWindow < req.minContextWindow) reasons.push('context-window-too-small');
+      // Unknown window (ADR-039): a hosted API model is assumed to take at least
+      // HOSTED_CONTEXT_FLOOR tokens; a local endpoint may be configured far smaller, so it
+      // must state its window.
+      if (model.contextWindow === null) {
+        if (provider.local || req.minContextWindow > HOSTED_CONTEXT_FLOOR)
+          reasons.push('unknown-context-window');
+      } else if (model.contextWindow < req.minContextWindow)
+        reasons.push('context-window-too-small');
     }
     return reasons;
   }

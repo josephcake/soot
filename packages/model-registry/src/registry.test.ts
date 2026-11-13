@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TEST_CONFIG } from './test-fixtures.js';
 import {
+  HOSTED_CONTEXT_FLOOR,
   ModelRegistry,
   ProviderHealth,
   actualCostFromUsage,
@@ -33,6 +34,32 @@ describe('model registry (M2-04, M2-05, M2-06)', () => {
       },
       { ref: 'listed-vendor/test-listed-model', reasons: ['listed-only', 'unknown-capability'] },
     ]);
+  });
+
+  it('assumes HOSTED_CONTEXT_FLOOR tokens for a hosted model with no window; local ones must state it', () => {
+    const r = new ModelRegistry(
+      parseRegistryConfig({
+        version: 1,
+        providers: [
+          { id: 'hosted', kind: 'openai-compatible', baseURL: 'https://api.example.test/v1' },
+          {
+            id: 'here',
+            kind: 'openai-compatible',
+            baseURL: 'http://localhost:11434/v1',
+            local: true,
+          },
+        ],
+        models: [
+          { provider: 'hosted', modelId: 'm', capabilities: { tools: true } },
+          { provider: 'here', modelId: 'm', capabilities: { tools: true } },
+        ],
+      }),
+    );
+    const small = r.select({ minContextWindow: HOSTED_CONTEXT_FLOOR });
+    expect(small.candidates.map((m) => m.ref)).toEqual(['hosted/m']);
+    expect(small.excluded).toEqual([{ ref: 'here/m', reasons: ['unknown-context-window'] }]);
+    const big = r.select({ minContextWindow: HOSTED_CONTEXT_FLOOR + 1 });
+    expect(big.candidates).toEqual([]);
   });
 
   it('treats unknown capabilities and context windows as not satisfying a requirement', () => {

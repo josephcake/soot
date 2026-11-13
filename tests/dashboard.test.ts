@@ -10,7 +10,7 @@
  * - No engine, headless CLI or extension module imports the dashboard.
  */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { createServer, type Server } from 'node:net';
 import { join } from 'node:path';
@@ -104,9 +104,14 @@ function listeningAddresses(port: number): string[] {
     .map((cols) => cols[1]?.split(':')[0] ?? '');
 }
 
-/** The access token from the printed link (new each start) (ADR-038). */
+/**
+ * The access token (new each start, ADR-038). Output here is not a terminal, so the link is
+ * not printed; it is read from the 0600 link file the dashboard names (ADR-039).
+ */
+const linkOf = (info: Record<string, unknown> | null) =>
+  readFileSync(String(info?.linkFile), 'utf8').trim();
 const tokenOf = (info: Record<string, unknown> | null) =>
-  new URL(String(info?.url)).searchParams.get('token') ?? '';
+  new URL(linkOf(info)).searchParams.get('token') ?? '';
 const bearer = (info: Record<string, unknown> | null) => ({
   headers: { authorization: `Bearer ${tokenOf(info)}` },
 });
@@ -158,9 +163,13 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
       expect(d.info).toMatchObject({ ok: true, address: '127.0.0.1', family: 'IPv4' });
       const port = d.info?.port as number;
       expect(port).toBeGreaterThan(0);
-      expect(d.info?.url).toMatch(
+      // Output is not a terminal: no token in what is printed; the link is in a 0600 file.
+      expect(d.info?.url).toBe(`http://127.0.0.1:${String(port)}/`);
+      expect(linkOf(d.info)).toMatch(
         new RegExp(`^http://127\\.0\\.0\\.1:${String(port)}/\\?token=[A-Za-z0-9_-]{43}$`),
       );
+      expect(statSync(String(d.info?.linkFile)).mode & 0o777).toBe(0o600);
+      expect(String(d.info?.linkFile)).toBe(join(r.dataDir, `dashboard-link-${String(port)}.txt`));
       expect(d.info?.writes).toBe(false);
       const auth = bearer(d.info);
       if (process.platform === 'linux') {
@@ -263,6 +272,7 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
 
       d.child.kill('SIGINT');
       expect(await d.exited).toBe(0);
+      expect(existsSync(String(d.info?.linkFile))).toBe(false);
     },
     SLOW,
   );
@@ -337,8 +347,10 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
           };
         };
       };
-      d.child.kill('SIGINT');
+      // SIGTERM stops it as cleanly as Ctrl-C: exit 0 and the link file is gone (ADR-039).
+      d.child.kill('SIGTERM');
       expect(await d.exited).toBe(0);
+      expect(existsSync(String(d.info?.linkFile))).toBe(false);
 
       expect(view.agent.kind).toBe('mock-test-double');
       expect(view.assignment.prompt).toBe(TEST_1);
@@ -398,7 +410,8 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
         address: '127.0.0.1',
         port: 8787,
       });
-      expect(d.info?.url).toMatch(/^http:\/\/127\.0\.0\.1:8787\/\?token=[A-Za-z0-9_-]{43}$/);
+      expect(d.info?.url).toBe('http://127.0.0.1:8787/');
+      expect(linkOf(d.info)).toMatch(/^http:\/\/127\.0\.0\.1:8787\/\?token=[A-Za-z0-9_-]{43}$/);
       if (process.platform === 'linux') expect(listeningAddresses(8787)).toEqual(['0100007F']);
       d.child.kill('SIGINT');
       expect(await d.exited).toBe(0);
@@ -431,10 +444,14 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
   );
 
   it(
-    'opens a browser only with --open',
+    'opens a browser only with --open; prints the token link only to a terminal',
     async () => {
       const r = (repo = createDemoRepo());
-      for (const open of [false, true]) {
+      for (const [open, tty] of [
+        [false, false],
+        [true, false],
+        [false, true],
+      ] as const) {
         const opened: string[] = [];
         const ac = new AbortController();
         let stdout = '';
@@ -448,6 +465,7 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
             stderr: () => undefined,
             stdin: process.stdin,
             stdinIsTTY: false,
+            stdoutIsTTY: tty,
             env: r.env,
             cwd: r.root,
             signal: ac.signal,
@@ -455,9 +473,19 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
           });
         })();
         expect(await done).toBe(0);
-        const url = /http:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]+/.exec(stdout)?.[0];
-        expect(url).toBeDefined();
-        expect(opened).toEqual(open ? [url] : []);
+        const link = /http:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]{43}/;
+        if (tty) expect(stdout).toMatch(link);
+        else {
+          expect(stdout).not.toContain('token=');
+          expect(stdout).toMatch(
+            /access link \(with its token\) is in .*dashboard-link-\d+\.txt \(0600\)/,
+          );
+        }
+        expect(opened).toHaveLength(open ? 1 : 0);
+        if (open) expect(opened[0]).toMatch(link);
+        // The link file goes away when the dashboard stops.
+        const file = /is in (\S+dashboard-link-\d+\.txt)/.exec(stdout)?.[1];
+        if (file !== undefined) expect(existsSync(file)).toBe(false);
       }
     },
     SLOW,
