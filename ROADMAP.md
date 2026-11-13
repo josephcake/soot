@@ -3,16 +3,16 @@
 Milestones follow `docs/specs/project-management.md` §4. A milestone is Completed only when
 every exit criterion is verified from real runs. Dates are recorded only when verified.
 
-| Milestone | Title                             | Status                                              | Completion date |
-| --------- | --------------------------------- | --------------------------------------------------- | --------------- |
-| M0        | Repository Foundation             | Completed (verified locally; hosted CI not yet run) | 2026-11-12      |
-| M1        | Core Orchestration                | Completed (verified locally with mock agents)       | 2026-11-12      |
-| M2        | Multi-Provider Model Connectivity | In Progress (partial; mocks only, M2-07 blocked)    | —               |
-| M3        | Intelligent Model Routing         | Completed (verified locally with fixture registry)  | 2026-11-12      |
-| M4        | Adaptive Execution                | Completed (verified locally with mock agents)       | 2026-11-12      |
-| M5        | Codebase Integration and Safety   | Completed (verified locally; fixture repos, mocks)  | 2026-11-12      |
-| M6        | Universal Skill and CLI           | In Progress (partial)                               | —               |
-| M7        | IDE Extensions                    | In Progress (partial; not run in a real editor)     | —               |
+| Milestone | Title                             | Status                                             | Completion date |
+| --------- | --------------------------------- | -------------------------------------------------- | --------------- |
+| M0        | Repository Foundation             | Completed (verified locally and on hosted CI)      | 2026-11-12      |
+| M1        | Core Orchestration                | Completed (verified locally with mock agents)      | 2026-11-12      |
+| M2        | Multi-Provider Model Connectivity | In Progress (partial; mocks only, M2-07 blocked)   | —               |
+| M3        | Intelligent Model Routing         | Completed (verified locally with fixture registry) | 2026-11-12      |
+| M4        | Adaptive Execution                | Completed (verified locally with mock agents)      | 2026-11-12      |
+| M5        | Codebase Integration and Safety   | Completed (verified locally; fixture repos, mocks) | 2026-11-12      |
+| M6        | Universal Skill and CLI           | In Progress (partial)                              | —               |
+| M7        | IDE Extensions                    | In Progress (partial; not run in a real editor)    | —               |
 
 Engine hardening (ADR-030: env-driven runtime, persisted provider health and spend, audited
 routing, default attempt timeout) is tracked in TASKS.md (H-01…H-05) and changes no milestone
@@ -32,10 +32,10 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Objectives:** A clean, reproducible monorepo where every package builds and tests independently, with tooling, docs, CI, and tracking in place.
 - **Deliverables:** repository initialized (local git); monorepo structure; pnpm; strict TypeScript; ESLint + Prettier; Vitest; environment configuration; basic documentation; CI pipeline; license (MIT).
 - **Dependencies:** None.
-- **Acceptance / exit criteria:** project builds; tests execute; CI passes (locally — hosted CI not running, repo unpublished); repository structure is documented.
-- **Status:** Completed (verified locally; hosted CI not yet run)
+- **Acceptance / exit criteria:** project builds; tests execute; CI passes (locally, and on GitHub Actions for Node 24 and 26 since the repo was published, ADR-032); repository structure is documented.
+- **Status:** Completed (verified locally and on hosted CI)
 - **Completion date:** 2026-11-12
-- **Evidence:** see `PROJECT_STATUS.md` → Latest Validation.
+- **Evidence:** see `PROJECT_STATUS.md` → Latest Validation; hosted run [43334786373](https://github.com/josephcake/soot/actions/runs/43334786373) (M0-11).
 
 ## M1 — Core Orchestration
 

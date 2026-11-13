@@ -5,11 +5,12 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 
 ## Infrastructure
 
-- **[Intentional] Hosted CI is not running.** `.github/workflows/ci.yml` exists but has never
-  executed, because the repo has no remote and publishing is not approved (ADR-006). Local
-  `scripts/ci.sh` runs the same steps; its results are recorded in `PROJECT_STATUS.md`. The
-  workflow itself (action versions, pnpm setup, Node 24/26 matrix) is unverified until the
-  first hosted run.
+- **[Resolved 2026-11-12] Hosted CI is running.** The repo is public at
+  https://github.com/josephcake/soot (ADR-032, superseding ADR-006). `.github/workflows/ci.yml`
+  passed on GitHub for Node 24 and Node 26
+  ([run 43334786373](https://github.com/josephcake/soot/actions/runs/43334786373) on `8a38865`;
+  earlier [run 43329225136](https://github.com/josephcake/soot/actions/runs/43329225136) on
+  `30aaf29`). `scripts/ci.sh` still runs the same steps locally.
 - **[Intentional] Node 26 (Active LTS) is pinned in `.nvmrc`; the build box's system Node is 24.** Both are verified locally (Node 26 via a temporary binary in /tmp).
 - **[Intentional] TypeScript pinned to 6.0.x**, not 7.x, because typescript-eslint 8 supports
   `typescript <6.1`. Revisit when typescript-eslint supports TS 7.
@@ -183,16 +184,17 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   daemon and no automatic resume from the CLI yet.
 - **[Intentional] Prompts must match a recorded fixture** (spec examples or the project's
   `fixtures` file). Arbitrary prompts are refused until model-backed decomposition exists.
-- **[Intentional] The quick start needs a local copy of the repo.** Nothing is published; it was
-  reproduced from a fresh clone on the build box only, not on another machine or OS.
+- **[Intentional] The quick start needs a clone of the repo.** The source is public on GitHub
+  (ADR-032), but there is no npm package or release. The quick start was reproduced from a
+  fresh clone on the build box only, not on another machine or OS.
 - **[Intentional] `soot models` does not probe providers.** It reports the registry and policy;
   availability comes from configuration.
 
 ## Documentation / community
 
 - **[Intentional] No dedicated security or conduct contact address yet.** `SECURITY.md` and
-  `CODE_OF_CONDUCT.md` point to private maintainer contact / GitHub private reporting after
-  publish. Must be set before the first public release.
+  `CODE_OF_CONDUCT.md` point to private maintainer contact / GitHub private reporting. The
+  source is public now (ADR-032); a contact must be set before the first release.
 - **[Intentional] Some spec-listed docs are not written yet:** `task-decomposition`,
   `harness-integrations` and `examples`. `installation`, `providers`, `model-routing` and
   `security` exist in `docs/`. The rest will be written with the features they describe, to

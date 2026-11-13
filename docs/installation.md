@@ -1,8 +1,9 @@
 # Installation and quick start
 
-> soot is **not published**: there is no npm package, release, or public repository to install
-> from. You need a local copy of this repository. Everything below runs locally, without
-> network access to model providers and without API keys.
+> soot has **no npm package or release** yet. The source is public at
+> [github.com/josephcake/soot](https://github.com/josephcake/soot); clone it
+> (`git clone https://github.com/josephcake/soot.git`) and build from the checkout. Everything
+> below runs locally, without network access to model providers and without API keys.
 
 ## Requirements
 

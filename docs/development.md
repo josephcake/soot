@@ -39,8 +39,9 @@ Per package: `pnpm --filter @soot/<name> build` / `test`.
 ## CI
 
 `.github/workflows/ci.yml` runs install → typecheck → lint → format check → test → build on
-Node 24 and 26. The repository is not published yet, so **hosted CI has never run**;
-`pnpm run ci` runs the same steps locally.
+Node 24 and 26 on every push to `main` and every pull request at
+[github.com/josephcake/soot](https://github.com/josephcake/soot/actions/workflows/ci.yml)
+(first passing run: 2026-11-12, ADR-032). `pnpm run ci` runs the same steps locally.
 
 ## Hooks
 

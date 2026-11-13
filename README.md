@@ -2,6 +2,8 @@
 
 <img src="docs/brand/soot-lockup-4x.png" alt="soot" width="432" height="96" />
 
+[![CI](https://github.com/josephcake/soot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/josephcake/soot/actions/workflows/ci.yml)
+
 _Named after the soot sprites, the black dust bunnies from Studio Ghibli. Formerly `intelligent-agent-router`._
 
 > **Status: Milestones 1, 3, 4 and 5 done (mocks, fixtures and fixture git repos); Milestones 2

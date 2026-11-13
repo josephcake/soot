@@ -5,6 +5,16 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Changed (repository published, ADR-032; M0-11 Completed)
+
+- The repository is public at https://github.com/josephcake/soot (MIT). ADR-006 (box-only) is
+  superseded by ADR-032.
+- Hosted GitHub Actions CI passed for Node 24 and Node 26
+  ([run 43334786373](https://github.com/josephcake/soot/actions/runs/43334786373) on `8a38865`),
+  so M0-11 is Completed. The workflow's stale "never run" header comment is gone and the README
+  shows the CI badge. Tracking files and docs no longer say the repo is unpublished; there is
+  still no npm package or release.
+
 ### Added (project logo; no milestone status change)
 
 - Pixel soot logo (black / orange / cream, Lego-block cubes and a wordmark with an ember in

@@ -142,7 +142,7 @@ and file-conflict management.
 ├── vitest.config.ts          # one Vitest project per package + repo-level tests
 ├── .nvmrc, .npmrc            # Node pin (26), engine-strict
 ├── .env.example              # documented env vars, no secrets
-├── .github/workflows/ci.yml  # hosted CI (not yet running: repo unpublished)
+├── .github/workflows/ci.yml  # hosted CI (GitHub Actions, Node 24 and 26)
 ├── scripts/ci.sh             # local CI, same steps as the workflow
 ├── apps/
 │   ├── cli/                  # partial — `soot` CLI and SootEngine (M6)

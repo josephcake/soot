@@ -59,7 +59,7 @@ the old one.
 ## ADR-006: Repository stays on the build box; no public GitHub yet
 
 - **Date:** 2026-11-12
-- **Status:** Accepted (Mochi)
+- **Status:** Superseded by ADR-032 (repository published on GitHub, 2026-11-12). Kept as written below for history.
 - **Context:** Publishing has not been approved. Mochi decides on publishing after Milestone 0 is verified and clean.
 - **Decision:** The repository lives only at `/workspace/soot` on the build box (moved from `/workspace/intelligent-agent-router` by ADR-013). Local git only: no remote, no push, no `gh repo create`. A GitHub Actions workflow is committed so CI is ready, and `scripts/ci.sh` runs identical checks locally. Commits use the local identity `Sweed <sweed@bots.local>`.
 - **Alternatives:** Private GitHub repo now (still needs approval); no CI file until publish (loses CI-readiness).
@@ -437,3 +437,13 @@ the old one.
   - **Palette:** page `#0a0a0a`, blocks `#141414`, charcoal borders `#2e2a27`. One accent, orange `#ff7a1a` (headings, card titles, selected run, the prompt's dashed border, solid actual bars; darker `#c25510` for a second segment or slice). Cream/bone `#e8dcc8` for highlights and hatched estimate bars. Warm gray `#8c8278` for notes, redder orange `#ff4d2e` for errors and failures. No third bright accent.
   - **Chart types:** outcomes as a pixel donut (zero slices left out) plus a success-rate meter (a null rate is "n/a" with no fill); token usage as two stacked input/output bars, planned and reported, never in one chart; cost as an estimate-only chart (planner and router) and a separate actual chart; duration as a pixel timeline of attempts from `startedAt`/`finishedAt` plus the run total (a running or unknown end is a start tick with a label, never a finished bar); validation as stacked counts by status for task checks and for final validation (problem text stays text); transitions as a count-by-type chart above the reasons; usage blocks keep their four charts and add an estimated-USD share donut and a separate actual-USD share donut (no donut if any part is unknown). The cost-by-model text block is folded into the usage-by-model block, which lists every row's attempts, tokens in/out and USD as text.
   - Unchanged: prompt, savings note, active agents and transition reasons stay text; null is unknown with no bar or slice; each magnitude chart is scaled to its own largest known value; bind, headless and lazy-loading rules as above.
+
+## ADR-032: Repository is public on GitHub; hosted CI runs
+
+- **Date:** 2026-11-12
+- **Status:** Accepted (Joseph approved publishing and Mochi pushed it; recorded by Mochi). Supersedes ADR-006.
+- **Context:** ADR-006 kept the repository on the build box with no remote until publishing was approved. Joseph approved publishing, and the repository was pushed to GitHub on 2026-11-12.
+- **Decision:** The canonical repository is public at https://github.com/josephcake/soot (owner `josephcake`, default branch `main`) under the MIT license (ADR-005). `.github/workflows/ci.yml` runs on every push to `main` and on pull requests, on Node 24 and Node 26. `scripts/ci.sh` keeps running the same steps locally, and `tests/repo-structure.test.ts` still checks that the two match.
+- **Alternatives:** Keep the repo box-only (ADR-006); a private GitHub repo.
+- **Consequences:** Hosted CI has run and passed for both Node versions ([run 43334786373](https://github.com/josephcake/soot/actions/runs/43334786373) on `8a38865`; earlier [run 43329225136](https://github.com/josephcake/soot/actions/runs/43329225136) on `30aaf29`), so M0-11 is Completed. Nothing is published to npm and there is no release; packages stay `private` at `0.0.0`. Publishing changes no other milestone status: M2-07 stays Blocked on user-supplied keys, and the M6 and M7 exit criteria are still unmet.
+- **Reversible:** Partly. The repo can be made private or archived, but public history and forks cannot be withdrawn.

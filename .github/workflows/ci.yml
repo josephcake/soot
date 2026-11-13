@@ -1,5 +1,5 @@
-# Hosted CI. NOTE: this repository has not been published yet, so this workflow
-# has never run on GitHub. scripts/ci.sh runs the same steps locally.
+# Hosted CI. scripts/ci.sh runs the same steps locally
+# (tests/repo-structure.test.ts checks that the two stay in sync).
 name: CI
 
 on:

@@ -76,12 +76,16 @@ Milestone 3 (per-task routing, heuristic evaluation, ADR-023) is Completed.
 
 Milestone 2 stays In Progress (partial). Its mockable scope is verified with mocked HTTP. **No
 real provider has been called and no real key has been used.** M2-07 is Blocked, so routed
-tasks cannot yet run on real providers. Project name `soot` (ADR-013); repo at `/workspace/soot`,
-local only.
+tasks cannot yet run on real providers. Project name `soot` (ADR-013).
+
+The repository is public at https://github.com/josephcake/soot under MIT (ADR-032, published
+2026-11-12). Hosted GitHub Actions CI runs on every push to `main` and passed for Node 24 and
+Node 26 (M0-11 Completed).
 
 ## Completed
 
 - [x] Milestone 0 — Repository Foundation (M0-01…M0-10)
+- [x] M0-11 First hosted GitHub Actions run: [run 43334786373](https://github.com/josephcake/soot/actions/runs/43334786373) on `8a38865` passed for Node 24 and 26
 - [x] M1-01 Task schema + JSON Schema contract (`@soot/task-graph`)
 - [x] M1-02 Prompt intake, byte-for-byte prompt preservation (`@soot/planner`)
 - [x] M1-03 Decomposer interface + deterministic fixture decomposer (spec §3, §17 Tests 1, 2, 4)
@@ -126,7 +130,6 @@ local only.
 ## In Progress
 
 - [ ] Milestone 2. M2-03 (local endpoint) is Implemented: covered by mocked HTTP, but the live test skipped because no Ollama or LM Studio was running. M2-07 is Blocked.
-- [ ] M0-11 (first hosted CI run) is blocked on publish approval.
 - [ ] Milestone 6. M6-01, M6-03 and M6-09 (generic ACP driver, mock ACP agent only) Completed; M6-02 and M6-06 Implemented; M6-04, M6-05, M6-08 Not Started; M6-07 Blocked on M2-07. Exit criteria not met.
 
 - [ ] Milestone 7. M7-01 (VS Code extension) Implemented, not run in a real editor; M7-05…M7-08 (graph, models, cost, cancellation) Implemented with local tests; M7-02…M7-04 (Cursor, Windsurf, Kilo Code) Not Started. Exit criteria not met.
@@ -137,7 +140,6 @@ local only.
 
 ## Blockers
 
-- Hosted GitHub Actions CI cannot run until the repository is published (ADR-006; Mochi decides). Not a milestone blocker: the same checks are verified locally.
 - **Milestone 6 exit criteria** need a supported harness: running the generic ACP driver against a real harness the user already installed and signed in to (M6-04/05), which this box must not do, plus real providers (M2-07). Mochi decides next steps.
 - **Milestone 7 exit criteria** need the extension loaded and used in a real VS Code (and, separately, each other editor). This box has no editor; Mochi decides where and when.
 - **M2-07 Blocked:** Milestone 2's real-provider exit criterion needs user-supplied (BYOK) keys for at least two providers (ADR-011, ADR-017). soot will not mint, request, or spend.
@@ -170,4 +172,5 @@ Recorded 2026-11-12 ~12:42 PST from a real run of `bash scripts/ci.sh` in `/work
 - **Tests:** pass. 69 test files (68 passed, 1 skipped) and 492 tests (491 passed, 1 skipped, 0 failures), Vitest 5.1.0. The skipped test is the live local-endpoint test: no runtime was listening on 127.0.0.1:11434 or :1234.
 - **Typecheck / lint / format:** pass.
 - **Network audit:** the in-process suite was re-run with a global `fetch` guard; the only real requests were the two localhost probes and the dashboard tests' requests to their own 127.0.0.1 server. Subprocess tests (`soot stop`, `soot mcp`, the env/log-level/health/audit/cost CLI tests in `tests/hardening-cli.test.ts`, and the mock ACP agent processes spawned by `soot run --agent acp`) run built soot code that does not depend on the provider adapters. The only ACP agent ever spawned is soot's own mock (`node .../mock-agent-bin.js`); no vendor binary was run. No key-like environment variables were set.
+- **Hosted CI:** GitHub Actions [run 43334786373](https://github.com/josephcake/soot/actions/runs/43334786373) on `8a38865` passed for Node 24 and Node 26 (started 2026-11-12 4:09 PM PT, finished 4:11 PM PT); the earlier [run 43329225136](https://github.com/josephcake/soot/actions/runs/43329225136) on `30aaf29` also passed.
 - **Quick start:** `docs/installation.md` reproduced step by step from a fresh `git clone` of this repo in `/tmp` (demo runs: unattended INCOMPLETE exit 2, interactive `y` COMPLETE exit 0 with fast-forward, Test 4 shape INCOMPLETE with the review unverified, skill installed into a temp dir).
