@@ -3,7 +3,9 @@
  * a package missing from the build graph, undocumented structure, secrets in
  * .env.example, or the local CI script diverging from the GitHub workflow.
  */
+import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const root = new URL('../', import.meta.url);
@@ -61,15 +63,20 @@ describe('documentation and tracking files', () => {
     'CODE_OF_CONDUCT.md',
     'SECURITY.md',
     'CHANGELOG.md',
-    'PROJECT_STATUS.md',
-    'ROADMAP.md',
-    'TASKS.md',
-    'DECISIONS.md',
-    'TECHNICAL_DEBT.md',
-    'FUTURE_FEATURES.md',
-    'docs/architecture.md',
-    'docs/configuration.md',
-    'docs/development.md',
+    'docs/README.md',
+    'docs/project/PROJECT_STATUS.md',
+    'docs/project/ROADMAP.md',
+    'docs/project/TASKS.md',
+    'docs/decisions/DECISIONS.md',
+    'docs/project/TECHNICAL_DEBT.md',
+    'docs/project/FUTURE_FEATURES.md',
+    'docs/guides/architecture.md',
+    'docs/guides/configuration.md',
+    'docs/guides/development.md',
+    'docs/guides/installation.md',
+    'docs/guides/model-routing.md',
+    'docs/guides/providers.md',
+    'docs/guides/security.md',
     'docs/specs/build-spec.md',
     'docs/specs/project-management.md',
   ];
@@ -84,8 +91,8 @@ describe('documentation and tracking files', () => {
     expect((readJson('package.json') as Manifest).license).toBe('MIT');
   });
 
-  it('docs/architecture.md documents every workspace package', () => {
-    const architecture = read('docs/architecture.md');
+  it('docs/guides/architecture.md documents every workspace package', () => {
+    const architecture = read('docs/guides/architecture.md');
     for (const dir of workspaceDirs) expect(architecture).toContain(`${dir}/`);
   });
 });
@@ -102,17 +109,21 @@ describe('environment configuration', () => {
     expect(secretAssignments).toEqual([]);
   });
 
-  it('documents every SOOT_* variable in docs/configuration.md', () => {
+  it('documents every SOOT_* variable in docs/guides/configuration.md', () => {
     const vars = [...example.matchAll(/^#?\s*(SOOT_[A-Z0-9_]+)=/gm)].map((m) => m[1]);
     expect(vars.length).toBeGreaterThan(0);
-    const docs = read('docs/configuration.md');
+    const docs = read('docs/guides/configuration.md');
     for (const name of vars) expect(docs).toContain(name);
   });
 
-  it('.gitignore keeps real env files out of git', () => {
+  it('.gitignore keeps real env files, state, bundles, and local overrides out of git', () => {
     const gitignore = read('.gitignore').split('\n');
     expect(gitignore).toContain('.env');
+    expect(gitignore).toContain('.env.*');
     expect(gitignore).toContain('!.env.example');
+    expect(gitignore).toContain('.soot/');
+    expect(gitignore).toContain('*.bundle');
+    expect(gitignore).toContain('*.local.json');
   });
 });
 
@@ -136,5 +147,15 @@ describe('toolchain pins', () => {
       expect(local).toContain(`pnpm run ${step}`);
       expect(hosted).toContain(`pnpm run ${step}`);
     }
+  });
+});
+
+describe('documentation links', () => {
+  it('scripts/check-doc-links.mjs reports no broken relative links', () => {
+    const result = spawnSync(process.execPath, ['scripts/check-doc-links.mjs'], {
+      cwd: fileURLToPath(root),
+      encoding: 'utf8',
+    });
+    expect(result.status, result.stderr || result.stdout).toBe(0);
   });
 });

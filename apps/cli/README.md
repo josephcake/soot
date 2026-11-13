@@ -18,5 +18,5 @@ lists it as an optional peer). It prints the URL, opens a browser only with `--o
 the port is taken, and stops on Ctrl-C. Every other command is headless.
 
 Exit codes: 0 complete, 1 error, 2 incomplete, 3 cancelled. Quick start:
-[`docs/installation.md`](../../docs/installation.md). Config reference:
-[`docs/configuration.md`](../../docs/configuration.md#project-config-sootconfigjson).
+[`docs/guides/installation.md`](../../docs/guides/installation.md). Config reference:
+[`docs/guides/configuration.md`](../../docs/guides/configuration.md#project-config-sootconfigjson).

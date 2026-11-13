@@ -73,7 +73,7 @@ export interface ExecutionJournal {
 /**
  * Attempt timeout used when `attemptTimeoutMs` is not set: 30 minutes. Long enough for real
  * agent work, short enough that a hung runner (one that never settles and ignores abort) ends
- * as a `timeout` failure instead of blocking the run. Documented in docs/configuration.md.
+ * as a `timeout` failure instead of blocking the run. Documented in docs/guides/configuration.md.
  */
 export const DEFAULT_ATTEMPT_TIMEOUT_MS = 30 * 60_000;
 

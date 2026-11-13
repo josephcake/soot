@@ -172,10 +172,10 @@ Node 26 (M0-11 Completed).
 
 - The CLI and MCP server decompose from fixtures unless `decomposer.model` is configured with a usable key (ADR-034); without it, prompts without a recorded fixture are refused. The model path is verified with mock model clients only: no real model has decomposed a prompt, and decomposition tokens are not yet counted in the cost report or run budget.
 - Agents are mocks. Since M5, "complete" means soot ran the checks on the task's real diff, but no real model has produced a diff yet.
-- No OS sandbox: worktrees isolate git state, not processes (TECHNICAL_DEBT.md).
+- No OS sandbox: worktrees isolate git state, not processes (`docs/project/TECHNICAL_DEBT.md`).
 - Provider adapters are verified against mocked HTTP only. Real wire behaviour is unverified until M2-07.
 - Escalation triggers still use agent signals, plus soot's own verification since M5. Provider cooldowns, run spend and model outcomes are persisted (ADR-030); the CLI has no resume command yet.
-- See `TECHNICAL_DEBT.md`.
+- See `docs/project/TECHNICAL_DEBT.md`.
 
 ## Next Actions
 
@@ -199,4 +199,4 @@ Recorded 2026-11-12 ~12:42 PST from a real run of `bash scripts/ci.sh` in `/work
 - **Re-run after ADR-033 (2026-11-12 ~4:33 PM PST):** `bash scripts/ci.sh` passed again (Node 24.22.1): 70 test files (69 passed, 1 skipped), 508 tests (507 passed, 1 skipped, the same live local-endpoint test). The global `fetch` audit above was not repeated for this run; the new planner tests replace `fetch` with a spy that fails on any call.
 - **Re-run after ADR-034 (2026-11-12 ~5:16 PM PST):** `bash scripts/ci.sh` passed (Node 24.22.1, pnpm 10.34.6): 71 test files (70 passed, 1 skipped), 520 tests (519 passed, 1 skipped, the same live local-endpoint test). The global `fetch` audit was not repeated; the new P-02 tests replace `fetch` with a spy that fails on any call. Since ADR-034 the built CLI imports `@soot/provider-adapters`, but it builds a client only when `decomposer.model` is configured, which no subprocess test does.
 - **Hosted CI:** GitHub Actions [run 43334786373](https://github.com/josephcake/soot/actions/runs/43334786373) on `8a38865` passed for Node 24 and Node 26 (started 2026-11-12 4:09 PM PT, finished 4:11 PM PT); the earlier [run 43329225136](https://github.com/josephcake/soot/actions/runs/43329225136) on `30aaf29` also passed.
-- **Quick start:** `docs/installation.md` reproduced step by step from a fresh `git clone` of this repo in `/tmp` (demo runs: unattended INCOMPLETE exit 2, interactive `y` COMPLETE exit 0 with fast-forward, Test 4 shape INCOMPLETE with the review unverified, skill installed into a temp dir).
+- **Quick start:** `docs/guides/installation.md` reproduced step by step from a fresh `git clone` of this repo in `/tmp` (demo runs: unattended INCOMPLETE exit 2, interactive `y` COMPLETE exit 0 with fast-forward, Test 4 shape INCOMPLETE with the review unverified, skill installed into a temp dir).

@@ -1,5 +1,9 @@
 # Project Management Prompt: Intelligent Agent Orchestrator — MVP Progress Tracker
 
+> **Live locations:** the tracking files this process describes now live under
+> [`docs/project/`](../project/) and [`docs/decisions/DECISIONS.md`](../decisions/DECISIONS.md).
+> Filenames and the process below are unchanged. This document is otherwise the original spec.
+
 ## 1. Role
 
 Act as the project's technical project manager, engineering lead, and progress auditor.

@@ -61,15 +61,15 @@ Add `--json` for machine-readable output.
 - Agents: a **scripted mock** (`--agent mock --mock-script <file>`; no model is called), or an
   ACP agent command the user configured (`--agent acp`; tested only with soot's mock ACP
   agent). Without `--agent`, `soot run` refuses: real providers are not available yet.
-- Supported providers, routing and security: see `docs/providers.md`,
-  `docs/model-routing.md` and `docs/security.md` in the soot repository.
+- Supported providers, routing and security: see `docs/guides/providers.md`,
+  `docs/guides/model-routing.md` and `docs/guides/security.md` in the soot repository.
 
 ## Configuration
 
 `soot.config.json` (committed in the repository) names the model registry file, the routing
 policy (`economy`, `balanced`, `quality`), the check commands soot runs, per-task acceptance
 commands, protected paths, and the executables allowed to run. State lives in
-`$SOOT_DATA_DIR` (default `~/.soot`). See `docs/configuration.md`.
+`$SOOT_DATA_DIR` (default `~/.soot`). See `docs/guides/configuration.md`.
 
 ## Tool permissions
 

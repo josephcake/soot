@@ -32,7 +32,7 @@ Per package: `pnpm --filter @soot/<name> build` / `test`.
    `private`, `MIT`, `build` and `test` scripts), `tsconfig.json` (composite, extends
    `../../tsconfig.base.json`), `src/index.ts`, a test, and a `README.md` stating its status.
 2. Add it to the root `tsconfig.json` references.
-3. Document it in `docs/architecture.md`.
+3. Document it in `docs/guides/architecture.md`.
 
 `tests/repo-structure.test.ts` fails if steps 2 or 3 are skipped.
 

@@ -5,6 +5,16 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Changed (documentation layout)
+
+- Project tracking and design docs moved from the repository root into `docs/project/` and
+  `docs/decisions/`. Guides (`architecture`, `configuration`, `development`, `installation`,
+  `model-routing`, `providers`, `security`) moved into `docs/guides/`. `docs/README.md` is the
+  index. The repository root keeps README, LICENSE, CHANGELOG, CONTRIBUTING, SECURITY, and
+  CODE_OF_CONDUCT.
+- Relative links across the repo were updated. `scripts/check-doc-links.mjs` checks relative
+  markdown and image links (historical research notes under `docs/research/` are excluded).
+
 ### Added (dashboard centerpiece and previous prompts, ADR-031, TASKS D-04; no milestone status change)
 
 - The optional local dashboard now leads with a hand-drawn `<canvas>` (2D context, no chart

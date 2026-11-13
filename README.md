@@ -1,6 +1,12 @@
-# soot
+<p align="center">
+  <img src="docs/brand/soot-lockup-4x.png" alt="soot" width="480" />
+</p>
 
-<img src="docs/brand/soot-lockup-4x.png" alt="soot" width="432" height="96" />
+<h1 align="center">soot</h1>
+
+<p align="center">
+  Open-source, model-agnostic task-level orchestration for the AI coding tools you already use.
+</p>
 
 [![CI](https://github.com/josephcake/soot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/josephcake/soot/actions/workflows/ci.yml)
 
@@ -15,7 +21,7 @@ _Named after the soot sprites, the black dust bunnies from Studio Ghibli. Former
 > with the project's own checks, integrate serially and report per-task cost. The only agent is
 > a **scripted mock** (no model is called). Provider adapters exist but have **not been run
 > against a real provider**. An MCP server and a universal agent skill exist; **no harness
-> (Claude Code, Codex, …) is supported yet**. See [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
+> (Claude Code, Codex, …) is supported yet**. See [`docs/project/PROJECT_STATUS.md`](docs/project/PROJECT_STATUS.md).
 
 ## What this project is for
 
@@ -47,7 +53,7 @@ coding assistant.
 - **Capability benchmarks** — routing learns from measured task outcomes, not marketing claims.
 - **Safe concurrency** — git worktrees (or equivalent) isolate agents from each other.
 
-These are recorded in [`DECISIONS.md`](DECISIONS.md).
+These are recorded in [`docs/decisions/DECISIONS.md`](docs/decisions/DECISIONS.md).
 
 ## Current functionality (verified)
 
@@ -109,11 +115,11 @@ starts or loads it ([`apps/dashboard`](apps/dashboard/README.md), ADR-031).
 
 ## Try it (no keys)
 
-See [`docs/installation.md`](docs/installation.md): build this checkout, copy
+See [`docs/guides/installation.md`](docs/guides/installation.md): build this checkout, copy
 `examples/demo-app` to a temp directory, and run
 `soot run "<prompt>" --agent mock --mock-script mock-agent.json`. Also:
-[providers](docs/providers.md), [model routing](docs/model-routing.md),
-[security](docs/security.md), [configuration](docs/configuration.md).
+[providers](docs/guides/providers.md), [model routing](docs/guides/model-routing.md),
+[security](docs/guides/security.md), [configuration](docs/guides/configuration.md).
 
 ## Quick start (contributors)
 
@@ -130,7 +136,7 @@ Individual steps: `pnpm run typecheck | lint | format:check | test | build`.
 
 `SOOT_LOG_LEVEL` and `SOOT_DATA_DIR` configure soot (listed in `.env.example`); export them
 in your shell. Provider keys are read only by the provider adapters, from
-the variable your model config names (`apiKeyEnv`), and nothing loads `.env` files yet. Details: [`docs/configuration.md`](docs/configuration.md). Never commit real keys.
+the variable your model config names (`apiKeyEnv`), and nothing loads `.env` files yet. Details: [`docs/guides/configuration.md`](docs/guides/configuration.md). Never commit real keys.
 
 ## Example execution and cost optimization
 
@@ -147,13 +153,13 @@ savings will only be reported from real benchmark data.
 
 ## Repository layout
 
-See [`docs/architecture.md`](docs/architecture.md).
+See [`docs/guides/architecture.md`](docs/guides/architecture.md).
 
 ## Project tracking
 
-[`PROJECT_STATUS.md`](PROJECT_STATUS.md) · [`ROADMAP.md`](ROADMAP.md) ·
-[`TASKS.md`](TASKS.md) · [`DECISIONS.md`](DECISIONS.md) ·
-[`TECHNICAL_DEBT.md`](TECHNICAL_DEBT.md) · [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md) ·
+[`docs/project/PROJECT_STATUS.md`](docs/project/PROJECT_STATUS.md) · [`docs/project/ROADMAP.md`](docs/project/ROADMAP.md) ·
+[`docs/project/TASKS.md`](docs/project/TASKS.md) · [`docs/decisions/DECISIONS.md`](docs/decisions/DECISIONS.md) ·
+[`docs/project/TECHNICAL_DEBT.md`](docs/project/TECHNICAL_DEBT.md) · [`docs/project/FUTURE_FEATURES.md`](docs/project/FUTURE_FEATURES.md) ·
 [`CHANGELOG.md`](CHANGELOG.md)
 
 ## Contributing

@@ -5,8 +5,8 @@
 > agent-runtime (scheduler + mock runner), context-manager (SQLite state), and observability
 > (cost records, routing log) have their Milestone 1 scope; model-registry and
 > provider-adapters have the Milestone 2 mockable scope; model-router has Milestone 3. The rest of the design below is the _plan_ from
-> [`specs/build-spec.md`](specs/build-spec.md) §14 and ADR-019; other packages are stubs.
-> See [`../ROADMAP.md`](../ROADMAP.md).
+> [`specs/build-spec.md`](../specs/build-spec.md) §14 and ADR-019; other packages are stubs.
+> See [`../project/ROADMAP.md`](../project/ROADMAP.md).
 
 ## Milestone 1 data flow (implemented)
 
@@ -129,8 +129,7 @@ and file-conflict management.
 ```text
 /
 ├── README.md, LICENSE (MIT), CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md
-├── PROJECT_STATUS.md, ROADMAP.md, TASKS.md, DECISIONS.md     # project tracking
-├── TECHNICAL_DEBT.md, FUTURE_FEATURES.md, CHANGELOG.md
+├── CHANGELOG.md
 ├── package.json              # root scripts: build, typecheck, lint, format:check, test, ci
 ├── pnpm-workspace.yaml       # workspaces: apps/*, packages/*
 ├── pnpm-lock.yaml
@@ -162,10 +161,14 @@ and file-conflict management.
 │   ├── integrations/         # partial (M5) — worktrees, validation, integration, reports
 │   └── observability/        # cost records/reports (M1, M5), routing log (M3), audit log (M5)
 ├── docs/
-│   ├── architecture.md       # this file
-│   ├── configuration.md      # environment variables
-│   ├── development.md        # package conventions, scripts
-│   └── specs/                # original build + project-management specs (verbatim)
+│   ├── README.md             # documentation index
+│   ├── guides/               # architecture, configuration, development, installation,
+│   │                         # providers, model-routing, security
+│   ├── project/              # status, roadmap, tasks, technical debt, future features
+│   ├── decisions/            # ADRs (DECISIONS.md)
+│   ├── specs/                # original build + project-management specs (verbatim)
+│   ├── research/             # pre-implementation research copies
+│   └── brand/                # logo assets
 └── tests/
     ├── repo-structure.test.ts     # guards: build graph, docs, env secrets, CI parity
     ├── m1-end-to-end.test.ts      # Milestone 1 exit criteria, end to end (mock agents)
@@ -199,10 +202,10 @@ These appear in the spec's suggested layout but are intentionally absent until t
 so the tree never implies support that does not exist:
 
 - `extensions/{cursor,windsurf,kilo}/` — per-editor work, only if an editor needs more than `apps/vscode-extension` (M7-02…M7-04).
-- `docs/{task-decomposition,harness-integrations,examples}.md` — written alongside the features they describe.
+- `docs/guides/{task-decomposition,harness-integrations,examples}.md` — written alongside the features they describe.
 
 `skills/universal-orchestrator/` (installed by `soot install-skill`), `examples/demo-app/` (quick
-start and M6 tests) and `docs/{installation,providers,model-routing,security}.md` now exist.
+start and M6 tests) and `docs/guides/{installation,providers,model-routing,security}.md` now exist.
 
 ## Package conventions
 

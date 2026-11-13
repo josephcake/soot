@@ -88,6 +88,6 @@ local users or processes) can read run prompts and results while it runs. Stop i
   sandbox. Check commands also run unsandboxed.
 - Allowing an executable such as `node` allows whatever arguments the config gives it.
 - Injection detection is heuristic.
-- See [`TECHNICAL_DEBT.md`](../TECHNICAL_DEBT.md).
+- See [`TECHNICAL_DEBT.md`](../project/TECHNICAL_DEBT.md).
 
-Report vulnerabilities as described in [`SECURITY.md`](../SECURITY.md).
+Report vulnerabilities as described in [`SECURITY.md`](../../SECURITY.md).

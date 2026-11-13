@@ -81,7 +81,7 @@ export const DecomposerConfigSchema = z
 export const ProjectConfigSchema = z
   .object({
     version: z.literal(1),
-    /** Registry config file (see docs/configuration.md), relative to this file. */
+    /** Registry config file (see docs/guides/configuration.md), relative to this file. */
     models: z.string().min(1),
     policy: z.enum(['economy', 'balanced', 'quality']).default('balanced'),
     /** Project checks soot runs for every task that changes files. */
@@ -141,7 +141,7 @@ export function loadProjectConfig(path: string): LoadedConfig {
     const code = (error as NodeJS.ErrnoException).code;
     throw new ConfigError(
       code === 'ENOENT'
-        ? `no soot config at ${path} (create ${CONFIG_FILE}; see docs/installation.md)`
+        ? `no soot config at ${path} (create ${CONFIG_FILE}; see docs/guides/installation.md)`
         : `cannot read ${path}: ${(error as Error).message}`,
     );
   }

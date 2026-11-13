@@ -25,6 +25,12 @@ pnpm-debug.log*
 *.sqlite3
 *.db
 
+# Git bundles (may contain history or secrets)
+*.bundle
+
+# Local config overrides (machine-specific; never commit)
+*.local.json
+
 # OS junk
 .DS_Store
 Thumbs.db

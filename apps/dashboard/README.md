@@ -61,6 +61,6 @@ soot dashboard --open          # also open a browser (off by default)
 - **Page:** plain HTML, one stylesheet, one script, no framework (ADR-009): each section is a
   text block. All text is set with `textContent`. It polls while a run is running.
 - **Safety:** GET/HEAD only, `Host` must be `127.0.0.1:<port>` or `localhost:<port>`, strict
-  CSP, no outbound requests, no provider calls, no keys. See `docs/security.md`.
+  CSP, no outbound requests, no provider calls, no keys. See `docs/guides/security.md`.
 
 Programmatic use: `startDashboard({ source, port })` returns `{ url, address, close() }`.

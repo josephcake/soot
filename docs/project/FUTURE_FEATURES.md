@@ -1,7 +1,7 @@
 # Future Features (deferred)
 
 Features explicitly deferred from the MVP (project-management spec §8). Do not implement
-these during the MVP without a documented reason in `DECISIONS.md`.
+these during the MVP without a documented reason in `docs/decisions/DECISIONS.md`.
 
 | Feature                             | Why deferred                                                                                                                     |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |

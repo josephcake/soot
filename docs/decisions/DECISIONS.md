@@ -33,7 +33,7 @@ the old one.
 - **Context:** Spec §14 recommends TypeScript for the core so it is reusable across harnesses/IDEs; §19 requires strict typing and independent builds.
 - **Decision:** Strict TypeScript (incl. `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`), ESM/NodeNext, `composite` packages built with `tsc -b` via root project references. TypeScript pinned to 6.0.x because typescript-eslint 8 supports `<6.1`. Python adapters only where a Python ecosystem gives a clear advantage (none yet).
 - **Alternatives:** Python core (weaker fit for VS Code/IDE extensions), Rust/Go core (higher contributor barrier), bundlers such as tsup (not needed for libraries yet), TypeScript 7 native compiler (blocked by lint tooling compatibility today).
-- **Consequences:** Every package builds and is typechecked independently; upgrading to TS 7 is tracked in `TECHNICAL_DEBT.md`.
+- **Consequences:** Every package builds and is typechecked independently; upgrading to TS 7 is tracked in `docs/project/TECHNICAL_DEBT.md`.
 - **Reversible:** Yes for tooling details; the TypeScript-core choice is foundational.
 
 ## ADR-004: Tooling — ESLint + Prettier + Vitest
@@ -63,7 +63,7 @@ the old one.
 - **Context:** Publishing has not been approved. Mochi decides on publishing after Milestone 0 is verified and clean.
 - **Decision:** The repository lives only at `/workspace/soot` on the build box (moved from `/workspace/intelligent-agent-router` by ADR-013). Local git only: no remote, no push, no `gh repo create`. A GitHub Actions workflow is committed so CI is ready, and `scripts/ci.sh` runs identical checks locally. Commits use the local identity `Sweed <sweed@bots.local>`.
 - **Alternatives:** Private GitHub repo now (still needs approval); no CI file until publish (loses CI-readiness).
-- **Consequences:** Hosted CI has never run; local CI results are the only evidence (see `TECHNICAL_DEBT.md`).
+- **Consequences:** Hosted CI has never run; local CI results are the only evidence (see `docs/project/TECHNICAL_DEBT.md`).
 - **Reversible:** Yes — add a remote and push once Mochi approves.
 
 ## ADR-007: Intended MVP stack (intent, not built)
@@ -73,7 +73,7 @@ the old one.
 - **Context:** Spec §14 and §20 suggest: TypeScript orchestration engine + LiteLLM + SQLite + git worktrees + universal agent skill, before IDE extensions.
 - **Decision:** Plan the MVP around that stack: TypeScript engine (packages/*); LiteLLM or an equivalent OpenAI-compatible gateway for provider connectivity rather than hand-written clients for every provider; SQLite for local state; git worktrees for isolation; a universal agent skill (plus CLI/MCP) as the first integration surface. IDE extensions come after (Milestone 7). Exact library choices (e.g. SQLite driver, LiteLLM proxy vs. SDK) will be confirmed against Lumen's pre-implementation research and recorded as new ADRs.
 - **Alternatives:** LangGraph or similar workflow engine (only if it adds value; avoid framework stacking), Postgres (contradicts local-first), building IDE extensions first (spec says not to).
-- **Consequences:** Milestone sequencing in `ROADMAP.md` follows this order.
+- **Consequences:** Milestone sequencing in `docs/project/ROADMAP.md` follows this order.
 - **Reversible:** Yes, component by component, via new ADRs.
 
 ## ADR-008: Six non-negotiable product principles
@@ -89,7 +89,7 @@ the old one.
   5. **Capability benchmarks** — a feedback loop measuring which models actually succeed at which tasks.
   6. **Safe concurrency** — git worktrees or equivalent isolation so agents never overwrite each other.
 - **Alternatives:** Hosted orchestration / managed keys (rejected: contradicts 1–2).
-- **Consequences:** Cloud hosting, accounts, and subscription billing are out of scope (`FUTURE_FEATURES.md`). The task graph, execution state, and file-conflict management are first-class engine concerns. Milestone 0 reflects this only in config (`SOOT_DATA_DIR` local default, no key handling) and docs.
+- **Consequences:** Cloud hosting, accounts, and subscription billing are out of scope (`docs/project/FUTURE_FEATURES.md`). The task graph, execution state, and file-conflict management are first-class engine concerns. Milestone 0 reflects this only in config (`SOOT_DATA_DIR` local default, no key handling) and docs.
 - **Reversible:** No — changing any of these requires an explicit, documented decision by Joseph.
 
 ## ADR-009: UI and graph presentations stay simple, pixelated, and Lego-block modular

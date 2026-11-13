@@ -15,12 +15,12 @@ every exit criterion is verified from real runs. Dates are recorded only when ve
 | M7        | IDE Extensions                    | In Progress (partial; not run in a real editor)    | —               |
 
 Engine hardening (ADR-030: env-driven runtime, persisted provider health and spend, audited
-routing, default attempt timeout) is tracked in TASKS.md (H-01…H-05) and changes no milestone
+routing, default attempt timeout) is tracked in `docs/project/TASKS.md` (H-01…H-05) and changes no milestone
 status.
 
 The optional local dashboard (ADR-031: `soot dashboard`, 127.0.0.1 only, read-only, headless
-stays the default) is tracked in TASKS.md (D-01, charts D-02, palette and chart types D-03) and changes no milestone status. The
-elaborate web dashboard stays deferred (FUTURE_FEATURES.md).
+stays the default) is tracked in `docs/project/TASKS.md` (D-01, charts D-02, palette and chart types D-03) and changes no milestone status. The
+elaborate web dashboard stays deferred (`docs/project/FUTURE_FEATURES.md`).
 
 The MVP (MVP-01…MVP-08) is reached at the end of M5 for the engine and M6 for the first
 harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-009.
@@ -35,7 +35,7 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Acceptance / exit criteria:** project builds; tests execute; CI passes (locally, and on GitHub Actions for Node 24 and 26 since the repo was published, ADR-032); repository structure is documented.
 - **Status:** Completed (verified locally and on hosted CI)
 - **Completion date:** 2026-11-12
-- **Evidence:** see `PROJECT_STATUS.md` → Latest Validation; hosted run [43334786373](https://github.com/josephcake/soot/actions/runs/43334786373) (M0-11).
+- **Evidence:** see `docs/project/PROJECT_STATUS.md` → Latest Validation; hosted run [43334786373](https://github.com/josephcake/soot/actions/runs/43334786373) (M0-11).
 
 ## M1 — Core Orchestration
 
@@ -45,7 +45,7 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Acceptance / exit criteria:** a single prompt is decomposed into multiple tasks; dependencies are represented correctly; independent tasks are scheduled concurrently (verified by timing/ordering, not assumed); results can be collected and inspected.
 - **Status:** Completed (verified locally with mock agents; decomposition is fixture-backed)
 - **Completion date:** 2026-11-12
-- **Evidence:** `tests/m1-end-to-end.test.ts` (EC1–EC4), `tests/resume-after-kill.test.ts`, package tests; see `PROJECT_STATUS.md` → Latest Validation. Model-backed decomposition and real agents are later milestones.
+- **Evidence:** `tests/m1-end-to-end.test.ts` (EC1–EC4), `tests/resume-after-kill.test.ts`, package tests; see `docs/project/PROJECT_STATUS.md` → Latest Validation. Model-backed decomposition and real agents are later milestones.
 
 ## M2 — Multi-Provider Model Connectivity
 

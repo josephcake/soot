@@ -29,4 +29,4 @@ Building blocks: `Repository`, `WriteLeases`, `findDiffOverlaps`, `runCheck` / `
 `IsolatedTaskRunner`, `integrateSerially`, `applyStructuredEdits` (ADR-020). Design: ADR-025.
 
 Limits: worktrees isolate git state, not processes; there is no OS sandbox (see
-`TECHNICAL_DEBT.md`). Requires git ≥ 2.38.
+`docs/project/TECHNICAL_DEBT.md`). Requires git ≥ 2.38.

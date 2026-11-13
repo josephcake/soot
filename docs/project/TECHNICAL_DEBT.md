@@ -180,7 +180,7 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Intentional] ACP: soot offers only `fs/read_text_file` (worktree) and `fs/write_text_file`
   (write lease).** No terminal capability, no MCP servers. An agent that writes through its own
   tools instead of ACP is still caught by soot's diff check, but there is no OS sandbox: a
-  spawned agent can touch anything its user can (see docs/security.md).
+  spawned agent can touch anything its user can (see `docs/guides/security.md`).
 - **[Intentional] ACP permission details are agent-provided text,** cleaned and truncated before
   they are shown to the person approving. soot never selects "allow always"; when only that
   option is offered, approval becomes a cancel.
@@ -210,7 +210,7 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   source is public now (ADR-032); a contact must be set before the first release.
 - **[Intentional] Some spec-listed docs are not written yet:** `task-decomposition`,
   `harness-integrations` and `examples`. `installation`, `providers`, `model-routing` and
-  `security` exist in `docs/`. The rest will be written with the features they describe, to
+  `security` exist in `docs/guides/`. The rest will be written with the features they describe, to
   avoid documenting fiction.
 
 ## Security
@@ -220,7 +220,7 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   are redacted and written with mode `0600`. The state directory is created
   with mode `0700`; `soot.sqlite` stores the original prompt and structured results in plain
   text (no encryption at rest). Security requirements from
-  spec §13 are tracked as tasks in `TASKS.md`.
+  spec §13 are tracked as tasks in `docs/project/TASKS.md`.
 
 ## IDE extension (Milestone 7)
 
@@ -238,7 +238,7 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Intentional] Task cancellation is cooperative.** `soot stop --task` writes a control file
   that the run polls every 200 ms; a runner that ignores the abort is abandoned, not killed.
 - **[Intentional] No OS process sandbox** (unchanged): see Codebase integration and
-  docs/security.md.
+  `docs/guides/security.md`.
 
 ## UI
 
