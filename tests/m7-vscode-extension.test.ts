@@ -74,8 +74,8 @@ describe('soot: Run a prompt → tree and board show what the engine reported', 
       expect(view?.running).toBe(false);
       expect(view?.state).toBe('incomplete');
       expect(view?.tasks.map((t) => [t.id, t.state, t.verdict, t.models])).toEqual([
-        ['update-page-title', 'succeeded', 'verified', ['demo-a/demo-small']],
-        ['update-button-color', 'succeeded', 'verified', ['demo-a/demo-small']],
+        ['update-page-title', 'succeeded', 'verified', ['anthropic/claude-haiku-5-5']],
+        ['update-button-color', 'succeeded', 'verified', ['anthropic/claude-haiku-5-5']],
       ]);
       expect(view?.cost?.estimatedUsd).toBeGreaterThan(0);
       expect(view?.cost?.actualUsd).toBeCloseTo(0.00163, 6);
@@ -89,7 +89,7 @@ describe('soot: Run a prompt → tree and board show what the engine reported', 
       const run = ext.tree.getChildren()[1];
       expect(run?.label).toMatch(/^Run ide-\d{8}-\d{6}-[0-9a-f]{4}: incomplete$/);
       expect(child(run, 'Task graph')?.children.map((n) => n.label)).toEqual([
-        'L0 [■ update-page-title · demo-small · 1x] [■ update-button-color · demo-small · 1x]',
+        'L0 [■ update-page-title · claude-haiku-5-5 · 1x] [■ update-button-color · claude-haiku-5-5 · 1x]',
       ]);
       expect(child(run, 'Cost')?.children[0]?.label).toMatch(
         /^estimate \$0\.\d+ \| actual \$0\.001630$/,
@@ -154,25 +154,25 @@ describe('escalations and failures are visible', () => {
       fake.inputBoxAnswers.push(TEST_1);
       await commands.executeCommand('soot.run');
       const button = ext.view?.tasks.find((t) => t.id === 'update-button-color');
-      expect(button?.models).toEqual(['demo-a/demo-small', 'demo-b/demo-mid']);
+      expect(button?.models).toEqual(['anthropic/claude-haiku-5-5', 'openai/gpt-6.1-terra']);
       expect(button?.attempts.map((a) => [a.attempt, a.model])).toEqual([
-        [1, 'demo-a/demo-small'],
-        [2, 'demo-b/demo-mid'],
+        [1, 'anthropic/claude-haiku-5-5'],
+        [2, 'openai/gpt-6.1-terra'],
       ]);
       expect(button?.attempts[0]?.failure).not.toBeNull();
       const escalate = ext.view?.events.find((e) => e.type === 'escalate');
       expect(escalate).toMatchObject({
         taskId: 'update-button-color',
         attempt: 2,
-        model: 'demo-b/demo-mid',
+        model: 'openai/gpt-6.1-terra',
       });
       const run = ext.tree.getChildren()[1];
       expect(child(run, 'Escalations and retries')?.children.map((n) => n.label)).toContainEqual(
-        expect.stringMatching(/^ESCALATE update-button-color #2 → demo-mid: /),
+        expect.stringMatching(/^ESCALATE update-button-color #2 → gpt-6.1-terra: /),
       );
       expect(child(run, 'Failures')?.children[0]?.label).toMatch(/^✕ update-button-color #1 /);
       expect(child(run, 'Task graph')?.children[0]?.label).toContain(
-        '[■ update-button-color · demo-small→demo-mid · 2x]',
+        '[■ update-button-color · claude-haiku-5-5→gpt-6.1-terra · 2x]',
       );
     },
     SLOW,
@@ -215,7 +215,7 @@ describe('task cancellation from the extension (soot stop <run> --task <id>)', (
       expect(slow, 'slow task seen running').toBeDefined();
       expect(ext.view?.running).toBe(true);
       expect(child(ext.tree.getChildren()[1], 'Active agents')?.children[0]?.label).toMatch(
-        /^▣ update-page-title on demo-small/,
+        /^▣ update-page-title on claude-haiku-5-5/,
       );
       const t0 = Date.now();
       await commands.executeCommand('soot.cancelTask', slow);

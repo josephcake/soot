@@ -3,7 +3,9 @@ import { z } from 'zod';
 
 /*
  * User-supplied registry configuration. soot ships NO built-in model list: every model comes
- * from this config (or is discovered from a provider and then has unknown metadata).
+ * from this config (or is discovered from a provider and then has unknown metadata). A model
+ * the user leaves unpriced may get a sourced list price from soot's price catalog
+ * (`price-catalog.ts`, ADR-037); that adds prices only, never models.
  * Credentials never appear here: a provider names the environment variable that holds its
  * key (`apiKeyEnv`), and objects are strict, so an inline `apiKey` field is rejected.
  */
@@ -78,6 +80,18 @@ export const CapabilitiesSchema = z
 const tokens = z.int().positive().nullable().default(null);
 const usdPerMTok = z.number().nonnegative();
 
+/** Long-context tier of a price (see `PricingSchema.longContext`). */
+export const LongContextPricingSchema = z
+  .object({
+    /** The tier applies when a request's input tokens are strictly greater than this. */
+    aboveInputTokens: z.int().positive(),
+    inputPerMTokUsd: usdPerMTok,
+    outputPerMTokUsd: usdPerMTok,
+    cacheReadPerMTokUsd: usdPerMTok.nullable().default(null),
+    cacheWritePerMTokUsd: usdPerMTok.nullable().default(null),
+  })
+  .strict();
+
 /**
  * List prices in USD per million tokens, with provenance. A price without `source` and
  * `asOf` is rejected. Cache prices are optional (`null` = unknown).
@@ -92,7 +106,12 @@ export const PricingSchema = z
     source: z.string().min(1).max(500),
     /** Date the price was checked (YYYY-MM-DD). */
     asOf: z.iso.date(),
-    /** Free-text caveats (time-of-day or long-context tiers are not modeled yet). */
+    /**
+     * Higher rates for long prompts: when a request's input tokens (incl. cached) exceed
+     * `aboveInputTokens`, every token in that request is billed at these rates (ADR-037).
+     */
+    longContext: LongContextPricingSchema.optional(),
+    /** Free-text caveats (e.g. time-of-day discounts, which soot does not model). */
     notes: z.string().max(1000).optional(),
   })
   .strict();

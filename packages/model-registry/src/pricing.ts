@@ -24,17 +24,24 @@ export interface ReportedTokenUsage {
   readonly cacheWriteTokens: number | null;
 }
 
+/** The rates that apply to one request: the long-context tier when its input exceeds the threshold. */
+function ratesFor(pricing: Pricing, inputTokens: number) {
+  const tier = pricing.longContext;
+  return tier !== undefined && inputTokens > tier.aboveInputTokens ? tier : pricing;
+}
+
 function priceOf(pricing: Pricing, t: TokenCounts): number | null {
+  const rates = ratesFor(pricing, t.inputTokens);
   const cacheRead = t.cacheReadTokens ?? 0;
   const cacheWrite = t.cacheWriteTokens ?? 0;
-  if (cacheRead > 0 && pricing.cacheReadPerMTokUsd === null) return null;
-  if (cacheWrite > 0 && pricing.cacheWritePerMTokUsd === null) return null;
+  if (cacheRead > 0 && rates.cacheReadPerMTokUsd === null) return null;
+  if (cacheWrite > 0 && rates.cacheWritePerMTokUsd === null) return null;
   const uncachedInput = Math.max(0, t.inputTokens - cacheRead - cacheWrite);
   return (
-    (uncachedInput * pricing.inputPerMTokUsd +
-      t.outputTokens * pricing.outputPerMTokUsd +
-      cacheRead * (pricing.cacheReadPerMTokUsd ?? 0) +
-      cacheWrite * (pricing.cacheWritePerMTokUsd ?? 0)) /
+    (uncachedInput * rates.inputPerMTokUsd +
+      t.outputTokens * rates.outputPerMTokUsd +
+      cacheRead * (rates.cacheReadPerMTokUsd ?? 0) +
+      cacheWrite * (rates.cacheWritePerMTokUsd ?? 0)) /
     1_000_000
   );
 }

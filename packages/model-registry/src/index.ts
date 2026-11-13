@@ -2,7 +2,7 @@
  * @soot/model-registry
  *
  * Milestone 2: thin model registry (ADR-019). Loads the user's model config (no built-in model
- * names), overlays provider discovery and availability, selects models by requirements, and
+ * names; ADR-037 adds a sourced price catalog that fills in prices only), overlays provider discovery and availability, selects models by requirements, and
  * computes costs from sourced list prices. Unknown metadata stays unknown.
  */
 
@@ -19,6 +19,7 @@ export {
   CONFIG_VERSION,
   CapabilitiesSchema,
   DEFAULT_STRUCTURED_OUTPUT_MODE,
+  LongContextPricingSchema,
   ModelConfigSchema,
   PROVIDER_KINDS,
   PricingSchema,
@@ -68,3 +69,14 @@ export {
   type ReportedTokenUsage,
   type TokenCounts,
 } from './pricing.js';
+export {
+  PRICE_CATALOG,
+  PRICING_PROMPT_PATH,
+  applyPriceCatalog,
+  catalogPrice,
+  providerHost,
+  unpricedModels,
+  unpricedWarning,
+  type CatalogEntry,
+  type PricedConfig,
+} from './price-catalog.js';

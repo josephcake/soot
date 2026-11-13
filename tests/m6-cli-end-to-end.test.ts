@@ -72,7 +72,7 @@ describe('soot run: spec §17 Test 1 through the CLI (fixture-backed)', () => {
           verdict: 'verified',
           integration: 'merged',
           complete: true,
-          modelPath: ['demo-a/demo-small'],
+          modelPath: ['anthropic/claude-haiku-5-5'],
         });
       }
       expect(task(out, 'update-page-title')?.checks.map((c) => `${c.name}:${c.status}`)).toEqual([
@@ -136,9 +136,9 @@ describe('soot run: spec §17 Test 2 through the CLI (fixture-backed)', () => {
       const out = parse(run.stdout);
       expect(out.fixtureId).toBe('build-spec-17-test-2');
       expect(out.maxObservedConcurrency).toBe(3);
-      expect(task(out, 'update-button-color')?.modelPath).toEqual(['demo-a/demo-small']);
-      expect(task(out, 'add-dropdown-component')?.modelPath).toEqual(['demo-b/demo-mid']);
-      expect(task(out, 'verify-auth-bug')?.modelPath).toEqual(['demo-a/demo-large']);
+      expect(task(out, 'update-button-color')?.modelPath).toEqual(['anthropic/claude-haiku-5-5']);
+      expect(task(out, 'add-dropdown-component')?.modelPath).toEqual(['openai/gpt-6.1-terra']);
+      expect(task(out, 'verify-auth-bug')?.modelPath).toEqual(['anthropic/claude-opus-5-5']);
       expect(out.report.tasks.map((t) => [t.taskId, t.verdict, t.integration])).toEqual([
         ['update-button-color', 'verified', 'merged'],
         ['add-dropdown-component', 'verified', 'merged'],
@@ -256,7 +256,7 @@ describe('routing feedback through the CLI (M5-07 glue now in `soot run`)', () =
     'soot-verified outcomes from earlier runs move later routing to a more reliable model',
     async () => {
       const r = (repo = createDemoRepo());
-      // Escalate on the first failure, so each run tries demo-small once, then demo-mid.
+      // Escalate on the first failure, so each run tries claude-haiku-5-5 once, then gpt-6.1-terra.
       const config = JSON.parse(r.read('soot.config.json')) as Record<string, unknown>;
       config.escalation = { sameModelRetries: 0 };
       r.write('soot.config.json', `${JSON.stringify(config, null, 2)}\n`);
@@ -281,26 +281,26 @@ describe('routing feedback through the CLI (M5-07 glue now in `soot run`)', () =
       const agent = ['--agent', 'mock', '--mock-script', '../flaky.json'];
       const prompt =
         'Change my page title to HELLO WORLD, update the primary button color to purple, and make sure the authentication bug from the previous issue has been fixed.';
-      // §3 fixture: the button task is low complexity → demo-small first.
+      // §3 fixture: the button task is low complexity → claude-haiku-5-5 first.
       const first = parse(
         (await cli(r, ['run', prompt, ...agent, '--run-id', 'fb1', '--json'])).stdout,
       );
       expect(task(first, 'update-button-color')?.modelPath).toEqual([
-        'demo-a/demo-small',
-        'demo-b/demo-mid',
+        'anthropic/claude-haiku-5-5',
+        'openai/gpt-6.1-terra',
       ]);
       expect(first.historySamples).toBe(0);
       r.git('reset', '--quiet', '--hard', base);
       const second = parse(
         (await cli(r, ['run', prompt, ...agent, '--run-id', 'fb2', '--json'])).stdout,
       );
-      // fb1 stored demo-small failed@low (soot's acceptance test) and demo-mid verified@medium.
-      // Blending that failure into demo-small's 0.9 prior drops it out of the Balanced low-tier
-      // threshold, so routing now starts on demo-mid.
+      // fb1 stored claude-haiku-5-5 failed@low (soot's acceptance test) and gpt-6.1-terra verified@medium.
+      // Blending that failure into claude-haiku-5-5's 0.9 prior drops it out of the Balanced low-tier
+      // threshold, so routing now starts on gpt-6.1-terra.
       expect(second.historySamples).toBeGreaterThanOrEqual(2);
-      expect(task(second, 'update-button-color')?.modelPath[0]).toBe('demo-b/demo-mid');
+      expect(task(second, 'update-button-color')?.modelPath[0]).toBe('openai/gpt-6.1-terra');
       expect(second.decisions.find((d) => d.startsWith('- update-button-color #1 assign'))).toMatch(
-        /assign demo-b\/demo-mid/,
+        /assign openai\/gpt-6.1-terra/,
       );
     },
     SLOW * 2,
@@ -320,7 +320,7 @@ describe('soot status / cost / models / config / stop against fixtures', () => {
       );
       const one = await cli(r, ['status', 's1']);
       expect(one.stdout).toMatch(
-        /- update-page-title \[low\] succeeded, 1 attempt\(s\) \(demo-a\/demo-small\), verdict verified \(complete\)/,
+        /- update-page-title \[low\] succeeded, 1 attempt\(s\) \(anthropic\/claude-haiku-5-5\), verdict verified \(complete\)/,
       );
       expect((await cli(r, ['status', 'nope'])).code).toBe(1);
 
@@ -331,15 +331,17 @@ describe('soot status / cost / models / config / stop against fixtures', () => {
       };
       expect(c.runId).toBe('s1');
       expect(c.cost.totals.actual.usd).toBeCloseTo(0.00163, 10);
-      expect(c.cost.totals.estimated.usd).toBeCloseTo(0.001875, 10);
+      expect(c.cost.totals.estimated.usd).toBeCloseTo(0.00075, 10);
       expect((await cli(r, ['cost', 's1'])).stdout).toMatch(
-        /Total estimated: \$0\.001875[\s\S]*Total actual: \$0\.001630 over 2 attempts/,
+        /Total estimated: \$0\.000750[\s\S]*Total actual: \$0\.001630 over 2 attempts/,
       );
 
       const models = await cli(r, ['models']);
       expect(models.stdout).toMatch(
-        /- demo-a\/demo-small \(anthropic\) eligible; price in\/out per MTok \$0\.25\/\$1\.25/,
+        /- anthropic\/claude-haiku-5-5 \(anthropic\) eligible; price in\/out per MTok \$0\.1\/\$0\.5 \(your config, 2026-11-13\)/,
       );
+      // Every demo model is priced in its own config: no "price not set" warning.
+      expect(models.stdout).not.toMatch(/have no price/);
 
       const config = await cli(r, ['config', '--json']);
       const cfg = JSON.parse(config.stdout) as {
@@ -347,6 +349,7 @@ describe('soot status / cost / models / config / stop against fixtures', () => {
         providers: { apiKeyEnv: string | null }[];
         approvals: string;
         agent: string;
+        pricing: { catalogPriced: string[]; unpriced: string[] };
       };
       expect(cfg.protectedPaths).toEqual([
         'acceptance/',
@@ -360,6 +363,7 @@ describe('soot status / cost / models / config / stop against fixtures', () => {
         'OPENAI_API_KEY',
       ]);
       expect(cfg).toMatchObject({ approvals: 'unattended', agent: 'none' });
+      expect(cfg.pricing).toEqual({ catalogPriced: [], unpriced: [] });
 
       const stop = await cli(r, ['stop', 's1']);
       expect(stop.code).toBe(1);

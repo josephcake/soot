@@ -323,7 +323,7 @@ describe('AcpAgentRunner: applying the routed model (ADR-028)', () => {
     },
   });
 
-  async function routed(script: MockAcpScript, model = 'demo-a/demo-small') {
+  async function routed(script: MockAcpScript, model = 'anthropic/claude-haiku-5-5') {
     const root = workspace();
     const h = mock(script);
     const routes: AcpRouteRecord[] = [];
@@ -345,8 +345,8 @@ describe('AcpAgentRunner: applying the routed model (ADR-028)', () => {
     const { result, routes, h } = await routed({
       version: 1,
       models: {
-        current: 'demo-large',
-        values: ['demo-small', 'demo-mid', 'demo-large'],
+        current: 'claude-opus-5-5',
+        values: ['claude-haiku-5-5', 'gpt-6.1-terra', 'claude-opus-5-5'],
         behaviour: 'apply',
       },
       tasks: { t: { writes: { 'a.txt': 'x' } } },
@@ -361,16 +361,17 @@ describe('AcpAgentRunner: applying the routed model (ADR-028)', () => {
       {
         taskId: 't',
         attempt: 1,
-        routed: 'demo-a/demo-small',
+        routed: 'anthropic/claude-haiku-5-5',
         applied: true,
-        agentValue: 'demo-small',
-        reason: 'routed model demo-a/demo-small applied as "model" = demo-small',
+        agentValue: 'claude-haiku-5-5',
+        reason: 'routed model anthropic/claude-haiku-5-5 applied as "model" = claude-haiku-5-5',
       },
     ]);
-    expect(result.usage.model).toBe('demo-a/demo-small');
+    expect(result.usage.model).toBe('anthropic/claude-haiku-5-5');
     expect(result.findings).toContainEqual({
       kind: 'decision',
-      message: 'ACP model routing: routed model demo-a/demo-small applied as "model" = demo-small',
+      message:
+        'ACP model routing: routed model anthropic/claude-haiku-5-5 applied as "model" = claude-haiku-5-5',
     });
     // Tokens are never invented: ACP v1 reports none.
     expect(result.usage.inputTokens).toBe(0);
@@ -386,7 +387,7 @@ describe('AcpAgentRunner: applying the routed model (ADR-028)', () => {
     expect(routes).toHaveLength(1);
     expect(routes[0]).toMatchObject({
       applied: false,
-      routed: 'demo-a/demo-small',
+      routed: 'anthropic/claude-haiku-5-5',
       agentValue: null,
     });
     expect(routes[0]?.reason).toContain('does not advertise a "model" config option');
@@ -403,34 +404,47 @@ describe('AcpAgentRunner: applying the routed model (ADR-028)', () => {
       tasks,
     });
     expect(noMatch.routes[0]?.reason).toContain(
-      'offers no value for demo-a/demo-small (offered: m1, m2)',
+      'offers no value for anthropic/claude-haiku-5-5 (offered: m1, m2)',
     );
     expect(noMatch.h.log.methods).not.toContain('session/set_config_option');
 
     const refused = await routed({
       version: 1,
-      models: { current: 'demo-mid', values: ['demo-small', 'demo-mid'], behaviour: 'refuse' },
+      models: {
+        current: 'gpt-6.1-terra',
+        values: ['claude-haiku-5-5', 'gpt-6.1-terra'],
+        behaviour: 'refuse',
+      },
       tasks,
     });
     expect(refused.routes[0]?.applied).toBe(false);
-    expect(refused.routes[0]?.reason).toContain('the agent refused demo-small');
+    expect(refused.routes[0]?.reason).toContain('the agent refused claude-haiku-5-5');
 
     const ignored = await routed({
       version: 1,
-      models: { current: 'demo-mid', values: ['demo-small', 'demo-mid'], behaviour: 'ignore' },
+      models: {
+        current: 'gpt-6.1-terra',
+        values: ['claude-haiku-5-5', 'gpt-6.1-terra'],
+        behaviour: 'ignore',
+      },
       tasks,
     });
     expect(ignored.routes[0]?.applied).toBe(false);
-    expect(ignored.routes[0]?.reason).toContain('did not confirm demo-small');
+    expect(ignored.routes[0]?.reason).toContain('did not confirm claude-haiku-5-5');
     for (const r of [noMatch, refused, ignored]) expect(r.result.usage.model).toBeNull();
   });
 
   it('matches the full ref first, then the id after the provider', () => {
-    expect(matchModelValue('demo-a/demo-small', ['demo-a/demo-small', 'demo-small'])).toBe(
-      'demo-a/demo-small',
+    expect(
+      matchModelValue('anthropic/claude-haiku-5-5', [
+        'anthropic/claude-haiku-5-5',
+        'claude-haiku-5-5',
+      ]),
+    ).toBe('anthropic/claude-haiku-5-5');
+    expect(matchModelValue('anthropic/claude-haiku-5-5', ['claude-haiku-5-5'])).toBe(
+      'claude-haiku-5-5',
     );
-    expect(matchModelValue('demo-a/demo-small', ['demo-small'])).toBe('demo-small');
-    expect(matchModelValue('demo-a/demo-small', ['small'])).toBeNull();
+    expect(matchModelValue('anthropic/claude-haiku-5-5', ['small'])).toBeNull();
   });
 });
 

@@ -12,9 +12,20 @@
 | `openai`            | OpenAI API via the Vercel AI SDK                             | mocked HTTP only                                                             |
 | `openai-compatible` | Any OpenAI-compatible endpoint (Ollama, LM Studio, gateways) | mocked HTTP only; a live local test is skipped unless a runtime is listening |
 
-soot ships **no model list and no prices**. You describe providers and models in a registry
-file (see [configuration](configuration.md#model-registry-config)); anything you leave out is
-unknown, and unknown is never guessed.
+soot ships **no model list**. You describe providers and models in a registry file (see
+[configuration](configuration.md#model-registry-config)); anything you leave out is unknown,
+and unknown is never guessed. For prices, soot ships a sourced catalog of official list prices
+for popular models on each vendor's own API (OpenAI, Anthropic, Google Gemini API, xAI,
+DeepSeek, Mistral; ADR-037). It fills in `pricing` only for models you configured without one
+(see [prices](configuration.md#prices)).
+
+## Adding a provider, key, or model
+
+When you add a provider or an API key, or start using a model id soot has not seen, have your
+AI agent run the [update-model-pricing prompt](../../skills/update-model-pricing/SKILL.md). It
+looks up the model's current price on the vendor's official pricing page and records it with
+the source URL and date, or leaves it unpriced if there is no official price. soot reminds
+you: `soot run`, `soot config` and `soot models` warn when a callable model has no price.
 
 ## Keys
 
@@ -45,7 +56,7 @@ your registry as an OpenAI-compatible provider and put your own key in `DEEPSEEK
   "models": [
     {
       "provider": "deepseek",
-      "modelId": "deepseek-chat",
+      "modelId": "deepseek-flash",
       "capabilities": { "tools": true, "structuredOutput": true },
       "structuredOutputMode": "json_object"
     }
@@ -61,8 +72,9 @@ no partial graph. The mode is vendor-neutral and can also be set on a provider a
 The default, if you omit it, is `"json_schema"`.
 
 It is then selected, routed and callable like any other provider, and can be named as the
-decomposer model (`deepseek/deepseek-chat`). Fill in pricing, context window and reliability
-yourself; unknown stays unknown. soot's tests and demos never call DeepSeek or any other live
+decomposer model (`deepseek/deepseek-flash`). Its price comes from soot's catalog
+(DeepSeek's peak rate; off-peak is half and is not modeled). Fill in context window and
+reliability yourself; unknown stays unknown. soot's tests and demos never call DeepSeek or any other live
 provider, and no live DeepSeek call has been verified yet.
 
 ## Listed-only providers

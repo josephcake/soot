@@ -1,53 +1,13 @@
 {
   "version": 1,
   "providers": [
-    { "id": "demo-a", "kind": "anthropic", "apiKeyEnv": "ANTHROPIC_API_KEY" },
-    { "id": "demo-b", "kind": "openai", "apiKeyEnv": "OPENAI_API_KEY" }
+    { "id": "anthropic", "kind": "anthropic", "apiKeyEnv": "ANTHROPIC_API_KEY" },
+    { "id": "openai", "kind": "openai", "apiKeyEnv": "OPENAI_API_KEY" }
   ],
   "models": [
     {
-      "provider": "demo-a",
-      "modelId": "demo-small",
-      "capabilities": {
-        "tools": true,
-        "structuredOutput": true,
-        "vision": false,
-        "reasoning": false,
-        "streaming": true
-      },
-      "contextWindow": 200000,
-      "maxOutputTokens": 8192,
-      "pricing": {
-        "inputPerMTokUsd": 0.25,
-        "outputPerMTokUsd": 1.25,
-        "source": "fictional demo value (not a real price)",
-        "asOf": "2026-11-12"
-      },
-      "reliability": { "low": 0.9, "medium": 0.7, "high": 0.4, "source": "fictional demo prior" }
-    },
-    {
-      "provider": "demo-b",
-      "modelId": "demo-mid",
-      "capabilities": {
-        "tools": true,
-        "structuredOutput": true,
-        "vision": true,
-        "reasoning": false,
-        "streaming": true
-      },
-      "contextWindow": 400000,
-      "maxOutputTokens": 16384,
-      "pricing": {
-        "inputPerMTokUsd": 1,
-        "outputPerMTokUsd": 4,
-        "source": "fictional demo value (not a real price)",
-        "asOf": "2026-11-12"
-      },
-      "reliability": { "low": 0.95, "medium": 0.88, "high": 0.7, "source": "fictional demo prior" }
-    },
-    {
-      "provider": "demo-a",
-      "modelId": "demo-large",
+      "provider": "anthropic",
+      "modelId": "claude-haiku-5-5",
       "capabilities": {
         "tools": true,
         "structuredOutput": true,
@@ -55,13 +15,73 @@
         "reasoning": true,
         "streaming": true
       },
-      "contextWindow": 200000,
-      "maxOutputTokens": 32000,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
       "pricing": {
-        "inputPerMTokUsd": 5,
-        "outputPerMTokUsd": 25,
-        "source": "fictional demo value (not a real price)",
-        "asOf": "2026-11-12"
+        "inputPerMTokUsd": 0.1,
+        "outputPerMTokUsd": 0.5,
+        "cacheReadPerMTokUsd": 0.01,
+        "cacheWritePerMTokUsd": 0.125,
+        "longContext": {
+          "aboveInputTokens": 100000,
+          "inputPerMTokUsd": 0.5,
+          "outputPerMTokUsd": 2.5,
+          "cacheReadPerMTokUsd": 0.05,
+          "cacheWritePerMTokUsd": 0.625
+        },
+        "source": "https://docs.anthropic.com/en/docs/about-claude/pricing",
+        "asOf": "2026-11-13"
+      },
+      "reliability": { "low": 0.9, "medium": 0.7, "high": 0.4, "source": "fictional demo prior" }
+    },
+    {
+      "provider": "openai",
+      "modelId": "gpt-6.1-terra",
+      "capabilities": {
+        "tools": true,
+        "structuredOutput": true,
+        "vision": true,
+        "reasoning": true,
+        "streaming": true
+      },
+      "contextWindow": 1050000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "inputPerMTokUsd": 1,
+        "outputPerMTokUsd": 5,
+        "cacheReadPerMTokUsd": 0.05,
+        "cacheWritePerMTokUsd": 1.25,
+        "longContext": {
+          "aboveInputTokens": 272000,
+          "inputPerMTokUsd": 2,
+          "outputPerMTokUsd": 7.5,
+          "cacheReadPerMTokUsd": 0.1,
+          "cacheWritePerMTokUsd": 2.5
+        },
+        "source": "https://platform.openai.com/docs/pricing",
+        "asOf": "2026-11-13"
+      },
+      "reliability": { "low": 0.95, "medium": 0.88, "high": 0.7, "source": "fictional demo prior" }
+    },
+    {
+      "provider": "anthropic",
+      "modelId": "claude-opus-5-5",
+      "capabilities": {
+        "tools": true,
+        "structuredOutput": true,
+        "vision": true,
+        "reasoning": true,
+        "streaming": true
+      },
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "inputPerMTokUsd": 4,
+        "outputPerMTokUsd": 20,
+        "cacheReadPerMTokUsd": 0.2,
+        "cacheWritePerMTokUsd": 5,
+        "source": "https://docs.anthropic.com/en/docs/about-claude/pricing",
+        "asOf": "2026-11-13"
       },
       "reliability": { "low": 0.97, "medium": 0.95, "high": 0.9, "source": "fictional demo prior" }
     }

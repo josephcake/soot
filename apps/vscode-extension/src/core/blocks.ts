@@ -33,7 +33,7 @@ const shortModel = (m: string | null): string =>
 
 const usd = (v: number | null): string => (v === null ? 'unknown' : `$${v.toFixed(6)}`);
 
-/** `[■ task-id · demo-small · 1x]` (model path joined with →, attempts as Nx). */
+/** `[■ task-id · claude-haiku-5-5 · 1x]` (model path joined with →, attempts as Nx). */
 export function taskBlock(t: TaskView): string {
   const path = t.models.length === 0 ? '—' : t.models.map(shortModel).join('→');
   return `[${stateGlyph(t.state)} ${t.id} · ${path} · ${String(t.attempts.length)}x]`;

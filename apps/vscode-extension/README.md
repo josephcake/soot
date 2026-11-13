@@ -3,7 +3,7 @@
 A thin editor view onto a local soot engine. It runs the `soot` CLI and shows what the engine reports, as stacked text blocks:
 
 - **Orchestration: on/off** (`soot: Enable orchestration` / `soot: Disable orchestration`, workspace setting `soot.enabled`, off by default)
-- **Task graph**: tasks by dependency layer (`L0 [■ task · demo-small→demo-mid · 2x]`, `└▶ task ← deps`)
+- **Task graph**: tasks by dependency layer (`L0 [■ task · claude-haiku-5-5→gpt-6.1-terra · 2x]`, `└▶ task ← deps`)
 - **Tasks**: per-task state, verdict, and each attempt's model, escalation level and failure
 - **Active agents**: what is running now, on which model
 - **Escalations and retries**: escalate, fallback, retry, downgrade, fail and stop events from the run's event log

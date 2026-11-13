@@ -1,7 +1,8 @@
 # @soot/model-registry
 
-> **Status: partial (Milestone 2 scope implemented).** soot ships **no built-in model list**
-> and no prices. Every model comes from your config. Routing by cost/quality is Milestone 3.
+> **Status: partial (Milestone 2 scope implemented).** soot ships **no built-in model list**.
+> Every model comes from your config. `PRICE_CATALOG` (ADR-037) holds sourced official prices
+> that `applyPriceCatalog` fills in for configured models with no `pricing`. Routing by cost/quality is Milestone 3.
 
 ## Config
 

@@ -250,6 +250,7 @@ the old one.
   - **Structured output is validated on receipt** against the caller's zod schema. A response that ignores the schema becomes `invalid-output`, because research §3 found silently ignored capabilities to be a pattern. Tool names must be portable snake_case.
   - **Fallback is soot's, not the SDK's:** `generateWithFallback` marks provider-level failures (outage, rate limit after retries, timeout, auth) in `ProviderHealth` with a cooldown (outage 60 s, rate limit = retry-after or 30 s, auth until fixed) and tries the next candidate. Request-level failures and aborts do not fall back.
   - **Registry:** soot ships no model names and no prices. Users configure them. Unknown metadata is `null`. Prices are per million tokens and require `source` and `asOf`. Cost estimates and actuals keep distinct branded types (ADR-021), and cached tokens without a cache price give an unknown actual rather than a guess. Discovery (`GET /models`) only adds unselectable entries with unknown metadata, and models the provider no longer lists are excluded from selection.
+    - _Note (ADR-037, 2026-11-13):_ soot now ships a sourced price catalog (prices only, no model names or defaults) that fills in prices for configured models with none.
   - **DeepSeek (ADR-016):** any provider whose id or base URL host is DeepSeek is `restricted`. Restricted and `listed-only` providers are excluded from selection, and `createModelClient` / `discoverModelIds` refuse them before any network access.
     - _Note (ADR-035, 2026-11-12):_ the hold is lifted. There is no `restricted` reason or `providerRestriction` any more; only `listed-only` providers are excluded and refused. A DeepSeek provider configured like any other is selectable and callable.
   - **Credentials:** keys are read in one place, the adapter layer (`readApiKey` in `createModelClient` and `discoverModelIds`), from the variable a config names (`apiKeyEnv`, validated as a variable name). The key is passed to the SDK factory and kept privately only as a redaction pattern. Clients serialize to `{ref, adapter}`. A repo guard test fails if production code elsewhere reads a key variable. Explicit keys are always passed to SDK factories, so they never fall back to reading `process.env` themselves.
@@ -492,7 +493,7 @@ the old one.
 - **Decision:**
   - The hold is lifted. `providerRestriction`, the `ProviderRestriction` type, `ModelRegistry.restriction` and the `restricted` exclusion reason are removed; there is no vendor-specific restriction left. `isCallable` refuses only `kind: "listed-only"`, which is still never called.
   - DeepSeek may be configured like any other OpenAI-compatible provider: id `deepseek`, `kind: "openai-compatible"`, `baseURL: "https://api.deepseek.com/v1"`, `apiKeyEnv: "DEEPSEEK_API_KEY"`, with models such as `deepseek/deepseek-chat` described by the user (capabilities, pricing, context window). It is then selectable, routable, callable and usable as `decomposer.model`.
-  - soot still ships no default model and names no vendor in its default or demo config; `decomposer.model` is never set to DeepSeek (or any vendor) in committed config. The demo registry keeps its fictional providers.
+  - soot still ships no default model and names no vendor in its default or demo config; `decomposer.model` is never set to DeepSeek (or any vendor) in committed config. The demo registry keeps its fictional providers. _(ADR-037, 2026-11-13: the demo registry now uses real model ids with real sourced prices; still no default and no `decomposer.model`.)_
   - Demos and automated tests must not make live DeepSeek calls, or live calls to any provider. Tests that show DeepSeek is callable use a fake `fetch` and fake key values.
   - BYOK still applies (ADR-011, ADR-017): the key is the user's own, read only by `@soot/provider-adapters` from the environment soot was started with (ADR-022, ADR-034).
 - **Alternatives:** an explicit opt-in flag for DeepSeek (rejected: configuring the provider and its key is already an explicit opt-in, and a vendor flag would keep vendor-specific policy in code); keeping the restriction hook with no values (rejected: dead code).
@@ -534,3 +535,48 @@ the old one.
   only. A live `json_object` decomposition is a separate, explicit check and is not implied
   by this change.
 - **Reversible:** Yes, by removing the field (the default remains `json_schema`).
+
+## ADR-037: Sourced price catalog, a pricing-refresh prompt, and real model names in the demo
+
+- **Date:** 2026-11-13
+- **Status:** Accepted (Mochi, at Joseph's request). Implemented; verified with tests and mock
+  clients only. Amends ADR-022 ("soot ships no prices") and the demo-registry sentence of ADR-035.
+- **Context:** soot prices every task and the planning call as reported tokens × list price.
+  With no prices in the user's registry, live runs showed "price not set" everywhere. Joseph
+  asked for real prices for frontier and popular models, a prompt that AI agents run to look
+  up a model's current price whenever a new key/provider or model appears, and real model
+  names in the demo so the numbers are easy to relate to.
+- **Decision:**
+  - `@soot/model-registry` ships `PRICE_CATALOG` (`price-catalog.ts`): official list prices for
+    popular hosted models, each with the official pricing page URL (`source`) and the date
+    checked (`asOf`). It holds **prices only**: it adds no models, picks no default, and sets
+    no `decomposer.model`. A configured model with `pricing: null` gets the catalog price when
+    its provider's API host (from `baseURL`, else the SDK default for `anthropic` / `openai`)
+    and its exact model id match an entry. A configured price always wins. Proxies, resellers
+    and local runtimes do not match.
+  - Prices can carry a `longContext` tier (`aboveInputTokens` plus rates). A request whose
+    input exceeds it is billed at those rates for every token. Catalog entries can carry
+    `effectiveFrom` / `effectiveUntil` for announced price changes; the entry in effect on the
+    run's day (UTC) is used.
+  - No automatic network calls. Prices are updated by the **update-model-pricing** prompt
+    (`skills/update-model-pricing/SKILL.md`): official pages only, record source and date,
+    never guess, never touch secrets.
+  - Trigger: `soot run` (as a warning), `soot config` and `soot models` list callable models
+    that still have no price and point to that prompt. `soot config --json` has
+    `pricing: { catalogPriced, unpriced }`; `soot models --json` has `priceFrom` per model.
+  - The planning (decomposition) call is priced from its reported usage. The saved report's
+    `decomposition` gets `costUsd` (`null` when unpriced or usage is not reported) and
+    `priceBasis`. `soot status <run> --json` now includes `decomposition`.
+  - The demo registry (`examples/demo-app/models.json`) uses real model ids and their real
+    sourced prices (Claude Haiku 5.5, GPT-6.1 Terra, Claude Opus 5.5). Reliability priors stay
+    fictional and labeled. The mock agent is still a labeled test double with fictional usage;
+    no model is called.
+- **Alternatives:** scraping prices at runtime (rejected: network calls, fragile, unverifiable);
+  a built-in model list (rejected: ADR-019's thin registry, and it would imply defaults);
+  matching on model id alone (rejected: a proxy can bill differently); modeling DeepSeek's
+  off-peak discount (deferred: soot has no time-of-day pricing, so the catalog uses the peak
+  rate, an upper bound, and says so in `notes`).
+- **Consequences:** Live runs against priced vendor models show real costs. Catalog prices go
+  stale; the prompt, the `asOf` date, and dated entries keep that visible. Batch, flex and
+  priority tiers, regional uplifts and per-request tool fees are not modeled.
+- **Reversible:** Yes. Remove the catalog call in the CLI and prices come only from config again.

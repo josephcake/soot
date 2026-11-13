@@ -175,7 +175,7 @@ describe('provider health across `soot run` processes', () => {
       };
       const down = {
         outcome: 'provider-error',
-        error: { kind: 'unavailable', provider: 'demo-a' },
+        error: { kind: 'unavailable', provider: 'anthropic' },
       };
       writeFileSync(
         join(r.top, 'outage.json'),
@@ -191,20 +191,20 @@ describe('provider health across `soot run` processes', () => {
       const first = await soot(r, ['run', TEST_1, ...agent, '--run-id', 'h1', '--json']);
       const firstOut = JSON.parse(first.stdout) as { decisions: string[] };
       expect(firstOut.decisions).toContainEqual(
-        expect.stringMatching(/^- update-button-color #2 fallback demo-b\//),
+        expect.stringMatching(/^- update-button-color #2 fallback openai\//),
       );
 
       r.git('reset', '--quiet', '--hard', 'HEAD');
       const second = await soot(r, ['run', TEST_1, ...MOCK, '--run-id', 'h2']);
       expect(second.stderr).toMatch(
-        /soot: provider demo-a unavailable until \S+ \(outage, recorded earlier\); routing skips it until then/,
+        /soot: provider anthropic unavailable until \S+ \(outage, recorded earlier\); routing skips it until then/,
       );
       const report = JSON.parse(readFileSync(join(r.dataDir, 'reports', 'h2.json'), 'utf8')) as {
         decisions: string[];
       };
       const assigns = report.decisions.filter((d) => d.includes(' #1 assign '));
       expect(assigns).toHaveLength(2);
-      for (const d of assigns) expect(d).toMatch(/ assign demo-b\//);
+      for (const d of assigns) expect(d).toMatch(/ assign openai\//);
     },
     SLOW,
   );
@@ -249,9 +249,9 @@ describe('routing decisions in the audit log; routed estimates on cost records',
       const routing = audit.filter((e) => e.type === 'routing-decision');
       expect(routing.map((e) => [e.taskId, e.detail.decision, e.detail.model])).toEqual(
         expect.arrayContaining([
-          ['update-page-title', 'assign', 'demo-a/demo-small'],
-          ['update-button-color', 'assign', 'demo-a/demo-small'],
-          ['update-page-title', 'accept', 'demo-a/demo-small'],
+          ['update-page-title', 'assign', 'anthropic/claude-haiku-5-5'],
+          ['update-button-color', 'assign', 'anthropic/claude-haiku-5-5'],
+          ['update-page-title', 'accept', 'anthropic/claude-haiku-5-5'],
         ]),
       );
       expect(String(routing[0]?.detail.reason)).toMatch(/^Balanced: lowest estimated cost/);
@@ -280,8 +280,8 @@ describe('routing decisions in the audit log; routed estimates on cost records',
         {
           source: 'router',
           attempt: 1,
-          model: 'demo-a/demo-small',
-          costUsd: 0.000875,
+          model: 'anthropic/claude-haiku-5-5',
+          costUsd: 0.00035,
           routeApplied: true,
         },
       ]);
@@ -293,7 +293,8 @@ describe('routing decisions in the audit log; routed estimates on cost records',
           costUsd: null,
         }),
       ]);
-      expect(cost.costSummary.routed).toMatchObject({ attempts: 2, costUsd: 0.001875 });
+      expect(cost.costSummary.routed).toMatchObject({ attempts: 2 });
+      expect(cost.costSummary.routed.costUsd).toBeCloseTo(0.00075, 10);
       expect(cost.costSummary.actual.costUsd).toBeNull(); // one attempt is unpriced: total unknown
       const saved = JSON.parse(readFileSync(join(r.dataDir, 'reports', 'au1.json'), 'utf8')) as {
         costRecords: unknown;

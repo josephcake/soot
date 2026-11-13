@@ -32,7 +32,11 @@ import {
 import {
   ModelRegistry,
   ProviderHealth,
+  actualCostFromUsage,
+  applyPriceCatalog,
   loadRegistryConfigFile,
+  unpricedModels,
+  unpricedWarning,
   type ModelEntry,
 } from '@soot/model-registry';
 import { historyFromAttempts, resolvePolicy } from '@soot/model-router';
@@ -50,6 +54,8 @@ import {
   createDecomposer,
   createPromptIntake,
   type Decomposition,
+  type DecompositionSource,
+  type ModelDecompositionSource,
   type DecompositionFixture,
 } from '@soot/planner';
 import { CONFIG_FILE, insideRepo, loadProjectConfig, type LoadedConfig } from './config.js';
@@ -103,6 +109,25 @@ export interface EngineOptions {
   readonly modelEnv?: Readonly<Record<string, string | undefined>>;
   /** Builds the decomposer model's client. Default `createModelClient`; tests pass a mock. */
   readonly modelClientFactory?: ModelClientFactory;
+  /** Day (YYYY-MM-DD) used to pick dated catalog prices (ADR-037). Default: today (UTC). */
+  readonly priceDate?: string;
+}
+
+/** A loaded registry with soot's catalog prices filled in for unpriced models (ADR-037). */
+interface PricedRegistry {
+  readonly registry: ModelRegistry;
+  /** Refs priced from soot's catalog. */
+  readonly catalogPriced: readonly string[];
+  /** Callable refs with no price at all. */
+  readonly unpriced: readonly string[];
+}
+
+function loadPricedRegistry(path: string, today?: string): PricedRegistry {
+  const { config, catalogPriced } = applyPriceCatalog(
+    loadRegistryConfigFile(path),
+    today === undefined ? {} : { today },
+  );
+  return { registry: new ModelRegistry(config), catalogPriced, unpriced: unpricedModels(config) };
 }
 
 /** Where the state directory came from, for `debug` lines. */
@@ -263,10 +288,12 @@ export class SootEngine implements OrchestrationService {
     if (!RUN_ID.test(runId)) return fail(`invalid run id: ${runId}`);
     let cfg: LoadedConfig;
     let registry: ModelRegistry;
+    let priced: PricedRegistry;
     let fixtures: DecompositionFixture[];
     try {
       cfg = this.#configFor(repoRoot);
-      registry = new ModelRegistry(loadRegistryConfigFile(cfg.modelsPath));
+      priced = loadPricedRegistry(cfg.modelsPath, this.#o.priceDate);
+      registry = priced.registry;
       fixtures = loadFixtures(cfg.fixturesPath);
     } catch (error) {
       return fail((error as Error).message);
@@ -290,6 +317,9 @@ export class SootEngine implements OrchestrationService {
     if (typeof runner === 'string') return fail(runner);
     const agentLabel = this.#agentLabel(cfg);
     const isAcp = this.#o.agent.kind === 'acp';
+
+    const unpricedNote = unpricedWarning(priced.unpriced);
+    if (unpricedNote !== null) log.warn(`soot: ${unpricedNote}`);
 
     const intake = createPromptIntake({ prompt: request.prompt });
     // Fixtures first; the configured decomposer model only for prompts no fixture matches, and
@@ -338,6 +368,7 @@ export class SootEngine implements OrchestrationService {
     }
     const { graph } = decomposition;
     const source = decomposition.decomposer;
+    const planning = planningCost(registry, source);
     const fixtureId = source.kind === 'fixture' ? source.fixtureId : null;
     const planLabel =
       source.kind === 'fixture'
@@ -467,7 +498,7 @@ export class SootEngine implements OrchestrationService {
       const saved = {
         runId,
         fixtureId,
-        decomposition: json(source),
+        decomposition: json({ ...source, ...planning }),
         agent: runner.kind,
         agentLabel,
         policy: cfg.config.policy,
@@ -486,6 +517,9 @@ export class SootEngine implements OrchestrationService {
       const text = [
         `soot run ${runId} (${report.status.toUpperCase()})`,
         `Plan: ${source.kind === 'fixture' ? `${planLabel} (no model-backed decomposition)` : planLabel}; agent: ${agentLabel}; policy: ${cfg.config.policy}; routing history: ${String(outcomes.length)} stored outcomes; peak concurrency ${String(result.run.maxObservedConcurrency)}`,
+        ...(source.kind === 'model'
+          ? [`Planning call: ${describePlanningCost(source, planning)}`]
+          : []),
         'Decisions:',
         ...decisions,
         ...(isAcp
@@ -537,6 +571,7 @@ export class SootEngine implements OrchestrationService {
   #savedReport(runId: string): {
     report: ConsolidatedReport;
     decisions: string[];
+    decomposition?: JsonValue;
     agent?: string;
     agentLabel?: string;
   } | null {
@@ -545,6 +580,7 @@ export class SootEngine implements OrchestrationService {
     return JSON.parse(readFileSync(path, 'utf8')) as {
       report: ConsolidatedReport;
       decisions: string[];
+      decomposition?: JsonValue;
       agent?: string;
       agentLabel?: string;
     };
@@ -642,6 +678,9 @@ export class SootEngine implements OrchestrationService {
           tasks,
           events: this.#events(runId),
           reportStatus: saved?.report.status ?? null,
+          // How the prompt was planned (saved report), with the planning call's tokens and
+          // cost for model decompositions (ADR-037); null until the run has a report.
+          decomposition: saved?.decomposition ?? null,
           // The runner that ran every task (saved report); null until the run has a report.
           agent: saved?.agent ?? null,
           agentLabel: saved?.agentLabel ?? null,
@@ -707,9 +746,11 @@ export class SootEngine implements OrchestrationService {
   models(): Promise<CommandOutput> {
     let cfg: LoadedConfig;
     let registry: ModelRegistry;
+    let priced: PricedRegistry;
     try {
       cfg = this.#configFor(this.#o.cwd);
-      registry = new ModelRegistry(loadRegistryConfigFile(cfg.modelsPath));
+      priced = loadPricedRegistry(cfg.modelsPath, this.#o.priceDate);
+      registry = priced.registry;
     } catch (error) {
       return Promise.resolve(fail((error as Error).message));
     }
@@ -729,9 +770,17 @@ export class SootEngine implements OrchestrationService {
             : {
                 inputPerMTokUsd: m.pricing.inputPerMTokUsd,
                 outputPerMTokUsd: m.pricing.outputPerMTokUsd,
+                cacheReadPerMTokUsd: m.pricing.cacheReadPerMTokUsd,
                 source: m.pricing.source,
                 asOf: m.pricing.asOf,
               },
+        // Where the price came from: your config, soot's price catalog (ADR-037), or nowhere.
+        priceFrom:
+          m.pricing === null
+            ? null
+            : priced.catalogPriced.includes(m.ref)
+              ? ('catalog' as const)
+              : ('config' as const),
         contextWindow: m.contextWindow,
         reliabilityPrior: json(m.reliability),
       };
@@ -742,17 +791,22 @@ export class SootEngine implements OrchestrationService {
       `Models from ${cfg.modelsPath} (policy ${cfg.config.policy}; thresholds low ${String(policy.thresholds.low)} / medium ${String(policy.thresholds.medium)} / high ${String(policy.thresholds.high)})`,
       ...rows.map(
         (r) =>
-          `- ${r.ref} (${r.kind ?? '?'}) ${r.eligible ? 'eligible' : `excluded: ${r.excludedBecause.join(', ')}`}; price in/out per MTok ${usd(r.pricing?.inputPerMTokUsd)}/${usd(r.pricing?.outputPerMTokUsd)}; context ${r.contextWindow === null ? 'unknown' : String(r.contextWindow)}`,
+          `- ${r.ref} (${r.kind ?? '?'}) ${r.eligible ? 'eligible' : `excluded: ${r.excludedBecause.join(', ')}`}; price in/out per MTok ${r.pricing === null ? 'price not set' : `${usd(r.pricing.inputPerMTokUsd)}/${usd(r.pricing.outputPerMTokUsd)} (${r.priceFrom === 'catalog' ? 'soot catalog' : 'your config'}, ${r.pricing.asOf})`}; context ${r.contextWindow === null ? 'unknown' : String(r.contextWindow)}`,
       ),
-      'Prices and reliability come from your config (with their sources); soot ships none.',
+      "Reliability comes from your config. Prices come from your config, else from soot's sourced price catalog for the vendor's own API.",
+      ...(unpricedWarning(priced.unpriced) === null
+        ? []
+        : [unpricedWarning(priced.unpriced) ?? '']),
     ].join('\n');
     return Promise.resolve({
       ok: true,
       text,
-      data: json({ modelsFile: cfg.modelsPath, policy: cfg.config.policy, models: rows }) as Record<
-        string,
-        JsonValue
-      >,
+      data: json({
+        modelsFile: cfg.modelsPath,
+        policy: cfg.config.policy,
+        models: rows,
+        unpricedModels: [...priced.unpriced],
+      }) as Record<string, JsonValue>,
     });
   }
 
@@ -790,9 +844,11 @@ export class SootEngine implements OrchestrationService {
     const repoRoot = resolve(this.#o.cwd, repo);
     let cfg: LoadedConfig;
     let registry: ModelRegistry;
+    let priced: PricedRegistry;
     try {
       cfg = this.#configFor(repoRoot);
-      registry = new ModelRegistry(loadRegistryConfigFile(cfg.modelsPath));
+      priced = loadPricedRegistry(cfg.modelsPath, this.#o.priceDate);
+      registry = priced.registry;
     } catch (error) {
       return fail((error as Error).message, { dataDir: this.#o.dataDir });
     }
@@ -826,11 +882,17 @@ export class SootEngine implements OrchestrationService {
       allowedExecutables: [...cfg.policy.allowedExecutables],
       providers: json(providers),
       models: registry.models().length,
+      pricing: {
+        catalogPriced: [...priced.catalogPriced],
+        unpriced: [...priced.unpriced],
+      },
     };
+    const pricingNote = unpricedWarning(priced.unpriced);
     const text = [
       `Config: ${cfg.path}`,
       `State dir: ${this.#o.dataDir}`,
       `Models: ${cfg.modelsPath} (${String(data.models)} models)`,
+      `Prices: ${String(registry.models().filter((m) => m.pricing !== null).length)} of ${String(data.models)} priced${priced.catalogPriced.length > 0 ? ` (${String(priced.catalogPriced.length)} from soot's price catalog)` : ''}${pricingNote === null ? '' : `. ${pricingNote}`}`,
       `Policy: ${cfg.config.policy}; concurrency ${String(cfg.config.concurrency)}`,
       `Attempt timeout: ${String(data.effectiveAttemptTimeoutMs)} ms${cfg.config.attemptTimeoutMs === undefined ? ' (default; set "attemptTimeoutMs" to change)' : ''}`,
       `Agent: ${this.#o.agent.kind === 'none' ? 'none (run refuses: pick --agent mock or --agent acp)' : this.#agentLabel(cfg)}`,
@@ -853,4 +915,41 @@ export class SootEngine implements OrchestrationService {
     ].join('\n');
     return { ok: true, text, data: json(data) as Record<string, JsonValue> };
   }
+}
+
+/** Cost fields put on a saved model decomposition (ADR-037). Fixtures cost nothing and get none. */
+interface PlanningCost {
+  /** USD from reported usage × list price; `null` when unpriced or usage was not reported. */
+  readonly costUsd?: number | null;
+  /** Which list price was used: `{ ref, source, asOf }`, or `null` when the model has no price. */
+  readonly priceBasis?: {
+    readonly ref: string;
+    readonly source: string;
+    readonly asOf: string;
+  } | null;
+}
+
+/** Price the planning (decomposition) call from its reported usage and the model's list price. */
+export function planningCost(registry: ModelRegistry, source: DecompositionSource): PlanningCost {
+  if (source.kind !== 'model') return {};
+  const model = registry.get(source.modelRef);
+  if (model === undefined) return { costUsd: null, priceBasis: null };
+  const { costUsd, basis } = actualCostFromUsage(model, {
+    inputTokens: source.usage.inputTokens,
+    outputTokens: source.usage.outputTokens,
+    cacheReadTokens: null,
+    cacheWriteTokens: null,
+  });
+  return { costUsd: costUsd === null ? null : Number(costUsd), priceBasis: basis };
+}
+
+function describePlanningCost(source: ModelDecompositionSource, cost: PlanningCost): string {
+  const tokens = (n: number | null) => (n === null ? 'not reported' : String(n));
+  const usd =
+    cost.costUsd === null || cost.costUsd === undefined
+      ? cost.priceBasis === null || cost.priceBasis === undefined
+        ? 'price not set'
+        : 'cost unknown (usage not reported)'
+      : `$${cost.costUsd.toFixed(6)}`;
+  return `${source.modelRef}, ${tokens(source.usage.inputTokens)} in / ${tokens(source.usage.outputTokens)} out, ${usd}`;
 }

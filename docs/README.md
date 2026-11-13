@@ -14,6 +14,15 @@ Index of every document in this tree. Start here, or at the root [`README.md`](.
 | [Model routing](guides/model-routing.md)               | Per-task routing, policies, and how explanations are produced.                                                                                        |
 | [Security](guides/security.md)                         | What soot enforces today, known limits, and how credentials are handled.                                                                              |
 
+## Agent prompts
+
+Skills (prompts) for AI agents working with soot. They live in [`skills/`](../skills).
+
+| Prompt                                                              | Description                                                                                                                            |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| [universal-orchestrator](../skills/universal-orchestrator/SKILL.md) | Hand a multi-part coding request to soot and relay its report.                                                                         |
+| [update-model-pricing](../skills/update-model-pricing/SKILL.md)     | Run when a provider, key, or new model id is added: look up the official price, record it with source and date, never guess (ADR-037). |
+
 ## Project tracking
 
 | Document                                      | Description                                              |

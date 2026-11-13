@@ -11,7 +11,10 @@ declared profile, your registry, and soot's own record of past outcomes.
    migrations are _high-risk_ and use the `high` threshold. Every rule that fires is recorded.
 2. **Filter models.** Required capabilities (unknown counts as missing), context window, max
    output, availability, price, cost caps, and listed-only providers (never called).
-3. **Estimate cost** from your registry's sourced prices (`EstimatedUsd`, never an actual).
+3. **Estimate cost** from your registry's sourced prices, or soot's sourced price catalog for
+   models you left unpriced (`EstimatedUsd`, never an actual; see
+   [prices](configuration.md#prices)). A model with no price has an unknown estimate; run the
+   [update-model-pricing prompt](../../skills/update-model-pricing/SKILL.md) to add one.
 4. **Estimate reliability** for the task's tier: your prior blended with history,
    (prior·5 + successes) / (5 + attempts). Without a prior, history counts after 3 attempts.
 5. **Pick by policy:**

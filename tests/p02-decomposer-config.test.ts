@@ -56,8 +56,8 @@ const noteTask: Task = {
 
 const answering = (answer: unknown) =>
   createMockModelClient({
-    provider: 'demo-a',
-    modelId: 'demo-small',
+    provider: 'anthropic',
+    modelId: 'claude-haiku-5-5',
     turns: [{ text: JSON.stringify(answer), usage: { inputTokens: 700, outputTokens: 150 } }],
   });
 
@@ -104,21 +104,24 @@ describe('soot.config.json "decomposer" absent (default)', () => {
 
 describe('"decomposer" configured but not usable: no client, no network, clear failure', () => {
   it('missing key: soot config says not usable; unknown prompts fail naming the setting and the variable', async () => {
-    const r = (repo = demoWithDecomposer('demo-a/demo-small'));
+    const r = (repo = demoWithDecomposer('anthropic/claude-haiku-5-5'));
     const text = await cli(r, ['config']);
     expect(text.stdout).toMatch(
-      /Decomposition: fixtures only: demo-a\/demo-small is configured but not usable \(.*ANTHROPIC_API_KEY is not set/,
+      /Decomposition: fixtures only: anthropic\/claude-haiku-5-5 is configured but not usable \(.*ANTHROPIC_API_KEY is not set/,
     );
     const asJson = JSON.parse((await cli(r, ['config', '--json'])).stdout) as {
       decomposer: { model: string; status: string; reason: string };
     };
-    expect(asJson.decomposer).toMatchObject({ model: 'demo-a/demo-small', status: 'unusable' });
+    expect(asJson.decomposer).toMatchObject({
+      model: 'anthropic/claude-haiku-5-5',
+      status: 'unusable',
+    });
     expect(asJson.decomposer.reason).toMatch(/ANTHROPIC_API_KEY is not set/);
 
     const unknown = await cli(r, ['run', UNKNOWN, ...MOCK]);
     expect(unknown.code).toBe(1);
     expect(unknown.stderr).toMatch(
-      /the decomposer model demo-a\/demo-small configured in soot\.config\.json is not usable: .*ANTHROPIC_API_KEY is not set.*No model was called/,
+      /the decomposer model anthropic\/claude-haiku-5-5 configured in soot\.config\.json is not usable: .*ANTHROPIC_API_KEY is not set.*No model was called/,
     );
     expect(r.git('branch', '--list', 'soot/*')).toBe('');
   });
@@ -126,7 +129,7 @@ describe('"decomposer" configured but not usable: no client, no network, clear f
   it(
     'missing key: recorded prompts still run from fixtures',
     async () => {
-      const r = (repo = demoWithDecomposer('demo-a/demo-small'));
+      const r = (repo = demoWithDecomposer('anthropic/claude-haiku-5-5'));
       const run = await cli(r, ['run', TEST_1, ...MOCK, '--run-id', 'nokey', '--json']);
       const out = JSON.parse(run.stdout) as { fixtureId: string; decomposition: unknown };
       expect(out.fixtureId).toBe('build-spec-17-test-1');
@@ -161,15 +164,15 @@ describe('"decomposer" configured but not usable: no client, no network, clear f
 
 describe('"decomposer" configured and usable (mock clients only)', () => {
   it('soot config says usable and never prints the key value', async () => {
-    const r = (repo = demoWithDecomposer('demo-a/demo-small'));
+    const r = (repo = demoWithDecomposer('anthropic/claude-haiku-5-5'));
     r.env.ANTHROPIC_API_KEY = FAKE_KEY;
     const text = await cli(r, ['config']);
     expect(text.stdout).toMatch(
-      /Decomposition: fixtures first, then demo-a\/demo-small for prompts with no fixture \(client can be built; not called by this command; verified with mock clients only\)/,
+      /Decomposition: fixtures first, then anthropic\/claude-haiku-5-5 for prompts with no fixture \(client can be built; not called by this command; verified with mock clients only\)/,
     );
     const asJson = await cli(r, ['config', '--json']);
     expect(JSON.parse(asJson.stdout)).toMatchObject({
-      decomposer: { model: 'demo-a/demo-small', status: 'usable', reason: null },
+      decomposer: { model: 'anthropic/claude-haiku-5-5', status: 'usable', reason: null },
     });
     expect(text.stdout + text.stderr + asJson.stdout + asJson.stderr).not.toContain(FAKE_KEY);
   });
@@ -177,7 +180,7 @@ describe('"decomposer" configured and usable (mock clients only)', () => {
   it(
     'recorded prompts: zero model calls (real client built from the fake key, never called)',
     async () => {
-      const r = (repo = demoWithDecomposer('demo-a/demo-small'));
+      const r = (repo = demoWithDecomposer('anthropic/claude-haiku-5-5'));
       r.env.ANTHROPIC_API_KEY = FAKE_KEY;
       const run = await cli(r, ['run', TEST_1, ...MOCK, '--run-id', 'rec', '--json']);
       expect(JSON.parse(run.stdout)).toMatchObject({ fixtureId: 'build-spec-17-test-1' });
@@ -197,7 +200,7 @@ describe('"decomposer" configured and usable (mock clients only)', () => {
   it(
     'a prompt with no fixture is decomposed by the configured model, validated, and run',
     async () => {
-      const r = (repo = demoWithDecomposer('demo-a/demo-small'));
+      const r = (repo = demoWithDecomposer('anthropic/claude-haiku-5-5'));
       writeFileSync(
         join(r.top, 'note-agent.json'),
         JSON.stringify({
@@ -213,34 +216,122 @@ describe('"decomposer" configured and usable (mock clients only)', () => {
       });
       expect(out.ok).toBe(true);
       expect(factory).toHaveBeenCalledTimes(1);
-      expect(factory.mock.calls[0]?.[1].ref).toBe('demo-a/demo-small');
+      expect(factory.mock.calls[0]?.[1].ref).toBe('anthropic/claude-haiku-5-5');
       expect(mock.calls()).toBe(1);
       expect(out.data).toMatchObject({
         fixtureId: null,
         decomposition: {
           kind: 'model',
-          modelRef: 'demo-a/demo-small',
+          modelRef: 'anthropic/claude-haiku-5-5',
           attempts: 1,
           usage: { inputTokens: 700, outputTokens: 150 },
         },
       });
       expect(out.text).toMatch(
-        /Plan: model demo-a\/demo-small \(validated by soot; 1 model call\(s\)\)/,
+        /Plan: model anthropic\/claude-haiku-5-5 \(validated by soot; 1 model call\(s\)\)/,
       );
       const report = out.data.report as { tasks: { taskId: string; verdict: string }[] };
       expect(report.tasks).toMatchObject([{ taskId: 'add-release-note', verdict: 'verified' }]);
+
+      // The planning call is priced from its reported usage × the model's list price (ADR-037):
+      // 700 in × $0.10/M + 150 out × $0.50/M.
+      const planned = (out.data.decomposition as { costUsd: number }).costUsd;
+      expect(planned).toBeCloseTo(0.000145, 12);
+      expect(out.data.decomposition).toMatchObject({
+        priceBasis: { ref: 'anthropic/claude-haiku-5-5', asOf: '2026-11-13' },
+      });
+      expect(out.text).toMatch(
+        /Planning call: anthropic\/claude-haiku-5-5, 700 in \/ 150 out, \$0\.000145/,
+      );
+      // `soot status <run>` carries the saved decomposition, so views can show the planning row.
+      const status = await engineFor(r).status('model');
+      expect(status.data.decomposition).toMatchObject({
+        kind: 'model',
+        modelRef: 'anthropic/claude-haiku-5-5',
+        usage: { inputTokens: 700, outputTokens: 150 },
+      });
+      expect((status.data.decomposition as { costUsd: number }).costUsd).toBeCloseTo(0.000145, 12);
+    },
+    SLOW,
+  );
+
+  it(
+    'an unpriced decomposer model: planning cost is null, and run and config point to the pricing prompt',
+    async () => {
+      const r = (repo = demoWithDecomposer('anthropic/claude-haiku-5-5'));
+      const models = JSON.parse(r.read('models.json')) as {
+        models: { modelId: string; pricing?: unknown }[];
+      };
+      for (const m of models.models) if (m.modelId === 'claude-haiku-5-5') delete m.pricing;
+      r.write('models.json', `${JSON.stringify(models, null, 2)}\n`);
+      r.commitAll('leave haiku unpriced');
+      // Unpriced in config, but the catalog has the vendor's own price for it.
+      const config = await cli(r, ['config', '--json']);
+      expect(JSON.parse(config.stdout)).toMatchObject({
+        pricing: { catalogPriced: ['anthropic/claude-haiku-5-5'], unpriced: [] },
+      });
+      // Behind a proxy the vendor price may not apply, so the catalog does not price it.
+      const proxied = JSON.parse(r.read('models.json')) as {
+        providers: { id: string; baseURL?: string }[];
+      };
+      for (const p of proxied.providers)
+        if (p.id === 'anthropic') p.baseURL = 'https://llm-proxy.example.com/v1';
+      r.write('models.json', `${JSON.stringify(proxied, null, 2)}\n`);
+      r.commitAll('route anthropic through a proxy');
+      expect((await cli(r, ['config'])).stdout).toMatch(
+        /Prices: 2 of 3 priced\. 1 model\(s\) have no price \(anthropic\/claude-haiku-5-5\)/,
+      );
+      writeFileSync(
+        join(r.top, 'note-agent.json'),
+        JSON.stringify({
+          version: 1,
+          tasks: { 'add-release-note': { writes: { 'docs/release-note.md': 'Release note.\n' } } },
+        }),
+      );
+      const warnings: string[] = [];
+      const engine = new SootEngine({
+        cwd: r.root,
+        dataDir: r.dataDir,
+        agent: { kind: 'mock', script: '../note-agent.json' },
+        approvals: unattendedApprovals(),
+        gitEnv: r.env,
+        modelEnv: r.env,
+        modelClientFactory: () => answering({ tasks: [noteTask] }),
+        log: {
+          level: 'info',
+          enabled: () => true,
+          debug: () => undefined,
+          info: () => undefined,
+          warn: (line: string) => warnings.push(line),
+          error: () => undefined,
+        },
+      });
+      const out = await engine.run({ prompt: UNKNOWN, runId: 'unpriced' });
+      expect(out.ok).toBe(true);
+      expect(out.data.decomposition).toMatchObject({ costUsd: null, priceBasis: null });
+      expect(out.text).toMatch(
+        /Planning call: anthropic\/claude-haiku-5-5, 700 in \/ 150 out, price not set/,
+      );
+      expect(warnings.join('\n')).toMatch(
+        /1 model\(s\) have no price \(anthropic\/claude-haiku-5-5\).*update-model-pricing prompt \(skills\/update-model-pricing\/SKILL\.md\)/,
+      );
+      expect((await engine.status('unpriced')).data.decomposition).toMatchObject({
+        costUsd: null,
+      });
     },
     SLOW,
   );
 
   it('an invalid model answer is reported, with no fallback and nothing run', async () => {
-    const r = (repo = demoWithDecomposer('demo-a/demo-small'));
+    const r = (repo = demoWithDecomposer('anthropic/claude-haiku-5-5'));
     const mock = answering({ tasks: [{ ...noteTask, files: { read: [], write: ['../escape'] } }] });
     const out = await engineFor(r, { factory: () => mock }).run({ prompt: UNKNOWN });
     expect(out.ok).toBe(false);
-    expect(out.text).toMatch(/Model decomposition by demo-a\/demo-small failed \(invalid-output\)/);
+    expect(out.text).toMatch(
+      /Model decomposition by anthropic\/claude-haiku-5-5 failed \(invalid-output\)/,
+    );
     expect(out.data).toMatchObject({
-      decomposerModel: 'demo-a/demo-small',
+      decomposerModel: 'anthropic/claude-haiku-5-5',
       decompositionFailure: 'invalid-output',
     });
     expect(mock.calls()).toBe(1);
@@ -248,10 +339,10 @@ describe('"decomposer" configured and usable (mock clients only)', () => {
   });
 
   it('a failing model call is reported as such', async () => {
-    const r = (repo = demoWithDecomposer('demo-a/demo-small'));
+    const r = (repo = demoWithDecomposer('anthropic/claude-haiku-5-5'));
     const mock = createMockModelClient({
-      provider: 'demo-a',
-      modelId: 'demo-small',
+      provider: 'anthropic',
+      modelId: 'claude-haiku-5-5',
       turns: [{ error: { status: 401, message: 'mock: unauthorized' } }],
     });
     const out = await engineFor(r, { factory: () => mock }).run({ prompt: UNKNOWN });

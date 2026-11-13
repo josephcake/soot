@@ -150,7 +150,7 @@ if (cmd === 'run') {
         taskId: 'update-page-title',
         state: running ? 'running' : 'cancelled',
         dependsOn: [],
-        models: ['demo-a/demo-small'],
+        models: ['anthropic/claude-haiku-5-5'],
         attemptDetails: [],
         verdict: running ? null : 'not-run',
         complete: false,

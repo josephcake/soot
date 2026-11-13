@@ -224,21 +224,26 @@ describe('soot run --agent acp with the mock ACP agent (spec §17 Test 1 prompt)
           'update-button-color': { writes: demoWrites('update-button-color') },
         },
         {},
-        { models: { current: 'demo-large', values: ['demo-small', 'demo-mid', 'demo-large'] } },
+        {
+          models: {
+            current: 'claude-opus-5-5',
+            values: ['claude-haiku-5-5', 'gpt-6.1-terra', 'claude-opus-5-5'],
+          },
+        },
       );
       const run = await cli(r, ['run', TEST_1, '--agent', 'acp', '--run-id', 'route1', '--json']);
       const out = parse(run.stdout);
       expect(out.acpRoutes.map((x) => [x.taskId, x.routed, x.applied]).sort()).toEqual([
-        ['update-button-color', 'demo-a/demo-small', true],
-        ['update-page-title', 'demo-a/demo-small', true],
+        ['update-button-color', 'anthropic/claude-haiku-5-5', true],
+        ['update-page-title', 'anthropic/claude-haiku-5-5', true],
       ]);
       // The agent really ran each prompt on the model soot routed.
       const prompts = acp.log().filter((e) => e.method === 'session/prompt');
-      expect(prompts.map((e) => e.model)).toEqual(['demo-small', 'demo-small']);
+      expect(prompts.map((e) => e.model)).toEqual(['claude-haiku-5-5', 'claude-haiku-5-5']);
       const sets = acp.log().filter((e) => e.method === 'session/set_config_option');
       expect(sets.map((e) => [e.configId, e.value])).toEqual([
-        ['model', 'demo-small'],
-        ['model', 'demo-small'],
+        ['model', 'claude-haiku-5-5'],
+        ['model', 'claude-haiku-5-5'],
       ]);
       // Applied routes count as routing history: the next run sees them.
       const second = await cli(r, [
@@ -276,9 +281,9 @@ describe('soot run --agent acp with the mock ACP agent (spec §17 Test 1 prompt)
         readFileSync(join(r.dataDir, 'reports', 'route3.json'), 'utf8'),
       ) as RunJson;
       expect(saved.acpRoutes).toHaveLength(2);
-      expect(saved.acpRoutes.every((x) => !x.applied && x.routed === 'demo-a/demo-small')).toBe(
-        true,
-      );
+      expect(
+        saved.acpRoutes.every((x) => !x.applied && x.routed === 'anthropic/claude-haiku-5-5'),
+      ).toBe(true);
       const second = await cli(r, [
         'run',
         TEST_1,

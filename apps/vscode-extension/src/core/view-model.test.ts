@@ -15,7 +15,7 @@ const status = {
       complexity: 'medium',
       dependsOn: [],
       state: 'succeeded',
-      models: ['demo-a/demo-small', 'demo-b/demo-mid'],
+      models: ['anthropic/claude-haiku-5-5', 'openai/gpt-6.1-terra'],
       verdict: 'verified',
       complete: true,
       reason: '3 checks passed',
@@ -23,7 +23,7 @@ const status = {
         {
           attempt: 1,
           state: 'retried',
-          model: 'demo-a/demo-small',
+          model: 'anthropic/claude-haiku-5-5',
           escalationLevel: 0,
           estimatedCostUsd: 0.001,
           actualCostUsd: 0.0009,
@@ -33,7 +33,7 @@ const status = {
         {
           attempt: 2,
           state: 'succeeded',
-          model: 'demo-b/demo-mid',
+          model: 'openai/gpt-6.1-terra',
           escalationLevel: 1,
           estimatedCostUsd: 0.002,
           actualCostUsd: 0.0018,
@@ -47,7 +47,7 @@ const status = {
       complexity: 'low',
       dependsOn: ['implement'],
       state: 'running',
-      models: ['demo-a/demo-small'],
+      models: ['anthropic/claude-haiku-5-5'],
       attemptDetails: [],
     },
     {
@@ -64,14 +64,14 @@ const status = {
       taskId: 'implement',
       attempt: 1,
       type: 'assign',
-      model: 'demo-a/demo-small',
+      model: 'anthropic/claude-haiku-5-5',
       reason: 'cheapest',
     },
     {
       taskId: 'implement',
       attempt: 2,
       type: 'escalate',
-      model: 'demo-b/demo-mid',
+      model: 'openai/gpt-6.1-terra',
       reason: 'validation failed',
     },
   ],
@@ -125,14 +125,14 @@ describe('renderBoard: stacked text blocks, no dashboard', () => {
   it('shows the graph by layer, active agents, escalations, failures and cost', () => {
     const board = renderBoard(toRunView(status, cost));
     expect(board).toContain('== Task graph ==');
-    expect(board).toMatch(/L0 \[■ implement · demo-small→demo-mid · 2x\]/);
+    expect(board).toMatch(/L0 \[■ implement · claude-haiku-5-5→gpt-6.1-terra · 2x\]/);
     expect(board).toMatch(/L1 \[▣ tests/);
     expect(board).toMatch(/L2 \[□ review/);
     expect(board).toMatch(/└▶ review ← implement, tests/);
-    expect(board).toMatch(/== Active agents ==\n.*tests.*demo-small/);
-    expect(board).toMatch(/ESCALATE implement #2 → demo-mid: validation failed/);
+    expect(board).toMatch(/== Active agents ==\n.*tests.*claude-haiku-5-5/);
+    expect(board).toMatch(/ESCALATE implement #2 → gpt-6.1-terra: validation failed/);
     expect(board).toMatch(/✕ implement #1 retried \(validation-failed\): acceptance test failed/);
-    expect(board).toMatch(/▣ tests on demo-small \(starting\)/);
+    expect(board).toMatch(/▣ tests on claude-haiku-5-5 \(starting\)/);
     expect(board).toMatch(/▣ tests: running/);
     expect(board).toContain('estimate $0.003000 | actual $0.002700');
   });

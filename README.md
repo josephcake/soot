@@ -83,7 +83,9 @@ These are recorded in [`docs/decisions/DECISIONS.md`](docs/decisions/DECISIONS.m
 Anthropic, OpenAI, and generic OpenAI-compatible endpoints (Ollama, LM Studio) through the
 Vercel AI SDK in-process (ADR-017, ADR-019, ADR-022). They are tested against mocked HTTP. **No
 real provider has been called yet**: that needs your own keys (M2-07, blocked). soot ships no
-built-in model list; you configure models yourself (`@soot/model-registry`). DeepSeek is
+built-in model list; you configure models yourself (`@soot/model-registry`). Prices for
+popular models come from a sourced catalog of official list prices (ADR-037); refresh them
+with the [update-model-pricing prompt](skills/update-model-pricing/SKILL.md). DeepSeek is
 optional and user-configured like any OpenAI-compatible provider (ADR-035 lifted the ADR-016
 hold); it is not a default. See
 [`packages/provider-adapters/README.md`](packages/provider-adapters/README.md).

@@ -135,7 +135,7 @@ describe('soot binary', () => {
           /Total actual: \$0\.001630 over 2 attempts/,
         );
         const models = await client.callTool({ name: 'soot_models', arguments: {} });
-        expect((models.content as { text: string }[])[0]?.text).toMatch(/demo-b\/demo-mid/);
+        expect((models.content as { text: string }[])[0]?.text).toMatch(/openai\/gpt-6.1-terra/);
         const stop = await client.callTool({ name: 'soot_stop', arguments: { runId: 'mcp1' } });
         expect(stop.isError).toBe(true);
       } finally {

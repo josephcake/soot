@@ -51,7 +51,9 @@ soot run "Change the page title to HELLO WORLD and update the primary button to 
 What to expect:
 
 - Two tasks run at the same time in separate worktrees, each routed to the cheapest demo model
-  that clears the reliability threshold.
+  that clears the reliability threshold. The demo registry names real models (Claude Haiku 5.5,
+  GPT-6.1 Terra, Claude Opus 5.5) with their real list prices, so routed estimates are
+  realistic. No model is called: the mock agent is a test double and its usage is fictional.
 - soot runs `node --test`, the lint script, and each task's acceptance test on the task's own
   commit. Both tasks are verified and merged on branch `soot/<run-id>/integration`.
 - The run is reported **INCOMPLETE** (exit code 2) only because nobody approved updating your
@@ -71,7 +73,7 @@ Then look around:
 soot status            # all runs
 soot status <run-id>   # one run: tasks, models, verdicts, decisions
 soot cost              # latest run: estimates and reported (fictional, mock) actuals
-soot models            # the demo registry (fictional models and prices)
+soot models            # the demo registry (real model ids and sourced prices; fictional priors)
 soot config            # resolved config; key variable names only
 ```
 

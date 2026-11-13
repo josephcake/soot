@@ -51,8 +51,10 @@ Rules (ADR-022, M2-08):
 
 ## Model registry config
 
-soot has no built-in model list or prices. You describe providers and models in JSON and load
-it with `loadRegistryConfigFile(path)` (`@soot/model-registry`):
+soot has no built-in model list. You describe providers and models in JSON and load it with
+`loadRegistryConfigFile(path)` (`@soot/model-registry`). A model you leave without `pricing`
+gets soot's sourced catalog price when one exists for that vendor API and model id (see
+[Prices](#prices)):
 
 ```json
 {
@@ -86,13 +88,35 @@ it with `loadRegistryConfigFile(path)` (`@soot/model-registry`):
 ```
 
 Anything you leave out is **unknown** (`null`), never guessed. Prices must carry a `source`
-and an `asOf` date. `structuredOutputMode` is `"json_schema"` (strict structured outputs) or
+and an `asOf` date. A price can add a `longContext` tier
+(`{ "aboveInputTokens": 272000, "inputPerMTokUsd": ..., "outputPerMTokUsd": ..., "cacheReadPerMTokUsd": ... }`):
+a request with more input tokens than that is billed at those rates for every token. `structuredOutputMode` is `"json_schema"` (strict structured outputs) or
 `"json_object"` (`response_format: { "type": "json_object" }`, with the JSON parsed and
 validated against the schema afterwards). You can set it on a model or, as a default, on the
 provider; the model wins if both are set. Omitted, it is `"json_schema"` (ADR-036). `reliability` is your prior estimate (0–1) that the model completes a task
 of each complexity. It needs a `source`. The router (`@soot/model-router`) blends it with
 recorded success history. A model with no prior and too little history has unknown reliability,
 and the built-in policies do not select it. Cost estimates and provider-reported actuals stay separate types.
+
+### Prices
+
+Costs are reported tokens × list price, per task attempt and for the planning call. Where a
+price comes from, in order:
+
+1. `pricing` on the model in your models file (always wins; use it for proxies, resellers,
+   contracts and local runtimes).
+2. soot's **price catalog** (`PRICE_CATALOG` in `@soot/model-registry`, ADR-037): official list
+   prices for popular models on the vendor's own API, each with its pricing-page URL and the
+   date it was checked. It matches on the provider's API host and the exact model id, and
+   never adds a model or a default.
+3. Otherwise the model is unpriced. Its costs show as "price not set", and `soot run`,
+   `soot config` and `soot models` print a warning that points to the
+   [update-model-pricing prompt](../../skills/update-model-pricing/SKILL.md). Run that prompt
+   with your AI agent whenever you add a provider or key, or start using a new model id.
+
+`soot models` shows each price and whether it came from your config or the catalog;
+`soot config --json` lists `pricing.catalogPriced` and `pricing.unpriced`. soot never fetches
+prices over the network.
 
 `tests/repo-structure.test.ts` fails if `.env.example` ever contains a value for a
 `*KEY*`, `*TOKEN*`, `*SECRET*`, or `*PASSWORD*` variable, and if any `SOOT_*` variable in

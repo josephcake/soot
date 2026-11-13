@@ -170,7 +170,7 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
       expect(list.runs.map((x) => x.runId)).toEqual(['dash-1']);
       expect(list.overview.promptCount).toBe(1);
       expect(list.overview.taskCount).toBe(2);
-      expect(list.overview.byModel).toEqual([{ model: 'demo-a/demo-small', tasks: 2 }]);
+      expect(list.overview.byModel).toEqual([{ model: 'anthropic/claude-haiku-5-5', tasks: 2 }]);
       expect(list.overview.prompts[0]?.prompt).toBe(TEST_1);
 
       const { run: view } = (await (await fetch(`${base}/api/runs/dash-1`)).json()) as {
@@ -199,15 +199,15 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
       expect(view.graph).toEqual({ layers: [['update-page-title', 'update-button-color']] });
       expect(view.activeAgents).toEqual([]);
       expect(view.tasks.map((t) => [t.id, t.models])).toEqual([
-        ['update-page-title', ['demo-a/demo-small']],
-        ['update-button-color', ['demo-a/demo-small']],
+        ['update-page-title', ['anthropic/claude-haiku-5-5']],
+        ['update-button-color', ['anthropic/claude-haiku-5-5']],
       ]);
       expect(view.tasks.every((t) => t.checks.length > 0)).toBe(true);
       expect(view.transitions).toEqual([]);
       expect(view.tokens).toMatchObject({ actual: { unreportedAttempts: 0 } });
       expect(view.cost.estimatedUsd).toEqual(expect.any(Number));
       expect(view.cost.actualUsd).toBeCloseTo(0.00163, 6);
-      expect(view.byModel.map((m) => m.model)).toEqual(['demo-a/demo-small']);
+      expect(view.byModel.map((m) => m.model)).toEqual(['anthropic/claude-haiku-5-5']);
       expect(view.duration.ms).toBeGreaterThanOrEqual(0);
       expect(view.outcomes).toMatchObject({ succeeded: 2, failed: 0, successRate: 1 });
       expect(view.validation.reportStatus).toBe('incomplete');
@@ -222,12 +222,12 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
       expect(view.taskBreakdown.map((t) => [t.id, t.models, t.tokens])).toEqual([
         [
           'update-page-title',
-          ['demo-a/demo-small'],
+          ['anthropic/claude-haiku-5-5'],
           { inputTokens: 1800, outputTokens: 250, total: 2050 },
         ],
         [
           'update-button-color',
-          ['demo-a/demo-small'],
+          ['anthropic/claude-haiku-5-5'],
           { inputTokens: 2100, outputTokens: 280, total: 2380 },
         ],
       ]);
@@ -329,22 +329,22 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
         [
           'update-page-title',
           true,
-          [[1, 'assign', 'demo-a/demo-small', 'demo-a/demo-small', 'succeeded']],
+          [[1, 'assign', 'anthropic/claude-haiku-5-5', 'anthropic/claude-haiku-5-5', 'succeeded']],
         ],
         [
           'update-button-color',
           true,
           [
-            [1, 'assign', 'demo-a/demo-small', 'demo-a/demo-small', 'retried'],
-            [2, 'escalate', 'demo-b/demo-mid', 'demo-b/demo-mid', 'succeeded'],
+            [1, 'assign', 'anthropic/claude-haiku-5-5', 'anthropic/claude-haiku-5-5', 'retried'],
+            [2, 'escalate', 'openai/gpt-6.1-terra', 'openai/gpt-6.1-terra', 'succeeded'],
           ],
         ],
       ]);
       expect(view.assignment.tasks.every((t) => t.runner === view.agent.label)).toBe(true);
 
       expect(view.usage.byModel.map((m) => [m.label, m.attempts])).toEqual([
-        ['demo-a/demo-small', 2],
-        ['demo-b/demo-mid', 1],
+        ['anthropic/claude-haiku-5-5', 2],
+        ['openai/gpt-6.1-terra', 1],
       ]);
       expect(view.usage.byTask.map((m) => [m.label, m.attempts])).toEqual([
         ['update-page-title', 1],
@@ -353,7 +353,7 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
       expect(view.usage.byAgent.map((m) => [m.label, m.attempts])).toEqual([[view.agent.label, 3]]);
       // Estimates and actuals are separate numbers; the mock reports its own (fictional) actuals.
       const all = view.usage.byAgent[0];
-      expect(all?.estimated.usd).toBeCloseTo(0.005575, 6);
+      expect(all?.estimated.usd).toBeCloseTo(0.00475, 6);
       expect(all?.actual.usd).toBeCloseTo(0.0025, 6);
       expect(all?.estimated.usd).not.toBe(all?.actual.usd);
     },

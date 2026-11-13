@@ -5,6 +5,20 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (sourced price catalog, pricing prompt, priced planning call, ADR-037)
+
+- `PRICE_CATALOG` in `@soot/model-registry`: official list prices (checked 2026-11-13, source
+  URL on each) for OpenAI, Anthropic, Google Gemini API, xAI, DeepSeek and Mistral models. It
+  fills in `pricing` only for configured models with none, matched on API host and model id.
+  Prices only: no model list, no default. Optional `longContext` tiers and dated entries.
+- [update-model-pricing](skills/update-model-pricing/SKILL.md) prompt for AI agents: run it
+  when a provider, key, or new model id is added. `soot run`, `soot config` and `soot models`
+  warn about callable models with no price and point to it. No network calls.
+- The planning call is priced: the saved `decomposition` has `costUsd` and `priceBasis`, and
+  `soot status <run> --json` now includes `decomposition`.
+- The demo registry uses real model ids with real sourced prices (Claude Haiku 5.5, GPT-6.1
+  Terra, Claude Opus 5.5). The mock agent stays a labeled test double with fictional usage.
+
 ### Added (structured-output wire mode `json_object`, ADR-036; mocks only)
 
 - Optional `structuredOutputMode` on a model or provider in the registry: `"json_schema"`
