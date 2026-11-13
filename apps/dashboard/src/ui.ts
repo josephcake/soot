@@ -90,9 +90,9 @@ const short = (m) => (m === null ? 'no model' : m.split('/').pop());
 let shown = null;
 let timer = null;
 
-function block(title, lines) {
+function block(title, lines, wide) {
   const s = document.createElement('section');
-  s.className = 'block';
+  s.className = 'block' + (wide ? ' wide' : '');
   const h = document.createElement('h2');
   h.textContent = '== ' + title + ' ==';
   const p = document.createElement('pre');
@@ -443,16 +443,27 @@ async function getJson(path) {
   return j;
 }
 
+function identBlock(r) {
+  const duration = r.duration.ms === null ? (r.running ? 'running' : 'unknown') : (r.duration.ms / 1000).toFixed(1) + ' s';
+  // One-line ident so the first screen can lead with charts, not the full prompt.
+  return block('Run', [r.runId + '  ·  ' + r.state + (r.running ? ' (running)' : '') + '  ·  ' + duration], true);
+}
+
+// Insights first: compact ident, assignment graph, usage charts and the legend, then the
+// remaining charts, then the text detail blocks (task graph, agents, full prompt, savings).
 const BLOCKS = [
-  (r) => block('Run', [
-    'id       ' + r.runId,
-    'state    ' + r.state + (r.running ? ' (running)' : ''),
-    'started  ' + (r.duration.startedAt || 'unknown'),
-    'duration ' + (r.duration.ms === null ? (r.running ? 'running' : 'unknown') : (r.duration.ms / 1000).toFixed(1) + ' s') + '  (' + r.duration.basis + ')',
-    '',
-    'Prompt:',
-    r.prompt,
-  ]),
+  (r) => identBlock(r),
+  (r) => assignmentBlock(r),
+  (r) => usageBlock('Usage by model (also the cost-by-model numbers)', r.usage.byModel, r.usage.note),
+  (r) => block('How to read the charts', [r.usage.note, 'Hatched cream = estimate, solid orange = reported actual; they never share a chart or a donut. Each magnitude chart is scaled to its own largest known value. Unknown is written as unknown, with no bar or slice.', r.savings.note]),
+  (r) => outcomesBlock(r),
+  (r) => costBlock(r),
+  (r) => tokensBlock(r),
+  (r) => usageBlock('Usage by task', r.usage.byTask, r.usage.note),
+  (r) => usageBlock('Usage by runner (agent/bot)', r.usage.byAgent, 'Runner unknown until the run has a saved report.'),
+  (r) => timelineBlock(r),
+  (r) => validationBlock(r),
+  (r) => transitionsBlock(r),
   (r) => block('Task graph (' + r.taskCount + ' tasks)', r.graph.layers.flatMap((ids, l) => {
     const tasks = ids.map((id) => r.tasks.find((t) => t.id === id));
     const row = 'L' + l + ' ' + tasks.map((t) => '[' + (t.state === 'running' ? '▣' : '■') + ' ' + t.id + ' · ' + (t.models.map(short).join('→') || '-') + ' · ' + t.attempts.length + 'x]').join(' ');
@@ -464,18 +475,16 @@ const BLOCKS = [
     (t.verdict === null ? '' : ' · verdict ' + t.verdict + (t.complete ? ' (complete)' : '')) +
     (t.reason ? '\n    ' + t.reason : ''))),
   (r) => block('Active agents', r.activeAgents.map((a) => '▣ ' + a.taskId + ' #' + a.attempt + ' on ' + (a.model || 'no model'))),
-  (r) => transitionsBlock(r),
-  (r) => tokensBlock(r),
-  (r) => costBlock(r),
-  (r) => outcomesBlock(r),
-  (r) => validationBlock(r),
+  (r) => block('Run details', [
+    'id       ' + r.runId,
+    'state    ' + r.state + (r.running ? ' (running)' : ''),
+    'started  ' + (r.duration.startedAt || 'unknown'),
+    'duration ' + (r.duration.ms === null ? (r.running ? 'running' : 'unknown') : (r.duration.ms / 1000).toFixed(1) + ' s') + '  (' + r.duration.basis + ')',
+    '',
+    'Prompt:',
+    r.prompt,
+  ]),
   (r) => block('Savings', [r.savings.note]),
-  (r) => timelineBlock(r),
-  (r) => assignmentBlock(r),
-  (r) => usageBlock('Usage by model (also the cost-by-model numbers)', r.usage.byModel, r.usage.note),
-  (r) => usageBlock('Usage by task', r.usage.byTask, r.usage.note),
-  (r) => usageBlock('Usage by runner (agent/bot)', r.usage.byAgent, 'Runner unknown until the run has a saved report.'),
-  (r) => block('How to read the charts', [r.usage.note, 'Hatched cream = estimate, solid orange = reported actual; they never share a chart or a donut. Each magnitude chart is scaled to its own largest known value. Unknown is written as unknown, with no bar or slice.', r.savings.note]),
 ];
 
 async function showRun(runId) {

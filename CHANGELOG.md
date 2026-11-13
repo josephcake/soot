@@ -5,6 +5,12 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Changed (dashboard page order, ADR-031; no milestone status change)
+
+- The run view leads with a compact ident, the assignment graph, usage-by-model charts and a
+  short chart legend, then the remaining insight charts; text details (task graph, agents, full
+  prompt, savings) come after. Same blocks and data; no new chart types or API change.
+
 ### Added (decomposer model in soot.config.json, ADR-034, TASKS P-02; mocks only, no milestone status change)
 
 - Optional `"decomposer": { "model": "<provider/modelId>" }` in `soot.config.json` (strict; the

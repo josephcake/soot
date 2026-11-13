@@ -100,9 +100,10 @@ compatibility is claimed until tested.
 
 soot is headless by default. `soot dashboard` starts an optional read-only page on
 `http://127.0.0.1:8787` (127.0.0.1 only; `--port <n>` to change it; `--open` to open a browser)
-with each run's prompt, task graph, models, transitions, tokens, estimated and actual cost,
-duration, outcomes and validation. Unknown costs stay unknown and no savings are claimed. No
-other command starts or loads it ([`apps/dashboard`](apps/dashboard/README.md), ADR-031).
+that leads with the assignment graph and usage charts (estimated and actual cost, tokens,
+outcomes), then the text details (task graph, models, transitions, the full prompt, validation).
+Unknown costs stay unknown and no savings are claimed. No other command starts or loads it
+([`apps/dashboard`](apps/dashboard/README.md), ADR-031).
 
 ## Try it (no keys)
 

@@ -59,7 +59,7 @@ function load() {
     clearTimeout: () => undefined,
   };
   return runInNewContext(
-    `${APP_JS}\n;({ chart, usageBlock, assignmentBlock, donut, meter, outcomesBlock, tokensBlock, costBlock, timelineBlock, validationBlock, transitionsBlock, ACT_SHADES, EST_SHADES });`,
+    `${APP_JS}\n;({ chart, usageBlock, assignmentBlock, donut, meter, outcomesBlock, tokensBlock, costBlock, timelineBlock, validationBlock, transitionsBlock, BLOCKS, ACT_SHADES, EST_SHADES });`,
     fake,
   ) as {
     chart: (title: string, kind: string, rows: unknown[], fmt: (v: number) => string) => FakeNode;
@@ -73,6 +73,7 @@ function load() {
     timelineBlock: (run: unknown) => FakeNode;
     validationBlock: (run: unknown) => FakeNode;
     transitionsBlock: (run: unknown) => FakeNode;
+    BLOCKS: ((run: unknown) => FakeNode)[];
     ACT_SHADES: string[];
     EST_SHADES: string[];
   };
@@ -422,5 +423,40 @@ describe('page chart blocks', () => {
     expect(bars(block).map((b) => b.className)).toEqual(['bar cnt']);
     expect(text(block)).toContain('ESCALATE b #1 → p/mid: r');
     expect(bars(ui.transitionsBlock(baseRun({ events: [] })))).toEqual([]);
+  });
+
+  it('the run view leads with the assignment graph and charts, not the text details', () => {
+    const run = baseRun();
+    const sections = ui.BLOCKS.map((b) => b(run));
+    expect(sections.map((s) => s.children[0]?.textContent)).toEqual([
+      '== Run ==',
+      '== Assignment: prompt → tasks → models ==',
+      '== Usage by model (also the cost-by-model numbers) ==',
+      '== How to read the charts ==',
+      '== Success and failure ==',
+      '== Cost ==',
+      '== Token usage ==',
+      '== Usage by task ==',
+      '== Usage by runner (agent/bot) ==',
+      '== Duration (attempt timeline) ==',
+      '== Validation ==',
+      '== Model transitions ==',
+      '== Task graph (2 tasks) ==',
+      '== Tasks and models ==',
+      '== Active agents ==',
+      '== Run details ==',
+      '== Savings ==',
+    ]);
+    const ident = text(at(sections, 0));
+    expect(ident).toContain('r  ·  incomplete  ·  ');
+    expect(ident).not.toContain('Prompt:');
+    expect(ident).not.toMatch(/\bp\b/);
+    const details = text(at(sections, 15));
+    expect(details).toContain('Prompt:');
+    expect(details).toContain('p');
+    // The ident is wide so it sits above the wide assignment and usage charts.
+    expect(at(sections, 0).className).toBe('block wide');
+    expect(at(sections, 1).className).toBe('block wide');
+    expect(at(sections, 2).className).toBe('block wide');
   });
 });

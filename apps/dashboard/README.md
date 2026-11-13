@@ -36,6 +36,11 @@ soot dashboard --open          # also open a browser (off by default)
   highlights and estimates, warm-gray notes, redder-orange `#ff4d2e` errors.
 - **Logo:** the page header and favicon use the pixel soot mark from `docs/brand/`
   (`GET /logo.png`, `GET /mark.png`).
+- **Page order:** a selected run leads with a compact ident (id, state, duration — not the full
+  prompt), the assignment graph, usage-by-model charts, and a short "how to read the charts"
+  legend, then outcomes, cost, tokens, usage by task and by runner, the duration timeline,
+  validation and transitions. Text details (task graph, tasks and models, active agents, the
+  full prompt, the savings note) come after. Header and the runs nav stay above the run body.
 - **Page:** plain HTML, one stylesheet, one script, no framework (ADR-009): each section is a
   text block. All text is set with `textContent`. It polls while a run is running.
 - **Safety:** GET/HEAD only, `Host` must be `127.0.0.1:<port>` or `localhost:<port>`, strict
