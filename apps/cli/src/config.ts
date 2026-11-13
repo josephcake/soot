@@ -58,6 +58,26 @@ export const AcpAgentConfigSchema = z
   })
   .strict();
 
+/**
+ * Optional model-backed decomposition (ADR-034). `model` is a model reference
+ * (`provider/modelId`) from the user's own model registry file; soot names no vendor. Absent:
+ * decomposition stays fixture-only. Present: recorded prompts still come from fixtures, and only
+ * prompts without a fixture are sent to this model, and only when a client can be built for it
+ * (callable provider, key variable set). Keys are never written here (ADR-022).
+ */
+export const DecomposerConfigSchema = z
+  .object({
+    model: z
+      .string()
+      .min(3)
+      .max(512)
+      .regex(
+        /^[^/\s]+\/\S+$/,
+        'must be a model reference "provider/modelId" from your models file',
+      ),
+  })
+  .strict();
+
 export const ProjectConfigSchema = z
   .object({
     version: z.literal(1),
@@ -80,6 +100,8 @@ export const ProjectConfigSchema = z
     fixtures: z.string().min(1).optional(),
     /** ACP agent to spawn for `--agent acp` (never used otherwise). */
     acpAgent: AcpAgentConfigSchema.optional(),
+    /** Model for prompts with no recorded fixture (ADR-034). Absent: fixtures only. */
+    decomposer: DecomposerConfigSchema.optional(),
   })
   .strict();
 

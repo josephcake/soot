@@ -35,6 +35,7 @@
     "@soot/model-router": "workspace:*",
     "@soot/observability": "workspace:*",
     "@soot/planner": "workspace:*",
+    "@soot/provider-adapters": "workspace:*",
     "@soot/task-graph": "workspace:*",
     "@modelcontextprotocol/server": "2.4.0",
     "zod": "^4.6.7"

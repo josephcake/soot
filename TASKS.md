@@ -222,9 +222,10 @@ M7 notes (2026-11-12, ADR-029):
 Follows up M1-03's "LLM-backed decomposer after M2". This row does not change any milestone
 status and does not depend on M2-07 for its mock-only scope.
 
-| ID   | Description                                                                                | Priority | Milestone | Dependencies | Status      | Component        | Acceptance criteria                                                                                                                                                                                                                                                                 |
-| ---- | ------------------------------------------------------------------------------------------ | -------- | --------- | ------------ | ----------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P-01 | Model-backed decomposer behind `Decomposer`, over `ModelClient`; fixtures stay the default | P1       | — (cross) | M1-03, M2-01 | Implemented | packages/planner | Unknown prompts decompose via a mock client into a validated graph; malformed or invalid output fails with `ModelDecompositionError`; no client means fixture-only with no network; recorded prompts never call the model. Verified with mocks only; real-model use waits on M2-07. |
+| ID   | Description                                                                                | Priority | Milestone | Dependencies | Status      | Component        | Acceptance criteria                                                                                                                                                                                                                                                                         |
+| ---- | ------------------------------------------------------------------------------------------ | -------- | --------- | ------------ | ----------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P-01 | Model-backed decomposer behind `Decomposer`, over `ModelClient`; fixtures stay the default | P1       | — (cross) | M1-03, M2-01 | Implemented | packages/planner | Unknown prompts decompose via a mock client into a validated graph; malformed or invalid output fails with `ModelDecompositionError`; no client means fixture-only with no network; recorded prompts never call the model. Verified with mocks only; real-model use waits on M2-07.         |
+| P-02 | Optional `decomposer.model` in `soot.config.json`, wired into the CLI/MCP engine (ADR-034) | P1       | — (cross) | P-01, M6-01  | Implemented | apps/cli         | Absent: fixture-only, unchanged; usable model: unknown prompts go to it, recorded prompts make zero model calls; unknown ref or missing key: no client, no network, recorded prompts work, unknown prompts fail naming the setting; `soot config` shows status without secrets. Mocks only. |
 
 Planner notes (2026-11-12):
 
@@ -232,7 +233,14 @@ Planner notes (2026-11-12):
   `packages/planner/src/model-decomposer.test.ts` (mock clients via `createMockModelClient` and
   hand-written `ModelClient` doubles; `fetch` replaced by a spy that fails on any call). Status
   is Implemented, not Verified: no real model has produced a decomposition, the prompt is
-  untuned, and the CLI/MCP engine still uses `FixtureDecomposer` only.
+  untuned. The CLI/MCP wiring it lacked is P-02.
+- **P-02:** `apps/cli/src/config.ts` (`DecomposerConfigSchema`), `apps/cli/src/decomposer-model.ts`
+  (resolution: `not-configured` / `usable` / `unusable`), `apps/cli/src/engine.ts` (run and
+  `soot config`); tests in `tests/p02-decomposer-config.test.ts` and
+  `apps/cli/src/config.test.ts` (mock clients through an injected `modelClientFactory`, a fake
+  key string only to prove a client can be built and is never printed or called; `fetch`
+  replaced by a spy that fails on any call). Implemented, not Verified: no real model has
+  decomposed a prompt (M2-07 Blocked).
 
 ## Optional local dashboard (cross-cutting, ADR-031)
 

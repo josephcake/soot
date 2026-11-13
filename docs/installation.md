@@ -90,8 +90,10 @@ command soot could run to verify it, so soot does not mark it complete.
 1. Commit a `soot.config.json` (see [configuration](configuration.md#project-config-sootconfigjson))
    and a model registry file. Keep the state directory (`SOOT_DATA_DIR`, default `~/.soot`)
    outside the repository.
-2. Today soot can only decompose **recorded** prompts (the build spec examples, plus your own
-   under `fixtures`), and the only agent is the scripted mock. `soot run` without
+2. Today soot decomposes **recorded** prompts (the build spec examples, plus your own under
+   `fixtures`). Other prompts need an optional `decomposer` model in `soot.config.json`
+   ([configuration](configuration.md#decomposer-model-optional-adr-034); verified with mock
+   clients only, no real model has run it). The only agent is the scripted mock. `soot run` without
    `--agent mock` refuses: real providers need keys (M2-07, blocked) and harness runners are
    not implemented.
 

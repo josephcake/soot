@@ -46,6 +46,31 @@ describe('soot.config.json', () => {
   });
 });
 
+describe('soot.config.json "decomposer" (ADR-034)', () => {
+  it('is optional, takes a registry model reference, and is strict', () => {
+    expect(
+      loadProjectConfig(file('e.json', { version: 1, models: 'm' })).config.decomposer,
+    ).toBeUndefined();
+    expect(
+      loadProjectConfig(
+        file('f.json', { version: 1, models: 'm', decomposer: { model: 'local/qwen3:8b' } }),
+      ).config.decomposer,
+    ).toEqual({ model: 'local/qwen3:8b' });
+    expect(() =>
+      loadProjectConfig(file('g.json', { version: 1, models: 'm', decomposer: { model: 'x' } })),
+    ).toThrow(/decomposer\.model: must be a model reference/);
+    expect(() =>
+      loadProjectConfig(
+        file('h.json', {
+          version: 1,
+          models: 'm',
+          decomposer: { model: 'a/b', apiKey: 'sk-nope' },
+        }),
+      ),
+    ).toThrow(/Unrecognized key.*apiKey/);
+  });
+});
+
 describe('mock script files', () => {
   it('loads per-task scripts and rejects malformed ones', () => {
     const ok = loadMockScript(

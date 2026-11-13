@@ -5,6 +5,27 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (decomposer model in soot.config.json, ADR-034, TASKS P-02; mocks only, no milestone status change)
+
+- Optional `"decomposer": { "model": "<provider/modelId>" }` in `soot.config.json` (strict; the
+  reference must be a model in the user's registry file). Absent: unchanged, fixture-only.
+- The CLI/MCP engine builds the decomposer from it: `createDecomposer({ fixtures, model })` when
+  a client can be built (registry model, callable provider, key variable set in the environment
+  soot started with), otherwise fixture-only with no client. Recorded prompts never call the
+  model. An unknown prompt with an unusable model fails naming the setting and the reason (for
+  example `ANTHROPIC_API_KEY is not set`) and says no model was called; a model failure or
+  invalid answer fails the run with `ModelDecompositionError`'s reason, never a guess.
+- Run output: `decomposition` (fixture or model source, with model usage) in the run JSON and
+  saved report; `fixtureId` is `null` for model plans; the text plan line names the model.
+- `soot config` shows `Decomposition: ...` and `--json` has `decomposer` (`model`, `status`
+  `not-configured` | `usable` | `unusable`, `reason`). No key value is printed.
+- `@soot/cli` depends on `@soot/provider-adapters` (client creation through
+  `createModelClient`; keys are still read only inside the adapter layer). `EngineOptions` has
+  `modelEnv` and a `modelClientFactory` test seam.
+- Docs: configuration, installation, skill, README, architecture. Tests:
+  `tests/p02-decomposer-config.test.ts` (mock clients, `fetch` stubbed to fail) and the config
+  schema test. No real model has decomposed a prompt; M2-07 stays Blocked.
+
 ### Added (model-backed decomposition, ADR-033, TASKS P-01; mocks only, no milestone status change)
 
 - `ModelDecomposer` in `@soot/planner`: asks a caller-supplied `ModelClient` for structured

@@ -53,9 +53,10 @@ Add `--json` for machine-readable output.
 
 ## What works today (be honest with the user)
 
-- Decomposition uses **recorded fixtures only** (the build spec's example prompts plus any the
+- Decomposition uses **recorded fixtures** (the build spec's example prompts plus any the
   project adds under `fixtures` in `soot.config.json`). Other prompts are refused with a clear
-  message.
+  message unless the user configured a `decomposer` model and its key; that path is verified
+  with mock models only. `soot config` says whether it is usable.
 - Agents: a **scripted mock** (`--agent mock --mock-script <file>`; no model is called), or an
   ACP agent command the user configured (`--agent acp`; tested only with soot's mock ACP
   agent). Without `--agent`, `soot run` refuses: real providers are not available yet.

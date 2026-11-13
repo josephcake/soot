@@ -9,7 +9,8 @@ _Named after the soot sprites, the black dust bunnies from Studio Ghibli. Former
 > **Status: Milestones 1, 3, 4 and 5 done (mocks, fixtures and fixture git repos); Milestones 2
 > (provider connectivity) and 6 (CLI and skill) in progress.**
 > The `soot` CLI runs the whole workflow on a git repository from one prompt: decompose
-> **from recorded fixtures** (no model-backed decomposition), route each task under an
+> **from recorded fixtures** (an optional configured decomposer model for other prompts exists
+> but is verified with mocks only), route each task under an
 > Economy, Balanced or Quality policy, run independent tasks in parallel worktrees, verify each
 > with the project's own checks, integrate serially and report per-task cost. The only agent is
 > a **scripted mock** (no model is called). Provider adapters exist but have **not been run

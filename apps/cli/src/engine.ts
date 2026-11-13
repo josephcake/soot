@@ -44,13 +44,21 @@ import {
   summarizeCosts,
 } from '@soot/observability';
 import {
-  FixtureDecomposer,
+  ModelDecompositionError,
   NoFixtureError,
   SPEC_FIXTURES,
+  createDecomposer,
   createPromptIntake,
+  type Decomposition,
   type DecompositionFixture,
 } from '@soot/planner';
 import { CONFIG_FILE, insideRepo, loadProjectConfig, type LoadedConfig } from './config.js';
+import {
+  describeDecomposerModel,
+  resolveDecomposerModel,
+  type DecomposerModel,
+  type ModelClientFactory,
+} from './decomposer-model.js';
 import { holdRun, requestStop, requestTaskStop, runningInfo } from './control.js';
 import { loadMockScript } from './mock-script.js';
 
@@ -59,7 +67,9 @@ import { loadMockScript } from './mock-script.js';
  * decomposition → per-task routing with stored outcome history → supervised execution in
  * isolated worktrees with soot-run checks → serial integration → consolidated report.
  *
- * Honest limits (Milestone 6): decomposition is fixture-only. Agents: the scripted mock, or a
+ * Honest limits (Milestone 6): decomposition uses recorded fixtures; prompts with no fixture go
+ * to the optional "decomposer" model from soot.config.json only when a client can be built for
+ * it (ADR-034; verified with mock clients only, no real provider has decomposed a prompt). Agents: the scripted mock, or a
  * user-configured ACP agent through the generic ACP driver (ADR-027; verified only with soot's
  * own mock ACP agent). No model runner exists (M2-07 Blocked), so `run` refuses unless the
  * caller explicitly picks `--agent mock` or `--agent acp`.
@@ -86,6 +96,13 @@ export interface EngineOptions {
   readonly agentEnv?: NodeJS.ProcessEnv;
   /** Leveled log lines (stderr in the CLI, filtered by `SOOT_LOG_LEVEL`). Default: silent. */
   readonly log?: Logger;
+  /**
+   * Environment the decomposer model's key variable (`apiKeyEnv`) is looked up in by the
+   * adapter layer (default `process.env`). No `.env` file is read (ADR-030).
+   */
+  readonly modelEnv?: Readonly<Record<string, string | undefined>>;
+  /** Builds the decomposer model's client. Default `createModelClient`; tests pass a mock. */
+  readonly modelClientFactory?: ModelClientFactory;
 }
 
 /** Where the state directory came from, for `debug` lines. */
@@ -207,6 +224,15 @@ export class SootEngine implements OrchestrationService {
     return new MockAgentRunner(loadMockScript(resolve(this.#o.cwd, agent.script)));
   }
 
+  #decomposerModel(cfg: LoadedConfig, registry: ModelRegistry): DecomposerModel {
+    return resolveDecomposerModel(
+      cfg,
+      registry,
+      this.#o.modelEnv ?? process.env,
+      this.#o.modelClientFactory,
+    );
+  }
+
   #agentLabel(cfg: LoadedConfig): string {
     const { agent } = this.#o;
     if (agent.kind === 'acp' && cfg.config.acpAgent !== undefined) {
@@ -266,23 +292,59 @@ export class SootEngine implements OrchestrationService {
     const isAcp = this.#o.agent.kind === 'acp';
 
     const intake = createPromptIntake({ prompt: request.prompt });
-    let decomposition;
-    try {
-      decomposition = await new FixtureDecomposer([...SPEC_FIXTURES, ...fixtures]).decompose(
-        intake,
+    // Fixtures first; the configured decomposer model only for prompts no fixture matches, and
+    // only when a client could be built (ADR-034). No client: fixture-only, no network.
+    const decomposerModel = this.#decomposerModel(cfg, registry);
+    if (decomposerModel.status === 'unusable') {
+      log.warn(
+        `soot: decomposer model ${decomposerModel.ref} is not usable (${decomposerModel.reason}); only recorded prompts can be decomposed`,
       );
+    }
+    let decomposition: Decomposition;
+    try {
+      decomposition = await createDecomposer({
+        fixtures: [...SPEC_FIXTURES, ...fixtures],
+        model: decomposerModel.status === 'usable' ? decomposerModel.client : null,
+      }).decompose(intake, signal);
     } catch (error) {
       if (error instanceof NoFixtureError) {
+        const recorded = `Recorded prompts: soot ships the build spec examples; add your own with "fixtures" in ${CONFIG_FILE}.`;
+        if (decomposerModel.status === 'unusable') {
+          return fail(
+            `No decomposition fixture matches this prompt, and the decomposer model ${decomposerModel.ref} configured in ${CONFIG_FILE} is not usable: ${decomposerModel.reason}. No model was called. ${recorded}`,
+            {
+              promptSha256: error.promptSha256,
+              decomposerModel: decomposerModel.ref,
+              decomposerModelStatus: 'unusable',
+              decomposerModelReason: decomposerModel.reason,
+            },
+          );
+        }
         return fail(
-          `${error.message} Recorded prompts: soot ships the build spec examples; add your own with "fixtures" in ${CONFIG_FILE}.`,
+          `${error.message} ${recorded} To decompose other prompts with a model from your models file, set "decomposer": {"model": "<provider/modelId>"} in ${CONFIG_FILE} (verified with mock clients only).`,
           { promptSha256: error.promptSha256 },
         );
+      }
+      if (error instanceof ModelDecompositionError) {
+        // Reported as is: soot never falls back to a guess or a similar fixture.
+        return fail([error.message, ...error.issues.map((i) => `- ${i}`)].join('\n'), {
+          promptSha256: error.promptSha256,
+          decomposerModel: error.modelRef,
+          decompositionFailure: error.reason,
+          issues: [...error.issues],
+        });
       }
       return fail((error as Error).message);
     }
     const { graph } = decomposition;
+    const source = decomposition.decomposer;
+    const fixtureId = source.kind === 'fixture' ? source.fixtureId : null;
+    const planLabel =
+      source.kind === 'fixture'
+        ? `recorded fixture "${source.fixtureId}"`
+        : `model ${source.modelRef} (validated by soot; ${String(source.attempts)} model call(s))`;
     progress(
-      `soot: run ${runId}: ${String(graph.tasks.length)} tasks from recorded fixture "${decomposition.decomposer.fixtureId}"; agent: ${agentLabel}`,
+      `soot: run ${runId}: ${String(graph.tasks.length)} tasks from ${planLabel}; agent: ${agentLabel}`,
     );
 
     const store = this.#store();
@@ -404,7 +466,8 @@ export class SootEngine implements OrchestrationService {
       const costRecords = this.#costRecords(store, runId);
       const saved = {
         runId,
-        fixtureId: decomposition.decomposer.fixtureId,
+        fixtureId,
+        decomposition: json(source),
         agent: runner.kind,
         agentLabel,
         policy: cfg.config.policy,
@@ -422,7 +485,7 @@ export class SootEngine implements OrchestrationService {
       });
       const text = [
         `soot run ${runId} (${report.status.toUpperCase()})`,
-        `Plan: recorded fixture "${decomposition.decomposer.fixtureId}" (no model-backed decomposition); agent: ${agentLabel}; policy: ${cfg.config.policy}; routing history: ${String(outcomes.length)} stored outcomes; peak concurrency ${String(result.run.maxObservedConcurrency)}`,
+        `Plan: ${source.kind === 'fixture' ? `${planLabel} (no model-backed decomposition)` : planLabel}; agent: ${agentLabel}; policy: ${cfg.config.policy}; routing history: ${String(outcomes.length)} stored outcomes; peak concurrency ${String(result.run.maxObservedConcurrency)}`,
         'Decisions:',
         ...decisions,
         ...(isAcp
@@ -721,7 +784,10 @@ export class SootEngine implements OrchestrationService {
     });
   }
 
-  /** Resolved configuration, for `soot config`. Key values are never read, only variable names. */
+  /**
+   * Resolved configuration, for `soot config`. Key values are never printed, only variable
+   * names; whether the decomposer model is usable is checked by building (not calling) its client.
+   */
   config(repo = '.'): CommandOutput {
     const repoRoot = resolve(this.#o.cwd, repo);
     let cfg: LoadedConfig;
@@ -738,6 +804,7 @@ export class SootEngine implements OrchestrationService {
       apiKeyEnv: p.apiKeyEnv ?? null,
       local: p.local,
     }));
+    const decomposer = this.#decomposerModel(cfg, registry);
     const data = {
       configFile: cfg.path,
       dataDir: this.#o.dataDir,
@@ -749,6 +816,11 @@ export class SootEngine implements OrchestrationService {
       effectiveAttemptTimeoutMs: cfg.config.attemptTimeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS,
       agent: this.#o.agent.kind,
       acpAgent: cfg.config.acpAgent === undefined ? null : json(cfg.config.acpAgent),
+      decomposer: {
+        model: decomposer.status === 'not-configured' ? null : decomposer.ref,
+        status: decomposer.status,
+        reason: decomposer.status === 'unusable' ? decomposer.reason : null,
+      },
       approvals: this.#o.approvals.mode,
       checks: json(cfg.checks),
       acceptance: json(cfg.acceptance),
@@ -765,6 +837,7 @@ export class SootEngine implements OrchestrationService {
       `Attempt timeout: ${String(data.effectiveAttemptTimeoutMs)} ms${cfg.config.attemptTimeoutMs === undefined ? ' (default; set "attemptTimeoutMs" to change)' : ''}`,
       `Agent: ${this.#o.agent.kind === 'none' ? 'none (run refuses: pick --agent mock or --agent acp)' : this.#agentLabel(cfg)}`,
       `ACP agent command: ${cfg.config.acpAgent === undefined ? 'not configured' : describeCommand(cfg.config.acpAgent)}`,
+      `Decomposition: ${describeDecomposerModel(decomposer)}`,
       `Approvals: ${this.#o.approvals.mode} (soot never approves on your behalf)`,
       'Checks:',
       ...cfg.checks.map((c) => `- ${c.name} [${c.kind}]: ${c.argv.join(' ')}`),

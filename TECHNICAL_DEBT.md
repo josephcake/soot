@@ -23,11 +23,15 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Intentional] No workspace package is a stub any more;** `cli` and `harness-adapters` are
   partial (M6). Package boundaries are kept (ADR-019).
 - **[Intentional] Decomposition is fixture-only in practice.** `FixtureDecomposer` matches
-  recorded prompts and refuses others; it is the default and the only decomposer the CLI and
-  MCP server use. `ModelDecomposer` (ADR-033) decomposes other prompts through a
-  caller-supplied `ModelClient` and validates the answer like a fixture, but it is **verified
-  with mock model clients only** (no real provider, M2-07 blocked), the prompt it sends is
-  untuned, and it is not wired into the CLI or config yet. Fixture token estimates are
+  recorded prompts and refuses others; it is the default. `ModelDecomposer` (ADR-033)
+  decomposes other prompts through a `ModelClient` and validates the answer like a fixture, and
+  the CLI/MCP engine uses it when `decomposer.model` in `soot.config.json` names a usable
+  registry model (ADR-034). It is **verified with mock model clients only** (no real provider,
+  M2-07 blocked) and the prompt it sends is untuned.
+- **[Deferred] Decomposer model spend and health (ADR-034).** The decomposition call's tokens are
+  saved in the run report (`decomposition.usage`) but are not priced into the cost report or
+  counted against the run budget, and the call does not consult or update provider cooldowns.
+  Fix together with real-provider verification (M2-07). Fixture token estimates are
   placeholders, not measurements; model estimates are the model's guesses.
 - **[Intentional] Agents are mocks.** `MockAgentRunner` and the generic ACP runner
   (`AcpAgentRunner`, ADR-027) are the only runners, and the ACP runner has only driven soot's own
@@ -187,8 +191,8 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   `.stop`, polled every 200 ms). A run whose process died shows as `interrupted`; there is no
   daemon and no automatic resume from the CLI yet.
 - **[Intentional] Prompts must match a recorded fixture** (spec examples or the project's
-  `fixtures` file). Arbitrary prompts are refused until the CLI can be given a configured
-  model client for `ModelDecomposer` (needs M2-07 and a config surface).
+  `fixtures` file) unless a usable `decomposer.model` is configured (ADR-034, mocks only). The
+  config surface exists; real-model use still needs user-supplied keys (M2-07).
 - **[Intentional] The quick start needs a clone of the repo.** The source is public on GitHub
   (ADR-032), but there is no npm package or release. The quick start was reproduced from a
   fresh clone on the build box only, not on another machine or OS.

@@ -3,7 +3,9 @@
  *
  * Milestone 6 (partial): the `soot` command (run, status, cost, models, config, stop, mcp,
  * install-skill) and the engine behind it and the MCP server. Fixture-backed: decomposition
- * uses recorded fixtures and the only agent runner is the scripted mock.
+ * uses recorded fixtures, plus an optional configured decomposer model for other prompts
+ * (ADR-034, verified with mock clients only). Agent runners: the scripted mock and the generic
+ * ACP driver.
  */
 
 export const PACKAGE_NAME = '@soot/cli';
@@ -19,11 +21,18 @@ export { SootEngine, type AgentMode, type EngineOptions } from './engine.js';
 export {
   CONFIG_FILE,
   ConfigError,
+  DecomposerConfigSchema,
   ProjectConfigSchema,
   loadProjectConfig,
   type LoadedConfig,
   type ProjectConfig,
 } from './config.js';
+export {
+  describeDecomposerModel,
+  resolveDecomposerModel,
+  type DecomposerModel,
+  type ModelClientFactory,
+} from './decomposer-model.js';
 export { MockScriptFileSchema, loadMockScript } from './mock-script.js';
 export { interactiveApprovals, unattendedApprovals } from './approvals.js';
 export {

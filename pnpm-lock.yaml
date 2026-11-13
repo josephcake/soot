@@ -74,6 +74,9 @@ importers:
       '@soot/planner':
         specifier: workspace:*
         version: link:../../packages/planner
+      '@soot/provider-adapters':
+        specifier: workspace:*
+        version: link:../../packages/provider-adapters
       '@soot/task-graph':
         specifier: workspace:*
         version: link:../../packages/task-graph

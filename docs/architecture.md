@@ -1,7 +1,7 @@
 # Architecture and Repository Layout
 
 > **Current state (Milestones 1–5):** integrations has the Milestone 5 scope (worktrees,
-> soot-run validation, serial integration, reports); escalation has Milestone 4. task-graph, planner (fixture decomposer by default; a model-backed decomposer verified with mocks only, ADR-033),
+> soot-run validation, serial integration, reports); escalation has Milestone 4. task-graph, planner (fixture decomposer by default; a model-backed decomposer verified with mocks only, ADR-033, selectable in the CLI/MCP engine through `decomposer` in soot.config.json, ADR-034),
 > agent-runtime (scheduler + mock runner), context-manager (SQLite state), and observability
 > (cost records, routing log) have their Milestone 1 scope; model-registry and
 > provider-adapters have the Milestone 2 mockable scope; model-router has Milestone 3. The rest of the design below is the _plan_ from

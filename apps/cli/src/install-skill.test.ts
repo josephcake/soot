@@ -34,7 +34,8 @@ describe('the universal skill', () => {
     expect(skill).toMatch(/verbatim/);
     expect(skill).toMatch(/Never approve on the user's behalf/);
     expect(skill).toMatch(/soot_run/);
-    expect(skill).toMatch(/recorded fixtures only/);
+    expect(skill).toMatch(/Decomposition uses \*\*recorded fixtures\*\*/);
+    expect(skill).toMatch(/verified\s+with mock models only/);
   });
 });
 

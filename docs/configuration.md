@@ -136,9 +136,40 @@ task edits. Unknown keys are rejected.
 | `escalation`         | defaults   | Escalation limits and budgets (`@soot/escalation`, e.g. `{ "sameModelRetries": 0 }`).                                    |
 | `fixtures`           | none       | JSON array of extra recorded decompositions `{ id, prompt, tasks }`.                                                     |
 | `acpAgent`           | none       | ACP agent for `--agent acp`: `command`, `args`, `passEnv` (variable names; credential-like names are rejected).          |
+| `decomposer`         | none       | `{ "model": "<provider/modelId>" }`: a model from your registry for prompts with no fixture (see below; mocks only).     |
 
 Check entries: `name`, `kind` (`test`, `typecheck`, `lint`, `acceptance`), `argv`, optional
 `timeoutMs` and `required` (default `true`).
+
+### Decomposer model (optional, ADR-034)
+
+By default soot decomposes only **recorded** prompts (the build spec examples plus your
+`fixtures`) and refuses the rest. To let a model decompose other prompts, name one of the
+models in your registry file:
+
+```json
+{ "version": 1, "models": "models.json", "decomposer": { "model": "anthropic/<model-id>" } }
+```
+
+- `model` is a reference `provider/modelId` exactly as `soot models` lists it. soot ships no
+  default and names no vendor; the field is strict, and a key in it is rejected.
+- Recorded prompts still come from fixtures, with **no model call**. Only prompts no fixture
+  matches go to the model, and its answer is validated like a fixture (ADR-033). A model
+  failure or an invalid answer fails the run with the reason; soot never guesses a plan or
+  picks a similar fixture.
+- The key is read only from the variable the provider's `apiKeyEnv` names, in the environment
+  soot was started with (no `.env` file is read). If the model is not in the registry, its
+  provider is restricted or listed-only, it is configured without structured output, or the
+  key variable is unset, the model is **not usable**: no client is built, nothing is sent,
+  recorded prompts still work, and other prompts fail with a message that names the setting
+  and the reason.
+- `soot config` (and `--json`, field `decomposer`) shows the setting and whether it is usable,
+  without printing any key. Checking builds a client but makes no request.
+- Only decomposition uses this model. Execution still needs `--agent mock` or `--agent acp`,
+  and routing is unchanged. Decomposition tokens are recorded in the run report
+  (`decomposition.usage`) but are not yet counted in the cost report or run budget.
+- **Status:** implemented and verified with mock model clients only. No real model has
+  decomposed a prompt (M2-07 is blocked on user-supplied keys).
 
 ## CLI state files
 

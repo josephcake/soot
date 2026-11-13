@@ -47,8 +47,12 @@ default info; log lines go to stderr). No .env file is read.
 
 Agents: --agent mock runs a scripted test double (no model is called). --agent acp runs each
 task through the ACP agent command configured as "acpAgent" in soot.config.json (generic ACP
-driver; no harness is verified). Decomposition uses recorded fixtures only. soot never approves anything for you: with --interactive (or a terminal)
-it asks; otherwise approval-needing work is refused.
+driver; no harness is verified). soot never approves anything for you: with --interactive (or
+a terminal) it asks; otherwise approval-needing work is refused.
+
+Decomposition: recorded fixtures. Prompts with no fixture go to the optional "decomposer"
+model in soot.config.json, only when its key variable is set (verified with mock clients only;
+"soot config" shows whether it is usable). Without it, such prompts are refused.
 
 Dashboard: off unless you run "soot dashboard". It binds 127.0.0.1 only, fails if the port is
 taken (no other port is tried), is read-only, and opens a browser only with --open. Every
@@ -148,6 +152,7 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
       approvals: approvals.gate,
       gitEnv: { ...io.env },
       agentEnv: { ...io.env },
+      modelEnv: { ...io.env },
       log,
     });
     try {
