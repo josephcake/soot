@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toOverview } from './overview.js';
+import { complexityOf, complexitySignals, toOverview } from './overview.js';
 import { toDashboardRun } from './view.js';
 
 const run = (over: Record<string, unknown>, cost: Record<string, unknown> | null = null) =>
@@ -193,5 +193,97 @@ describe('toOverview', () => {
     ]);
     expect(ag.usageNote).toContain('Runner label is from the saved report');
     expect(ag.savingsNote).toContain('does not claim savings');
+  });
+
+  it('complexity: each recorded input normalized, averaged, then bucketed 0-4', () => {
+    const sig = { tasks: 6, planner: 1, depth: 4, tokens: 100_000, transitions: 6 };
+    expect(complexityOf(sig)).toMatchObject({
+      score: 1,
+      level: 4,
+      inputs: { tasks: 1, planner: 1, depth: 1, tokens: 1, retries: 1 },
+      missing: [],
+    });
+    // 3 tasks → 0.4; planner 0.5; 2 layers → 1/3; 10k tokens → 0.5; 1 transition / 3 → 1/3.
+    const mid = complexityOf({ tasks: 3, planner: 0.5, depth: 2, tokens: 10_000, transitions: 1 });
+    expect(mid.inputs.tasks).toBeCloseTo(0.4);
+    expect(mid.inputs.depth).toBeCloseTo(1 / 3);
+    expect(mid.inputs.tokens).toBeCloseTo(0.5);
+    expect(mid.score).toBe(0.413);
+    expect(mid.level).toBe(2);
+    // Tokens are a capped log scale: ≤1k → 0, 1M → still 1.
+    expect(complexityOf({ ...sig, tokens: 500 }).inputs.tokens).toBe(0);
+    expect(complexityOf({ ...sig, tokens: 1_000_000 }).inputs.tokens).toBe(1);
+    // Deterministic.
+    expect(complexityOf(sig)).toEqual(complexityOf({ ...sig }));
+  });
+
+  it('complexity: missing fields are left out of the mean, never counted as zero', () => {
+    const noTokens = complexityOf({
+      tasks: 6,
+      planner: null,
+      depth: 1,
+      tokens: null,
+      transitions: 0,
+    });
+    expect(noTokens.missing).toEqual(['planner', 'tokens']);
+    // Mean of tasks 1, depth 0, retries 0 only.
+    expect(noTokens.score).toBe(0.333);
+    expect(noTokens.level).toBe(1);
+    const nothing = complexityOf({
+      tasks: 0,
+      planner: null,
+      depth: 0,
+      tokens: null,
+      transitions: 0,
+    });
+    expect(nothing.score).toBeNull();
+    expect(nothing.level).toBe(0);
+    expect(nothing.missing).toEqual(['tasks', 'planner', 'depth', 'tokens', 'retries']);
+  });
+
+  it('complexity signals come from the run: task count, planner complexity, layers, tokens, transitions', () => {
+    const r = run(
+      {
+        runId: 'c',
+        tasks: [
+          { taskId: 'a', complexity: 'low', state: 'succeeded', attemptDetails: [] },
+          {
+            taskId: 'b',
+            complexity: 'high',
+            dependsOn: ['a'],
+            state: 'succeeded',
+            attemptDetails: [],
+          },
+          { taskId: 'c', complexity: 'unknown-label', state: 'succeeded', attemptDetails: [] },
+        ],
+        events: [
+          { type: 'assign', taskId: 'a', attempt: 1, model: 'm', reason: '' },
+          { type: 'escalate', taskId: 'b', attempt: 2, model: 'm', reason: '' },
+        ],
+      },
+      {
+        cost: {
+          totals: {
+            actual: {
+              inputTokens: 900,
+              outputTokens: 100,
+              usd: 0,
+              unpricedAttempts: 0,
+              unreportedAttempts: 0,
+            },
+          },
+        },
+      },
+    );
+    expect(complexitySignals(r)).toEqual({
+      tasks: 3,
+      planner: 0.5,
+      depth: 2,
+      tokens: 1000,
+      transitions: 1,
+    });
+    expect(toOverview([r]).prompts[0]?.complexity.level).toBe(
+      complexityOf(complexitySignals(r)).level,
+    );
   });
 });

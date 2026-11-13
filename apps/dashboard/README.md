@@ -31,14 +31,53 @@ soot dashboard --open          # also open a browser (off by default)
   carries an `aggregate` across every run (usage by model and by runner, tokens, cost, outcomes,
   validation and transition counts); a partial sum says how many runs it covers
   (`{ value, runs }`) and is `null` when no run reported it.
-- **Centerpiece (D-04):** a hand-drawn `<canvas>` (2D context, no chart library) at the
-  top-center shows where tasks went across every recorded prompt: pixel pipes from prompts to
-  models, sized by unique tasks that had an attempt on that model (a task that escalated counts
-  under each). Each pipe and model bar wears that model's colour and pattern; the largest share
-  is bracketed in cream. Empty state is a pixel "no data" block.
-  Prompt text is drawn with `fillText` only.
+- **Centerpiece: prompts over time.** A GitHub-contribution-style grid of square pixel cells
+  (plain DOM links, 1px gaps, a 5-step orange ramp from near-black to `#ff7a1a`; faint cells
+  are empty slots). A pixel segmented toggle picks the zoom, kept in the hash (`#/`,
+  `#/?zoom=hour`, `#/?zoom=day`):
+  - **Prompt** (default): a column per local day (at least 28, at most 42, ending today), one
+    square per prompt stacked oldest-first, up to 7; more shows a `+N` chip that opens that
+    day's filtered list. The shade is the prompt's **complexity level** (fixed scale).
+  - **Hour**: a column per local day, a row per local hour. **Day**: a column per week (Sunday
+    first), a row per weekday (at least 12, at most 26 weeks). The shade is the bucket's
+    **activity**, scaled to that view on its own.
+
+  Hover or focus shows a tooltip (prompt, local date/time, tasks, tokens, complexity; or the
+  window, prompts, tasks, tokens, activity). Each square has an `aria-label`. Enter or a click
+  opens `#/prompts/<runId>` (prompt) or `#/prompts?from=<iso>&to=<iso>` (bucket: the list
+  filtered to that window, with a filter chip and a "clear" link). No runs: an empty frame
+  and "No prompts yet". Prompts without a date are left off and counted in a note.
+
+  **Prompt complexity** (`complexityOf` in `overview.ts`), from recorded fields only. Each
+  input is normalized to 0..1:
+
+  | input   | from                                     | normalized                        |
+  | ------- | ---------------------------------------- | --------------------------------- |
+  | tasks   | planned task count                       | (tasks − 1) / 5, capped (6+ → 1)  |
+  | planner | planner complexity per task              | mean of low 0, medium 0.5, high 1 |
+  | depth   | layers in the task dependency graph      | (layers − 1) / 3, capped (4+ → 1) |
+  | tokens  | reported runner tokens (in + out)        | log10(tokens / 1000) / 2, 0..1    |
+  | retries | retry/fallback/escalate/downgrade events | transitions / tasks, capped at 1  |
+
+  `score` = the mean of the inputs that are present (3 decimals); `level` = min(4,
+  floor(score × 5)). Tasks, depth and retries need at least one task; planner needs a known
+  task complexity; tokens need reported usage. A missing input is left out of the mean (never
+  read as 0), and the grid notes which fields were missing for how many prompts. No score →
+  level 0.
+
+  **Bucket activity** (hour and day views): the sum of the scores of the prompts created in
+  that local window (a missing score adds 0). Level within one view: no prompts → faint empty
+  cell; activity 0 → level 0; otherwise ceil(4 × activity / the view's largest activity), so
+  each zoom has its own scale.
+
+- **Where tasks went (secondary, D-04):** a smaller hand-drawn `<canvas>` (2D context, no chart
+  library) below the grid for the latest 8 prompts: pixel pipes from prompts to models, sized
+  by unique tasks that had an attempt on that model (a task that escalated counts under each).
+  Each pipe and model bar wears that model's colour and pattern; the largest share is
+  bracketed in cream. The legend under it counts every prompt. Empty state is a pixel "no
+  data" block. Prompt text is drawn with `fillText` only.
 - **Views (hash routes, no router library):** a pixel tab bar switches between **Overview**
-  (`#/`: summary tiles for prompts, tasks, tokens and cost, the canvas, a shared model legend,
+  (`#/`: summary tiles for prompts, tasks, tokens and cost, the prompt grid, the canvas, a shared model legend,
   and aggregate charts across every prompt; nothing specific to one prompt) and **Prompts**
   (`#/prompts`). The browser back and forward buttons work (`hashchange`).
 - **Previous prompts (D-04):** `#/prompts` lists every recorded run, newest first, with the

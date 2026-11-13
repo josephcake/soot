@@ -25,6 +25,93 @@ export interface PromptIndexItem {
   };
   /** Unique tasks in this run that had at least one attempt on the model. */
   readonly taskCountsByModel: readonly { readonly model: string; readonly tasks: number }[];
+  /** How hard the prompt was, from recorded fields only (see `complexityOf`). */
+  readonly complexity: Complexity;
+}
+
+/** Raw, recorded inputs to a prompt's complexity. */
+export interface ComplexitySignals {
+  readonly tasks: number;
+  /** Mean planner complexity of the tasks (low 0, medium 0.5, high 1); null if none known. */
+  readonly planner: number | null;
+  /** Layers in the task dependency graph (0 with no tasks). */
+  readonly depth: number;
+  /** Reported runner tokens (in + out); null when not reported. */
+  readonly tokens: number | null;
+  /** Model transitions: retry, fallback, escalate, downgrade. */
+  readonly transitions: number;
+}
+
+export type ComplexityLevel = 0 | 1 | 2 | 3 | 4;
+
+export interface Complexity {
+  /** Mean of the present normalized inputs, 0..1 (3 decimals); null when none is present. */
+  readonly score: number | null;
+  /** floor(score × 5), capped at 4; 0 when the score is null. */
+  readonly level: ComplexityLevel;
+  /** Each input normalized to 0..1, or null when that field was not recorded. */
+  readonly inputs: {
+    readonly tasks: number | null;
+    readonly planner: number | null;
+    readonly depth: number | null;
+    readonly tokens: number | null;
+    readonly retries: number | null;
+  };
+  /** Names of the inputs that were missing (left out of the mean, never counted as zero). */
+  readonly missing: readonly string[];
+  readonly signals: ComplexitySignals;
+}
+
+const PLANNER_LEVEL: Readonly<Record<string, number>> = { low: 0, medium: 0.5, high: 1 };
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+export function complexitySignals(run: DashboardRun): ComplexitySignals {
+  const known = run.tasks
+    .map((t) => PLANNER_LEVEL[t.complexity])
+    .filter((v): v is number => v !== undefined);
+  const a = run.tokens.actual;
+  return {
+    tasks: run.taskCount,
+    planner: known.length === 0 ? null : known.reduce((n, v) => n + v, 0) / known.length,
+    depth: run.graph.layers.length,
+    tokens: a === null ? null : a.inputTokens + a.outputTokens,
+    transitions: run.transitions.length,
+  };
+}
+
+/**
+ * Prompt complexity, from recorded fields only. Each input is normalized to 0..1:
+ *   tasks   = (tasks − 1) / 5                (1 task → 0, 6+ → 1)
+ *   planner = mean planner complexity          (low 0, medium 0.5, high 1)
+ *   depth   = (dependency layers − 1) / 3      (1 layer → 0, 4+ → 1)
+ *   tokens  = log10(tokens / 1000) / 2         (≤1k → 0, 100k+ → 1; capped log scale)
+ *   retries = transitions / tasks              (retries + escalations per task, capped at 1)
+ * score = mean of the inputs that are present; level = min(4, floor(score × 5)).
+ * Tasks, depth and retries need at least one task; planner needs a known task complexity;
+ * tokens need reported usage. A missing input is left out of the mean, never read as zero.
+ */
+export function complexityOf(sig: ComplexitySignals): Complexity {
+  const hasTasks = sig.tasks > 0;
+  const inputs = {
+    tasks: hasTasks ? clamp01((sig.tasks - 1) / 5) : null,
+    planner: sig.planner === null ? null : clamp01(sig.planner),
+    depth: hasTasks ? clamp01((Math.max(sig.depth, 1) - 1) / 3) : null,
+    tokens:
+      sig.tokens === null || !Number.isFinite(sig.tokens)
+        ? null
+        : clamp01(Math.log10(Math.max(sig.tokens, 1000) / 1000) / 2),
+    retries: hasTasks ? clamp01(sig.transitions / sig.tasks) : null,
+  };
+  const present = Object.values(inputs).filter((v): v is number => v !== null);
+  const missing = Object.entries(inputs)
+    .filter(([, v]) => v === null)
+    .map(([k]) => k);
+  const score =
+    present.length === 0
+      ? null
+      : Math.round((present.reduce((n, v) => n + v, 0) / present.length) * 1000) / 1000;
+  const level = (score === null ? 0 : Math.min(4, Math.floor(score * 5))) as ComplexityLevel;
+  return { score, level, inputs, missing, signals: sig };
 }
 
 /** One prompt's tasks that were assigned to one model. */
@@ -239,6 +326,7 @@ export function toPromptIndexItem(run: DashboardRun): PromptIndexItem {
     tokens: run.tokens.actual,
     cost: { actualUsd: run.cost.actualUsd, unpricedAttempts: run.cost.unpricedAttempts },
     taskCountsByModel: taskCountsByModel(run),
+    complexity: complexityOf(complexitySignals(run)),
   };
 }
 

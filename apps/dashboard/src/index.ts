@@ -12,9 +12,14 @@ export {
 } from './server.js';
 export { usageCharts, type UsageCharts, type UsageRow, type UsageSide } from './charts.js';
 export {
+  complexityOf,
+  complexitySignals,
   toOverview,
   toPromptIndexItem,
   taskCountsByModel,
+  type Complexity,
+  type ComplexityLevel,
+  type ComplexitySignals,
   type Overview,
   type PromptIndexItem,
   type TaskModelFlow,

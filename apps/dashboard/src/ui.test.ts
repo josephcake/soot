@@ -102,10 +102,13 @@ const text = (n: FakeNode): string =>
     .join(' ');
 
 function load() {
+  const byId: Record<string, FakeNode> = {};
   const fake = {
+    __byId: byId,
     document: {
       createElement: node,
-      getElementById: () => node('div'),
+      addEventListener: () => undefined,
+      getElementById: (id: string) => (byId[id] ??= node('div')),
       querySelectorAll: () => [],
     },
     window: { addEventListener: () => undefined },
@@ -115,7 +118,7 @@ function load() {
     clearTimeout: () => undefined,
   };
   return runInNewContext(
-    `${APP_JS}\n;({ chart, usageBlock, assignmentBlock, donut, meter, outcomesBlock, tokensBlock, costBlock, timelineBlock, validationBlock, transitionsBlock, BLOCKS, AGG_BLOCKS, ACT_SHADES, EST_SHADES, MODEL_COLORS, MODEL_PATTERNS, drawFlow, renderPrompts, taskBreakdownBlock, identBlock, parseRoute, truncate, fmtDate, buildModelStyles, modelStyle, useModels, tilesFor, patternInk, notFoundBlock, promptRow });`,
+    `${APP_JS}\n;({ chart, usageBlock, assignmentBlock, donut, meter, outcomesBlock, tokensBlock, costBlock, timelineBlock, validationBlock, transitionsBlock, BLOCKS, AGG_BLOCKS, ACT_SHADES, EST_SHADES, MODEL_COLORS, MODEL_PATTERNS, drawFlow, renderPrompts, taskBreakdownBlock, identBlock, parseRoute, truncate, fmtDate, buildModelStyles, modelStyle, useModels, tilesFor, patternInk, notFoundBlock, promptRow, gridModel, localWindow, filterPrompts, scaleLevels, renderGrid, cellLines, GRID_LEGEND, STACK_CAP, __byId });`,
     fake,
   ) as {
     chart: (title: string, kind: string, rows: unknown[], fmt: (v: number) => string) => FakeNode;
@@ -152,11 +155,58 @@ function load() {
     patternInk: (pattern: string, i: number, j: number) => boolean;
     notFoundBlock: (runId: string) => FakeNode;
     promptRow: (p: unknown) => FakeNode;
+    gridModel: (
+      prompts: unknown[],
+      zoom: string,
+      now: number,
+      off?: (ms: number) => number,
+    ) => Grid;
+    localWindow: (
+      ms: number,
+      unit: string,
+      off: (ms: number) => number,
+    ) => { from: number; to: number };
+    filterPrompts: (
+      prompts: unknown[],
+      filter: { from: string; to: string } | null,
+    ) => { runId: string }[];
+    scaleLevels: (values: number[]) => number[];
+    renderGrid: (ov: unknown, zoom: string, now: number, off?: (ms: number) => number) => Grid;
+    cellLines: (cell: unknown, zoom: string) => string[];
+    GRID_LEGEND: Record<string, string>;
+    STACK_CAP: number;
+    __byId: Record<string, FakeNode>;
     drawFlow: (canvas: FakeNode, overview: unknown) => void;
     renderPrompts: (prompts: unknown[]) => void;
     taskBreakdownBlock: (run: unknown) => FakeNode;
     identBlock: (run: unknown) => FakeNode;
   };
+}
+
+interface GridCell {
+  kind: string;
+  level?: number;
+  href?: string | null;
+  from?: number;
+  to?: number;
+  prompts?: number;
+  tasks?: number;
+  tokens?: number | null;
+  activity?: number;
+  prompt?: { runId: string };
+}
+interface Grid {
+  zoom: string;
+  rows: number;
+  total: number;
+  undated: number;
+  columns: {
+    key: string;
+    label: string;
+    cells: GridCell[];
+    overflow?: number;
+    overflowHref?: string;
+  }[];
 }
 
 const bars = (n: FakeNode) => all(n).filter((x) => /^bar( |$)/.test(x.className));
@@ -850,5 +900,190 @@ describe('page helpers', () => {
     expect(runner?.textContent.endsWith('…')).toBe(true);
     const sw = all(row).find((n) => n.className.startsWith('sw'));
     expect(sw?.style.backgroundColor).toBe(ui.modelStyle('p/small').color);
+  });
+});
+
+describe('prompt grid', () => {
+  const ui = load();
+  // Los Angeles: PDT (UTC-7) until 2026-11-01 09:00 UTC, then PST (UTC-8).
+  const LA = (ms: number) => (ms < Date.parse('2026-11-01T09:00:00Z') ? -420 : -480);
+  const NOW = Date.parse('2026-11-13T07:00:00Z'); // Nov 12, 11:00 PM in LA
+  const P = (runId: string, createdAt: string | null, level = 1, score: number | null = 0.3) => ({
+    runId,
+    createdAt,
+    prompt: 'prompt ' + runId,
+    taskCount: 2,
+    state: 'succeeded',
+    agent: { kind: null, label: null },
+    tokens: { inputTokens: 1000, outputTokens: 200, unreportedAttempts: 0 },
+    cost: { actualUsd: null, unpricedAttempts: null },
+    taskCountsByModel: [],
+    complexity: { score, level, missing: [] },
+  });
+
+  it('local hour and day windows follow the local clock, across a DST change', () => {
+    // 9:59:59 and 10:00 PM in LA on Nov 12 fall in different hours; 11:59 PM and 12:00 AM in
+    // different days.
+    const h1 = ui.localWindow(Date.parse('2026-11-13T05:59:59Z'), 'hour', LA);
+    const h2 = ui.localWindow(Date.parse('2026-11-13T06:00:00Z'), 'hour', LA);
+    expect(new Date(h1.from).toISOString()).toBe('2026-11-13T05:00:00.000Z');
+    expect(h1.to).toBe(h2.from);
+    const d1 = ui.localWindow(Date.parse('2026-11-13T07:59:00Z'), 'day', LA);
+    const d2 = ui.localWindow(Date.parse('2026-11-13T08:00:00Z'), 'day', LA);
+    expect(new Date(d1.from).toISOString()).toBe('2026-11-12T08:00:00.000Z');
+    expect(new Date(d2.from).toISOString()).toBe('2026-11-13T08:00:00.000Z');
+    // Nov 1 is 25 hours long in LA (fall back).
+    const dst = ui.localWindow(Date.parse('2026-11-01T12:00:00Z'), 'day', LA);
+    expect(new Date(dst.from).toISOString()).toBe('2026-11-01T07:00:00.000Z');
+    expect((dst.to - dst.from) / 3600000).toBe(25);
+  });
+
+  it('groups prompts by local day, stacks them oldest first, and marks empty days faint', () => {
+    const prompts = [
+      P('late', '2026-11-13T07:30:00Z'), // Nov 12, 11:30 PM local, not Nov 13
+      P('early', '2026-11-12T16:00:00Z'), // Nov 12, 8:00 AM local
+      P('gap', '2026-11-09T18:00:00Z'),
+      P('undated', null),
+    ];
+    const m = ui.gridModel(prompts, 'prompt', NOW, LA);
+    expect(m.rows).toBe(ui.STACK_CAP);
+    expect(m.total).toBe(3);
+    expect(m.undated).toBe(1);
+    expect(m.columns.length).toBeGreaterThanOrEqual(28);
+    const last = m.columns.at(-1);
+    expect(last?.cells.filter((c) => c.kind === 'prompt').map((c) => c.prompt?.runId)).toEqual([
+      'early',
+      'late',
+    ]);
+    expect(last?.cells.slice(2).every((c) => c.kind === 'empty')).toBe(true);
+    // Nov 10 and 11 had no prompts: all faint.
+    for (const c of m.columns.slice(-3, -1))
+      expect(c.cells.every((x) => x.kind === 'empty')).toBe(true);
+    // Clicking a prompt square opens its detail route.
+    expect(last?.cells[0]?.href).toBe('#/prompts/early');
+  });
+
+  it('caps a heavy day at the stack height and links the rest to the filtered list', () => {
+    const many = Array.from({ length: 10 }, (_, i) =>
+      P('r' + String(i), new Date(Date.parse('2026-11-10T17:00:00Z') + i * 60000).toISOString()),
+    );
+    const m = ui.gridModel(many, 'prompt', NOW, LA);
+    const day = m.columns.find((c) => c.cells.some((x) => x.kind === 'prompt'));
+    expect(day?.cells).toHaveLength(ui.STACK_CAP);
+    expect(day?.overflow).toBe(3);
+    expect(day?.overflowHref).toBe(
+      '#/prompts?from=' +
+        encodeURIComponent('2026-11-10T08:00:00.000Z') +
+        '&to=' +
+        encodeURIComponent('2026-11-11T08:00:00.000Z'),
+    );
+  });
+
+  it('hour and day buckets sum activity and scale levels to their own view', () => {
+    expect(ui.scaleLevels([0, 0.1, 0.5, 1, 2])).toEqual([0, 1, 1, 2, 4]);
+    expect(ui.scaleLevels([0, 0])).toEqual([0, 0]);
+    const prompts = [
+      P('a', '2026-11-12T17:05:00Z', 2, 0.5), // Nov 12, 9:05 AM
+      P('b', '2026-11-12T17:55:00Z', 1, 0.25), // same hour
+      P('c', '2026-11-12T18:00:00Z', 0, null), // next hour; unknown score counts 0
+    ];
+    const hour = ui.gridModel(prompts, 'hour', NOW, LA);
+    expect(hour.rows).toBe(24);
+    const today = hour.columns.at(-1)?.cells ?? [];
+    expect(today[9]).toMatchObject({
+      kind: 'bucket',
+      prompts: 2,
+      tasks: 4,
+      tokens: 2400,
+      activity: 0.75,
+      level: 4,
+    });
+    expect(today[10]).toMatchObject({ kind: 'bucket', prompts: 1, activity: 0, level: 0 });
+    expect(today[8]?.kind).toBe('empty');
+    expect(today[9]?.href).toBe(
+      '#/prompts?from=' +
+        encodeURIComponent('2026-11-12T17:00:00.000Z') +
+        '&to=' +
+        encodeURIComponent('2026-11-12T18:00:00.000Z'),
+    );
+    const day = ui.gridModel(prompts, 'day', NOW, LA);
+    expect(day.rows).toBe(7);
+    const cells = day.columns.flatMap((c) => c.cells).filter((c) => c.kind === 'bucket');
+    expect(cells).toHaveLength(1);
+    expect(cells[0]).toMatchObject({ prompts: 3, activity: 0.75, level: 4 });
+    // Nov 12, 2026 is a Thursday: row 4 of the last week; later days are not drawn.
+    const lastWeek = day.columns.at(-1)?.cells ?? [];
+    expect(lastWeek[4]?.kind).toBe('bucket');
+    expect(lastWeek.slice(5).map((c) => c.kind)).toEqual(['none', 'none']);
+    // Each zoom has its own legend that says it is scaled to the view.
+    expect(ui.GRID_LEGEND.hour).toContain('scaled to this view');
+    expect(ui.GRID_LEGEND.day).toContain('scaled to this view');
+    expect(ui.GRID_LEGEND.prompt).toContain('Fixed 0–1 scale');
+    expect(ui.cellLines(today[9], 'hour').join(' ')).toMatch(
+      /2 prompt\(s\) · 4 task\(s\) · 2,400 tok/,
+    );
+  });
+
+  it('with no runs, draws an empty frame of faint cells and says so', () => {
+    const m = ui.renderGrid({ prompts: [] }, 'prompt', NOW, LA);
+    expect(m.total).toBe(0);
+    expect(m.columns.every((c) => c.cells.every((x) => x.kind === 'empty'))).toBe(true);
+    const panel = ui.__byId['pgrid-panel'];
+    expect(panel).toBeDefined();
+    const t = text(panel ?? node('div'));
+    expect(t).toContain('No prompts yet');
+    expect(t).toContain('Less');
+    expect(t).toContain('More');
+    expect(
+      all(panel ?? node('div')).filter((n) => n.tag === 'a' && n.className.startsWith('cell')),
+    ).toEqual([]);
+    for (const z of ['hour', 'day']) {
+      const e = ui.gridModel([], z, NOW, LA);
+      expect(e.columns.flatMap((c) => c.cells).some((x) => x.kind === 'bucket')).toBe(false);
+    }
+  });
+
+  it('renders prompt squares as focusable links with an aria-label and the zoom toggle', () => {
+    ui.renderGrid({ prompts: [P('x', '2026-11-12T17:05:00Z', 3, 0.7)] }, 'prompt', NOW, LA);
+    const panel = ui.__byId['pgrid-panel'] ?? node('div');
+    const links = all(panel).filter((n) => n.tag === 'a' && n.className === 'cell l3');
+    expect(links).toHaveLength(1);
+    const link = links[0] as FakeNode & { href: string };
+    expect(link.href).toBe('#/prompts/x');
+    expect(link.attrs['aria-label']).toContain('prompt x');
+    expect(link.attrs['aria-label']).toContain('complexity 3/4 (score 0.70)');
+    const seg = all(panel).filter((n) => n.className.startsWith('seg-b'));
+    expect(
+      seg.map((n) => [n.textContent, (n as FakeNode & { href: string }).href, n.className]),
+    ).toEqual([
+      ['Prompt', '#/', 'seg-b on'],
+      ['Hour', '#/?zoom=hour', 'seg-b'],
+      ['Day', '#/?zoom=day', 'seg-b'],
+    ]);
+  });
+
+  it('parses the zoom and the prompt-list window filter routes', () => {
+    expect(ui.parseRoute('#/?zoom=hour')).toEqual({ view: 'overview', zoom: 'hour' });
+    expect(ui.parseRoute('#/?zoom=day')).toEqual({ view: 'overview', zoom: 'day' });
+    expect(ui.parseRoute('#/?zoom=bogus')).toEqual({ view: 'overview' });
+    const from = '2026-11-12T17:00:00.000Z',
+      to = '2026-11-12T18:00:00.000Z';
+    expect(
+      ui.parseRoute('#/prompts?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to)),
+    ).toEqual({ view: 'prompts', filter: { from, to } });
+    // A bad or reversed window is ignored: the whole list.
+    expect(ui.parseRoute('#/prompts?from=x&to=' + to)).toEqual({ view: 'prompts' });
+    expect(ui.parseRoute('#/prompts?from=' + to + '&to=' + from)).toEqual({ view: 'prompts' });
+  });
+
+  it('filters the prompt list to [from, to), leaving undated prompts out', () => {
+    const list = [
+      P('in', '2026-11-12T17:00:00Z'),
+      P('edge', '2026-11-12T18:00:00Z'),
+      P('none', null),
+    ];
+    const f = { from: '2026-11-12T17:00:00.000Z', to: '2026-11-12T18:00:00.000Z' };
+    expect(ui.filterPrompts(list, f).map((p) => p.runId)).toEqual(['in']);
+    expect(ui.filterPrompts(list, null)).toHaveLength(3);
   });
 });

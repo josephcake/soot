@@ -33,9 +33,10 @@ export const INDEX_HTML = `<!doctype html>
       </nav>
       <main id="view-overview" class="grid">
         <section id="tiles" class="tiles wide" aria-label="summary"></section>
+        <section id="pgrid-panel" class="block wide pgrid-panel" aria-label="prompts over time"></section>
         <section id="centerpiece" class="block wide centerpiece">
-          <h2>Where tasks went · all prompts</h2>
-          <p class="note">Tasks per model across every recorded prompt. A task that used more than one model is counted under each. The largest share is bracketed in cream.</p>
+          <h2>Where tasks went · latest prompts</h2>
+          <p class="note">Tasks per model for the latest 8 prompts. A task that used more than one model is counted under each. The largest share is bracketed in cream. The legend counts every prompt.</p>
           <canvas id="flow" width="960" height="320" aria-label="Tasks from prompts to models"></canvas>
           <div id="legend" class="model-legend" aria-label="model legend"></div>
         </section>
@@ -165,9 +166,46 @@ p.wide { margin: 0; }
 .chip { display: inline-flex; align-items: center; border: 1px solid var(--line-2); padding: 0 6px; color: var(--cream); font-size: 12px; }
 .chip .sw { margin-right: 6px; width: 10px; height: 10px; }
 .via { color: var(--orange); font-size: 12px; }
+.pgrid-panel { position: relative; }
+.pgrid-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s1) var(--s2); margin-bottom: var(--s2); padding-bottom: var(--s1); border-bottom: 1px solid var(--line); }
+.pgrid-head h2 { margin: 0; padding: 0; border: 0; }
+.seg { display: inline-flex; border: 1px solid var(--line-2); }
+.seg-b { padding: 4px var(--s2); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); text-decoration: none; border-left: 1px solid var(--line-2); }
+.seg-b:first-child { border-left: 0; }
+.seg-b:hover { color: var(--cream); background: var(--raised); }
+.seg-b.on { color: var(--page); background: var(--orange); }
+.pgrid-scroll { overflow-x: auto; padding: 4px 0 var(--s1); }
+.pgrid { display: flex; gap: 1px; align-items: flex-start; --c: 20px; width: max-content; }
+.pgrid.z-hour { --c: 12px; }
+.gcol { display: flex; flex-direction: column; gap: 1px; width: var(--c); flex: none; }
+.gcol.rlabels { width: 36px; margin-right: 4px; }
+.glabel { height: 18px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: visible; }
+.rlabel { height: var(--c); font-size: 12px; line-height: var(--c); color: var(--muted); white-space: nowrap; overflow: visible; }
+.cell { display: block; width: var(--c); height: var(--c); flex: none; box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.16), inset -1px -1px 0 rgba(0, 0, 0, 0.4); }
+.cell.empty { background: #1a1715; box-shadow: inset 0 0 0 1px #24201d; }
+.cell.none { background: transparent; box-shadow: none; }
+.cell.l0 { background: #3b2414; }
+.cell.l1 { background: #6b3511; }
+.cell.l2 { background: #a1480f; }
+.cell.l3 { background: #d45f12; }
+.cell.l4 { background: #ff7a1a; }
+a.cell:hover, a.cell:focus-visible { outline: 2px solid var(--cream); outline-offset: 0; position: relative; z-index: 1; }
+.more { font-size: 12px; color: var(--orange); text-decoration: none; white-space: nowrap; margin-top: 2px; }
+.more:hover { text-decoration: underline; }
+.ramp-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); margin-top: var(--s2); }
+.ramp-wrap .note { margin: 0; }
+.ramp { display: flex; align-items: center; gap: 4px; }
+.ramp .cell { width: 12px; height: 12px; }
+.ramp .note + .cell.empty { margin-left: var(--s1); }
+.empty-msg { color: var(--cream); margin: var(--s2) 0 0; }
+.gtip { position: absolute; z-index: 5; max-width: 320px; background: var(--raised); border: 1px solid var(--orange); padding: var(--s1); font-size: 12px; white-space: pre-line; color: var(--cream); pointer-events: none; box-shadow: 4px 4px 0 #000; }
+.filter-chip { display: inline-flex; flex-wrap: wrap; gap: var(--s1); align-items: center; border: 1px solid var(--orange); background: var(--raised); padding: 4px var(--s1); margin-bottom: var(--s2); color: var(--cream); font-size: 12px; }
+.filter-chip .clear { text-decoration: none; border-left: 1px solid var(--line-2); padding-left: var(--s1); }
 @media (max-width: 760px) {
   .block { grid-column: 1 / -1; }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pgrid { --c: 16px; }
+  .pgrid.z-hour { --c: 10px; }
   .sub-grid { grid-template-columns: minmax(0, 1fr); }
   a.prompt-row { grid-template-columns: minmax(0, 1fr); }
   .prompt-when { flex-direction: row; flex-wrap: wrap; }
@@ -193,12 +231,19 @@ let lastRunId = null;
 // Hash route: '' | '#' | '#/' → overview; '#/prompts' → list; '#/prompts/<runId>' → detail.
 // An old-style '#<runId>' link still opens that prompt. Anything else is the overview.
 function parseRoute(hash) {
-  const h = String(hash || '').replace(/^#/, '');
-  if (h === '' || h === '/') return { view: 'overview' };
+  const raw = String(hash || '').replace(/^#/, '');
+  const qi = raw.indexOf('?');
+  const h = qi === -1 ? raw : raw.slice(0, qi);
+  const q = parseQuery(qi === -1 ? '' : raw.slice(qi + 1));
+  if (h === '' || h === '/') return q.zoom === 'hour' || q.zoom === 'day' ? { view: 'overview', zoom: q.zoom } : { view: 'overview' };
   const m = /^\/prompts\/?(.*)$/.exec(h);
   if (m) {
     const rest = m[1].replace(/\/+$/, '');
-    if (rest === '') return { view: 'prompts' };
+    if (rest === '') {
+      const f = Date.parse(q.from), t = Date.parse(q.to);
+      if (!Number.isNaN(f) && !Number.isNaN(t) && f < t) return { view: 'prompts', filter: { from: new Date(f).toISOString(), to: new Date(t).toISOString() } };
+      return { view: 'prompts' };
+    }
     let id = rest;
     try { id = decodeURIComponent(rest); } catch (e) { id = rest; }
     return { view: 'prompt', runId: id };
@@ -347,6 +392,7 @@ const ACT_SHADES = ['#ff7a1a', '#c25510', '#ffa25c', '#8a3a08', '#ffc79a'];
 const EST_SHADES = ['#e8dcc8', '#b8ab96', '#8c8278', '#f5efe4', '#6e665c'];
 const OUTCOME_COLORS = { succeeded: '#ff7a1a', failed: '#ff4d2e', cancelled: '#8c8278', skipped: '#b8ab96', unfinished: '#3a3430' };
 const CELL = 8;
+const FLOW_MAX = 8;
 
 // slices: { label, value, color } or { label, value, model } (model style: colour + pattern).
 function donut(title, slices, fmt) {
@@ -830,6 +876,289 @@ function renderLegend(ov) {
   }
 }
 
+// ---- Prompt grid (GitHub-contribution style). Pure layout helpers first, then the DOM. ----
+
+const ZOOMS = ['prompt', 'hour', 'day'];
+const HOUR = 3600000, DAY = 86400000;
+const STACK_CAP = 7;
+const MAX_DAYS = 42;
+const MIN_DAYS = 28;
+const MAX_WEEKS = 26;
+const MIN_WEEKS = 12;
+
+// Minutes east of UTC at an instant, in this browser's zone (tests pass a fixed function).
+const localOffset = (ms) => -new Date(ms).getTimezoneOffset();
+const wallMs = (ms, off) => ms + off(ms) * 60000;
+// Turn a local wall-clock time back into an instant (refined once for DST edges).
+function fromWall(wall, off) {
+  let inst = wall - off(wall) * 60000;
+  inst = wall - off(inst) * 60000;
+  return inst;
+}
+const dayIndex = (ms, off) => Math.floor(wallMs(ms, off) / DAY);
+// Local [start, end) of the hour or day holding ms.
+function localWindow(ms, unit, off) {
+  const size = unit === 'hour' ? HOUR : DAY;
+  const w = Math.floor(wallMs(ms, off) / size) * size;
+  return { from: fromWall(w, off), to: fromWall(w + size, off) };
+}
+// A local wall-clock label, read back in UTC so the zone is already applied.
+const wallLabel = (wall, opts) => new Date(wall).toLocaleString('en-US', Object.assign({ timeZone: 'UTC' }, opts));
+
+function parseQuery(q) {
+  const out = {};
+  for (const part of String(q || '').split('&')) {
+    if (!part) continue;
+    const i = part.indexOf('=');
+    const k = i === -1 ? part : part.slice(0, i);
+    const v = i === -1 ? '' : part.slice(i + 1);
+    try { out[decodeURIComponent(k)] = decodeURIComponent(v); } catch (e) { out[k] = v; }
+  }
+  return out;
+}
+const promptsWindowHref = (from, to) => '#/prompts?from=' + encodeURIComponent(new Date(from).toISOString()) + '&to=' + encodeURIComponent(new Date(to).toISOString());
+
+// Prompts whose createdAt is in [from, to). A prompt without a date is never in a window.
+function filterPrompts(prompts, filter) {
+  if (!filter) return prompts;
+  const from = Date.parse(filter.from), to = Date.parse(filter.to);
+  return prompts.filter((p) => {
+    const t = p.createdAt ? Date.parse(p.createdAt) : NaN;
+    return !Number.isNaN(t) && t >= from && t < to;
+  });
+}
+
+// Bucket activity = sum of the prompts' complexity scores (a missing score counts 0).
+// Level within one view: empty → no cell level; 0 activity → 0; else ceil(4 × activity / max).
+const activityOf = (list) => list.reduce((n, p) => n + (p.complexity && p.complexity.score !== null ? p.complexity.score : 0), 0);
+function scaleLevels(values) {
+  const max = values.reduce((m, v) => Math.max(m, v), 0);
+  return values.map((v) => (v <= 0 || max <= 0 ? 0 : Math.min(4, Math.max(1, Math.ceil((4 * v) / max - 1e-9)))));
+}
+
+function bucketCell(list, w) {
+  const tokensKnown = list.filter((p) => p.tokens !== null);
+  return {
+    kind: list.length === 0 ? 'empty' : 'bucket',
+    from: w.from,
+    to: w.to,
+    prompts: list.length,
+    tasks: list.reduce((n, p) => n + p.taskCount, 0),
+    tokens: tokensKnown.length === 0 ? null : tokensKnown.reduce((n, p) => n + p.tokens.inputTokens + p.tokens.outputTokens, 0),
+    tokensReported: tokensKnown.length,
+    activity: Math.round(activityOf(list) * 1000) / 1000,
+    level: 0,
+    href: list.length === 0 ? null : promptsWindowHref(w.from, w.to),
+  };
+}
+
+/*
+ * The grid model for one zoom. Columns run oldest → newest and end on the later of now and the
+ * newest prompt. prompt: a column per local day, up to STACK_CAP prompt squares stacked
+ * (oldest at the top), then a +N chip. hour: a column per day, a row per local hour (0–23).
+ * day: a column per week (Sunday first), a row per weekday. Undated prompts are left out and
+ * counted in 'undated'.
+ */
+function gridModel(prompts, zoom, now, off) {
+  off = off || localOffset;
+  const z = ZOOMS.indexOf(zoom) === -1 ? 'prompt' : zoom;
+  const dated = prompts.filter((p) => p.createdAt && !Number.isNaN(Date.parse(p.createdAt)));
+  const times = dated.map((p) => Date.parse(p.createdAt));
+  const endMs = Math.max(now, times.length ? Math.max(...times) : now);
+  const endDay = dayIndex(endMs, off);
+  const firstDay = times.length ? dayIndex(Math.min(...times), off) : endDay;
+  const byDay = {};
+  for (const p of dated) {
+    const d = dayIndex(Date.parse(p.createdAt), off);
+    (byDay[d] = byDay[d] || []).push(p);
+  }
+  for (const k of Object.keys(byDay)) byDay[k].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  const dayWall = (d) => d * DAY;
+  const columns = [];
+  let rows, rowLabels;
+  if (z === 'day') {
+    const week = (d) => Math.floor((d + 4) / 7); // day 0 (1970-01-01) was a Thursday
+    const endW = week(endDay);
+    const startW = Math.min(Math.max(week(firstDay), endW - MAX_WEEKS + 1), endW - MIN_WEEKS + 1);
+    rows = 7;
+    rowLabels = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
+    for (let w = startW; w <= endW; w++) {
+      const cells = [];
+      let label = '';
+      for (let wd = 0; wd < 7; wd++) {
+        const d = w * 7 - 4 + wd;
+        if (d > endDay) { cells.push({ kind: 'none' }); continue; }
+        const wall = dayWall(d);
+        if (wallLabel(wall, { day: 'numeric' }) === '1') label = wallLabel(wall, { month: 'short' });
+        cells.push(bucketCell(byDay[d] || [], { from: fromWall(wall, off), to: fromWall(wall + DAY, off) }));
+      }
+      if (w === startW && !label) label = wallLabel(dayWall(w * 7 - 4), { month: 'short' });
+      columns.push({ key: 'w' + w, label: label, cells: cells });
+    }
+  } else {
+    const startDay = Math.min(Math.max(firstDay, endDay - MAX_DAYS + 1), endDay - MIN_DAYS + 1);
+    rows = z === 'hour' ? 24 : STACK_CAP;
+    rowLabels = z === 'hour' ? Array.from({ length: 24 }, (_, h) => (h % 6 === 0 ? h + 'h' : '')) : [];
+    for (let d = startDay; d <= endDay; d++) {
+      const wall = dayWall(d);
+      const weekday = (((d + 4) % 7) + 7) % 7;
+      const label = d === startDay || weekday === 1 ? wallLabel(wall, { month: 'short', day: 'numeric' }) : '';
+      const list = byDay[d] || [];
+      const col = { key: 'd' + d, label: label, cells: [], overflow: 0, from: fromWall(wall, off), to: fromWall(wall + DAY, off) };
+      if (z === 'prompt') {
+        list.slice(0, STACK_CAP).forEach((p) => col.cells.push({ kind: 'prompt', prompt: p, level: p.complexity ? p.complexity.level : 0, href: promptHref(p.runId) }));
+        while (col.cells.length < STACK_CAP) col.cells.push({ kind: 'empty' });
+        col.overflow = Math.max(0, list.length - STACK_CAP);
+        col.overflowHref = promptsWindowHref(col.from, col.to);
+      } else {
+        for (let h = 0; h < 24; h++) {
+          const from = fromWall(wall + h * HOUR, off), to = fromWall(wall + (h + 1) * HOUR, off);
+          col.cells.push(bucketCell(list.filter((p) => { const t = Date.parse(p.createdAt); return t >= from && t < to; }), { from: from, to: to }));
+        }
+      }
+      columns.push(col);
+    }
+  }
+  // The first column's label gives way to a nearby one so labels never collide.
+  if (columns.length > 1 && columns[0].label && columns.slice(1, 4).some((c) => c.label)) columns[0].label = '';
+  if (z !== 'prompt') {
+    const buckets = columns.flatMap((c) => c.cells.filter((x) => x.kind === 'bucket'));
+    const levels = scaleLevels(buckets.map((b) => b.activity));
+    buckets.forEach((b, i) => { b.level = levels[i]; });
+  }
+  return { zoom: z, rows: rows, rowLabels: rowLabels, columns: columns, total: dated.length, undated: prompts.length - dated.length };
+}
+
+const GRID_LEGEND = {
+  prompt: 'One square per prompt, by complexity: mean of tasks, planner complexity, dependency depth, reported tokens (log scale) and retries/escalations per task. Fixed 0–1 scale.',
+  hour: 'One square per local hour: summed prompt complexity in that hour, scaled to this view (darkest = busiest hour shown).',
+  day: 'One square per local day: summed prompt complexity that day, scaled to this view (darkest = busiest day shown).',
+};
+
+function fmtWindow(from, to, zoom) {
+  const a = new Date(from), b = new Date(to);
+  if (zoom === 'day') return a.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return a.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' – ' + b.toLocaleString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+function cellLines(cell, zoom) {
+  if (cell.kind === 'prompt') {
+    const p = cell.prompt, c = p.complexity;
+    return [
+      truncate(p.prompt, 64),
+      fmtDate(p.createdAt) || 'date unknown',
+      p.taskCount + ' task(s) · ' + (p.tokens === null ? 'tokens not reported' : fmtInt(p.tokens.inputTokens + p.tokens.outputTokens) + ' tok'),
+      'complexity ' + (c && c.score !== null ? c.level + '/4 (score ' + c.score.toFixed(2) + ')' : 'unknown') + (c && c.missing.length ? ' · no ' + c.missing.join(', ') : ''),
+    ];
+  }
+  return [
+    fmtWindow(cell.from, cell.to, zoom),
+    cell.prompts + ' prompt(s) · ' + cell.tasks + ' task(s) · ' + (cell.tokens === null ? 'tokens not reported' : fmtInt(cell.tokens) + ' tok' + (cell.tokensReported < cell.prompts ? ' (' + cell.tokensReported + ' of ' + cell.prompts + ' reported)' : '')),
+    'activity ' + cell.activity.toFixed(2) + ' · level ' + cell.level + '/4, scaled to this view',
+  ];
+}
+
+function showTip(panel, cell, zoom, target) {
+  const tip = panel.tip;
+  if (!tip) return;
+  tip.textContent = cellLines(cell, zoom).join('\n');
+  tip.hidden = false;
+  if (target.getBoundingClientRect && panel.getBoundingClientRect) {
+    const r = target.getBoundingClientRect(), b = panel.getBoundingClientRect();
+    const left = Math.min(Math.max(r.left - b.left - 8, 8), Math.max(b.width - 328, 8));
+    tip.style.left = left + 'px';
+    tip.style.top = (r.bottom - b.top + 6) + 'px';
+  }
+}
+const hideTip = (panel) => { if (panel.tip) panel.tip.hidden = true; };
+
+function zoomToggle(zoom) {
+  const nav = el('div', 'seg');
+  nav.setAttribute('role', 'group');
+  nav.setAttribute('aria-label', 'zoom');
+  for (const z of ZOOMS) {
+    const a = el('a', 'seg-b' + (z === zoom ? ' on' : ''), z.charAt(0).toUpperCase() + z.slice(1));
+    a.href = z === 'prompt' ? '#/' : '#/?zoom=' + z;
+    if (z === zoom) a.setAttribute('aria-current', 'true');
+    nav.append(a);
+  }
+  return nav;
+}
+
+function rampLegend(zoom) {
+  const lg = el('div', 'ramp');
+  lg.append(el('span', 'note', 'Less'));
+  for (let l = 0; l <= 4; l++) {
+    const c = el('span', 'cell l' + l);
+    c.title = 'level ' + l;
+    lg.append(c);
+  }
+  lg.append(el('span', 'note', 'More'), el('span', 'cell empty'), el('span', 'note', 'no prompt'));
+  const wrap = el('div', 'ramp-wrap');
+  wrap.append(lg, el('p', 'note', GRID_LEGEND[zoom]));
+  return wrap;
+}
+
+function renderGrid(ov, zoom, now, off) {
+  const panel = $('pgrid-panel');
+  const prompts = ov ? ov.prompts : [];
+  const m = gridModel(prompts, zoom, now === undefined ? Date.now() : now, off);
+  const head = el('div', 'pgrid-head');
+  head.append(el('h2', '', 'Prompts over time · all prompts'), zoomToggle(m.zoom));
+  const box = el('div', 'pgrid-scroll');
+  const grid = el('div', 'pgrid z-' + m.zoom);
+  grid.setAttribute('role', 'grid');
+  grid.setAttribute('aria-label', 'prompts over time, ' + m.zoom + ' view');
+  const rl = el('div', 'gcol rlabels');
+  rl.append(el('span', 'glabel', ''));
+  for (let i = 0; i < m.rows; i++) rl.append(el('span', 'rlabel', m.rowLabels[i] || ''));
+  grid.append(rl);
+  for (const col of m.columns) {
+    const c = el('div', 'gcol');
+    c.append(el('span', 'glabel', col.label));
+    for (const cell of col.cells) {
+      if (cell.kind === 'none') { c.append(el('span', 'cell none')); continue; }
+      if (cell.kind === 'empty') { c.append(el('span', 'cell empty')); continue; }
+      const a = el('a', 'cell l' + cell.level);
+      a.href = cell.href;
+      a.setAttribute('aria-label', cellLines(cell, m.zoom).join('. '));
+      a.dataset.level = String(cell.level);
+      const on = () => showTip(panel, cell, m.zoom, a);
+      a.addEventListener('mouseenter', on);
+      a.addEventListener('focus', on);
+      a.addEventListener('mouseleave', () => hideTip(panel));
+      a.addEventListener('blur', () => hideTip(panel));
+      c.append(a);
+    }
+    if (col.overflow > 0) {
+      const chip = el('a', 'more', '+' + col.overflow);
+      chip.href = col.overflowHref;
+      chip.setAttribute('aria-label', col.overflow + ' more prompt(s) that day');
+      c.append(chip);
+    }
+    grid.append(c);
+  }
+  box.append(grid);
+  const parts = [head, box];
+  if (m.total === 0) parts.push(el('p', 'empty-msg', 'No prompts yet. Run soot run and they will appear here.'));
+  parts.push(rampLegend(m.zoom));
+  const missing = prompts.filter((p) => p.complexity && p.complexity.missing.length > 0);
+  if (missing.length > 0) {
+    const counts = {};
+    for (const p of missing) for (const k of p.complexity.missing) counts[k] = (counts[k] || 0) + 1;
+    parts.push(el('p', 'note', 'Not recorded: ' + Object.keys(counts).sort().map((k) => k + ' for ' + counts[k] + ' prompt(s)').join(', ') + '. Those scores average only the fields that are present.'));
+  }
+  if (m.undated > 0) parts.push(el('p', 'note', m.undated + ' prompt(s) without a date are not on the grid.'));
+  const tip = el('div', 'gtip');
+  tip.setAttribute('role', 'tooltip');
+  tip.hidden = true;
+  panel.tip = tip;
+  parts.push(tip);
+  panel.replaceChildren(...parts);
+  if (box.scrollWidth !== undefined) box.scrollLeft = box.scrollWidth;
+  return m;
+}
+
 function renderOverview(ov) {
   $('tiles').replaceChildren(...tilesFor(ov));
   renderLegend(ov);
@@ -881,11 +1210,17 @@ function drawFlow(canvas, overview) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const cssW = Math.max(canvas.clientWidth || 960, 320);
-  const prompts = overview && overview.prompts ? overview.prompts : [];
-  const models = overview && overview.byModel ? overview.byModel : [];
-  const flows = overview && overview.flows ? overview.flows : [];
+  // Secondary view: the latest FLOW_MAX prompts (newest first), models summed over those.
+  const prompts = overview && overview.prompts ? overview.prompts.slice(0, FLOW_MAX) : [];
+  const shownIds = {};
+  for (const p of prompts) shownIds[p.runId] = true;
+  const flows = overview && overview.flows ? overview.flows.filter((f) => shownIds[f.runId]) : [];
+  const totals = {};
+  for (const f of flows) totals[f.model] = (totals[f.model] || 0) + f.tasks;
+  const models = Object.keys(totals).map((m) => ({ model: m, tasks: totals[m] })).sort((a, b) => b.tasks - a.tasks || (a.model < b.model ? -1 : a.model > b.model ? 1 : 0));
+  const shownTasks = prompts.reduce((n, p) => n + (p.taskCount || 0), 0);
   const rows = Math.max(prompts.length, models.length, 1);
-  const height = Math.max(240, 56 + rows * 40 + 24);
+  const height = Math.max(160, 48 + rows * 24);
   canvas.width = cssW;
   canvas.height = height;
   ctx.imageSmoothingEnabled = false;
@@ -929,7 +1264,7 @@ function drawFlow(canvas, overview) {
   ctx.textAlign = 'left';
   ctx.fillText('PROMPTS', pad, 16);
   ctx.textAlign = 'right';
-  ctx.fillText('MODELS  (' + overview.taskCount + ' tasks, ' + overview.promptCount + ' prompts)', cssW - pad, 16);
+  ctx.fillText('MODELS  (' + shownTasks + ' tasks, ' + prompts.length + (overview.promptCount > prompts.length ? ' of ' + overview.promptCount : '') + ' prompts)', cssW - pad, 16);
   ctx.textAlign = 'left';
   const stack = (items, weightOf) => {
     const total = items.reduce((n, it) => n + Math.max(weightOf(it), 1), 0);
@@ -1028,12 +1363,28 @@ function promptRow(p) {
   return a;
 }
 
-function renderPrompts(prompts) {
+function renderPrompts(all, filter) {
   const nav = $('prompts');
   nav.replaceChildren();
-  nav.append(el('h2', '', 'Previous prompts · ' + prompts.length));
-  if (prompts.length === 0) {
+  const prompts = filterPrompts(all, filter);
+  nav.append(el('h2', '', 'Previous prompts · ' + (filter ? prompts.length + ' of ' + all.length : all.length)));
+  if (filter) {
+    const chip = el('div', 'filter-chip');
+    const from = Date.parse(filter.from), to = Date.parse(filter.to);
+    const t = el('span', '', 'Window: ' + fmtWindow(from, to, to - from > 2 * HOUR ? 'day' : 'hour'));
+    t.title = filter.from + ' – ' + filter.to;
+    const clear = el('a', 'clear', '× clear');
+    clear.href = '#/prompts';
+    clear.setAttribute('aria-label', 'clear the time filter');
+    chip.append(t, clear);
+    nav.append(chip);
+  }
+  if (all.length === 0) {
     nav.append(el('div', 'unknown', 'No runs in this state directory yet (start one with soot run).'));
+    return;
+  }
+  if (prompts.length === 0) {
+    nav.append(el('div', 'unknown', 'No prompts in this window.'));
     return;
   }
   const list = el('div', 'prompt-list');
@@ -1146,11 +1497,14 @@ async function route() {
   $('view-prompts').hidden = r.view !== 'prompts';
   $('view-prompt').hidden = r.view !== 'prompt';
   if (r.view === 'overview') {
-    if (lastOverview) drawFlow($('flow'), lastOverview);
+    if (lastOverview) {
+      renderGrid(lastOverview, r.zoom || 'prompt');
+      drawFlow($('flow'), lastOverview);
+    }
     return false;
   }
   if (r.view === 'prompts') {
-    if (lastOverview) renderPrompts(lastOverview.prompts);
+    if (lastOverview) renderPrompts(lastOverview.prompts, r.filter);
     return false;
   }
   return showRun(r.runId);
@@ -1174,7 +1528,6 @@ async function refresh() {
     useModels(overview.byModel.map((m) => m.model).concat(overview.aggregate ? overview.aggregate.usageByModel.map((m) => m.label) : []));
     renderMeta(overview);
     renderOverview(overview);
-    renderPrompts(overview.prompts);
     const runningRun = await route();
     if (runningRun || overview.prompts.some((p) => p.state === 'running')) timer = setTimeout(() => { void refresh(); }, 1500);
   } catch (e) {
@@ -1184,5 +1537,6 @@ async function refresh() {
 
 window.addEventListener('hashchange', () => { void route(); });
 window.addEventListener('resize', () => { if (lastOverview && parseRoute(location.hash).view === 'overview') drawFlow($('flow'), lastOverview); });
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') hideTip($('pgrid-panel')); });
 void refresh();
 `;
