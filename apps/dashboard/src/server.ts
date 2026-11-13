@@ -1,7 +1,15 @@
+import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { APP_JS, INDEX_HTML, STYLE_CSS } from './ui.js';
 import { toDashboardRun, toRunList, type DashboardSource } from './view.js';
+
+/** Pixel logo masters live in the repo at docs/brand (same files the README uses). */
+const BRAND_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../../docs/brand');
+const LOGO_PNG = readFileSync(join(BRAND_DIR, 'soot-lockup.png'));
+const MARK_PNG = readFileSync(join(BRAND_DIR, 'soot-mark.png'));
 
 /*
  * The optional local dashboard (ADR-031): one static page and a read-only JSON API, served by
@@ -44,13 +52,20 @@ export function parsePort(value: string | undefined): number {
   return Number(value);
 }
 
-function send(res: ServerResponse, code: number, type: string, body: string, head: boolean) {
+function send(
+  res: ServerResponse,
+  code: number,
+  type: string,
+  body: string | Buffer,
+  head: boolean,
+) {
+  const buf = typeof body === 'string' ? Buffer.from(body) : body;
   res.writeHead(code, {
     ...SECURITY_HEADERS,
     'content-type': type,
-    'content-length': Buffer.byteLength(body),
+    'content-length': buf.length,
   });
-  res.end(head ? undefined : body);
+  res.end(head ? undefined : buf);
 }
 
 const sendJson = (res: ServerResponse, code: number, value: unknown, head: boolean) => {
@@ -86,6 +101,14 @@ async function handle(
   }
   if (path === '/style.css') {
     send(res, 200, 'text/css; charset=utf-8', STYLE_CSS, head);
+    return;
+  }
+  if (path === '/logo.png') {
+    send(res, 200, 'image/png', LOGO_PNG, head);
+    return;
+  }
+  if (path === '/mark.png' || path === '/favicon.png') {
+    send(res, 200, 'image/png', MARK_PNG, head);
     return;
   }
   if (path === '/api/runs') {

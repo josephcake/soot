@@ -1,5 +1,7 @@
 # soot
 
+<img src="docs/brand/soot-lockup-4x.png" alt="soot" width="432" height="96" />
+
 _Named after the soot sprites, the black dust bunnies from Studio Ghibli. Formerly `intelligent-agent-router`._
 
 > **Status: Milestones 1, 3, 4 and 5 done (mocks, fixtures and fixture git repos); Milestones 2

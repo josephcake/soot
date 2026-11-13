@@ -34,6 +34,8 @@ soot dashboard --open          # also open a browser (off by default)
   separate estimated and actual USD share donuts per usage block.
 - **Palette:** page `#0a0a0a`, blocks `#141414`, orange `#ff7a1a` accent, cream `#e8dcc8`
   highlights and estimates, warm-gray notes, redder-orange `#ff4d2e` errors.
+- **Logo:** the page header and favicon use the pixel soot mark from `docs/brand/`
+  (`GET /logo.png`, `GET /mark.png`).
 - **Page:** plain HTML, one stylesheet, one script, no framework (ADR-009): each section is a
   text block. All text is set with `textContent`. It polls while a run is running.
 - **Safety:** GET/HEAD only, `Host` must be `127.0.0.1:<port>` or `localhost:<port>`, strict

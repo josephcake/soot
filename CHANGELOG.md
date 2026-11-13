@@ -5,6 +5,12 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (project logo; no milestone status change)
+
+- Pixel soot logo (black / orange / cream, Lego-block cubes and a wordmark with an ember in
+  the second O) in `docs/brand/`. The optional local dashboard header and favicon use it
+  (`/logo.png`, `/mark.png`); the root README shows the lockup.
+
 ### Changed (dashboard palette and chart types, ADR-031 amendment, TASKS D-03; no milestone status change)
 
 - Palette: near-black page and blocks, orange `#ff7a1a` accent, cream `#e8dcc8` highlights and

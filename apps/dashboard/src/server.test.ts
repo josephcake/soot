@@ -70,6 +70,36 @@ const get = (port: number, path: string, options: { method?: string; host?: stri
     },
   );
 
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const getBuf = (port: number, path: string, method = 'GET') =>
+  new Promise<{ status: number; type: string | undefined; body: Buffer }>((resolve, reject) => {
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port,
+        path,
+        method,
+        headers: { host: `127.0.0.1:${String(port)}` },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => {
+          resolve({
+            status: res.statusCode ?? 0,
+            type:
+              typeof res.headers['content-type'] === 'string'
+                ? res.headers['content-type']
+                : undefined,
+            body: Buffer.concat(chunks),
+          });
+        });
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
+
 describe('startDashboard', () => {
   it('listens on 127.0.0.1 / IPv4 only and serves the page and the JSON API', async () => {
     handle = await startDashboard({ source, port: 0 });
@@ -85,6 +115,17 @@ describe('startDashboard', () => {
     expect(page.body).toBe(INDEX_HTML);
     expect((await get(port, '/app.js')).body).toBe(APP_JS);
     expect((await get(port, '/style.css')).status).toBe(200);
+    expect(page.body).toContain('src="/logo.png"');
+    expect(page.body).toContain('href="/mark.png"');
+
+    for (const path of ['/logo.png', '/mark.png', '/favicon.png']) {
+      const img = await getBuf(port, path);
+      expect(img.status, path).toBe(200);
+      expect(img.type, path).toBe('image/png');
+      expect(img.body.subarray(0, 8).equals(PNG), path).toBe(true);
+      expect(img.body.length, path).toBeGreaterThan(8);
+    }
+    expect((await getBuf(port, '/logo.png', 'HEAD')).body.length).toBe(0);
 
     const runs = await get(port, '/api/runs');
     expect(JSON.parse(runs.body)).toMatchObject({ runs: [{ runId: 'r1' }] });

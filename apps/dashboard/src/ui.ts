@@ -11,11 +11,15 @@ export const INDEX_HTML = `<!doctype html>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>soot dashboard (local)</title>
+    <link rel="icon" href="/mark.png" type="image/png" />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
     <header>
-      <h1>soot · local dashboard</h1>
+      <h1>
+        <img src="/logo.png" alt="soot" width="144" height="32" />
+        <span>local dashboard</span>
+      </h1>
       <p class="note">Read-only view of this machine's soot state (127.0.0.1 only). Headless soot does not need it.</p>
     </header>
     <nav id="runs" aria-label="runs">loading…</nav>
@@ -32,7 +36,8 @@ export const STYLE_CSS = `/* Palette (ADR-031 amendment): near-black, orange acc
 }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 12px; background: var(--page); color: var(--text); font: 14px/1.35 ui-monospace, Menlo, Consolas, monospace; }
-h1 { font-size: 16px; margin: 0 0 4px; color: var(--orange); }
+h1 { display: flex; align-items: center; gap: 10px; font-size: 16px; margin: 0 0 4px; color: var(--orange); }
+h1 img { height: 32px; width: auto; image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
 .note { margin: 0 0 12px; color: var(--muted); }
 nav { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 nav button { font: inherit; color: var(--cream); background: var(--block); border: 2px solid var(--line); padding: 2px 6px; cursor: pointer; }
