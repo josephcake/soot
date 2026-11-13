@@ -128,7 +128,10 @@ describe('startDashboard', () => {
     expect((await getBuf(port, '/logo.png', 'HEAD')).body.length).toBe(0);
 
     const runs = await get(port, '/api/runs');
-    expect(JSON.parse(runs.body)).toMatchObject({ runs: [{ runId: 'r1' }] });
+    expect(JSON.parse(runs.body)).toMatchObject({
+      runs: [{ runId: 'r1' }],
+      overview: { promptCount: 1, taskCount: 0, byModel: [], flows: [] },
+    });
     const run = await get(port, '/api/runs/r1');
     expect(JSON.parse(run.body)).toMatchObject({
       run: { runId: 'r1', cost: { actualUsd: null }, savings: { claimed: false } },
@@ -188,7 +191,7 @@ describe('no outbound network and no credentials', () => {
   });
   it('the server code makes no requests and reads no keys or env', () => {
     // ui.ts is the browser page (its one same-origin fetch is checked above).
-    for (const f of ['./server.ts', './view.ts', './index.ts']) {
+    for (const f of ['./server.ts', './view.ts', './overview.ts', './index.ts']) {
       const code = src(f);
       expect(code, f).not.toMatch(
         /\bfetch\(|https?\.request|from 'node:https'|process\.env|apiKey/i,

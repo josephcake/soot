@@ -5,6 +5,22 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (dashboard centerpiece and previous prompts, ADR-031, TASKS D-04; no milestone status change)
+
+- The optional local dashboard now leads with a hand-drawn `<canvas>` (2D context, no chart
+  library) showing where tasks went across every recorded prompt: pixel pipes from prompts to
+  models, sized by unique tasks that had an attempt on that model. The largest share is orange.
+  An empty state is a pixel "no data" block. Prompt text is drawn with `fillText` only.
+- A Previous prompts list (newest first) shows each recorded prompt as soot stored it, with
+  date, status, and total tokens/cost when the cost report recorded them. Clicking a prompt
+  opens its detail: each task with the run's runner (soot records one agent/harness per run,
+  not per task), the model(s) that took it, in/out/total tokens per task when every attempt
+  reported usage, otherwise an explicit "not reported" reason, plus totals.
+- `GET /api/runs` includes an `overview` built by reading each run's status and cost (the same
+  engine data as before). `DashboardRun` gains `taskBreakdown`.
+- Tests: `apps/dashboard/src/overview.test.ts`, more cases in `view.test.ts`, `ui.test.ts`
+  (canvas and task breakdown against a fake DOM) and `server.test.ts`. Mock runs only.
+
 ### Changed (DeepSeek data-residency hold lifted, ADR-035 supersedes ADR-016; no milestone status change)
 
 - Joseph reviewed data residency and lifted the hold. `@soot/model-registry` no longer

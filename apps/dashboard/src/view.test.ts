@@ -263,4 +263,65 @@ describe('toDashboardRun', () => {
     expect(v.usage).toMatchObject({ byTask: [], byModel: [], byAgent: [] });
     expect(v.assignment.tasks.every((t) => t.runner === null)).toBe(true);
   });
+
+  it('task breakdown uses recorded per-task tokens when present, otherwise says they are unknown', () => {
+    const noCost = toDashboardRun(status, null);
+    expect(noCost.taskBreakdown.map((t) => [t.id, t.tokens, t.tokensUnknown, t.runner])).toEqual([
+      ['a', null, 'no cost data recorded for this task', null],
+      ['b', null, 'no cost data recorded for this task', null],
+    ]);
+    const v = toDashboardRun(status, {
+      cost: {
+        tasks: [
+          {
+            taskId: 'a',
+            estimated: { inputTokens: 100, outputTokens: 10 },
+            attempts: [
+              { attempt: 1, model: 'p/small', inputTokens: 10, outputTokens: 2, actualUsd: null },
+              { attempt: 2, model: 'p/mid', inputTokens: 20, outputTokens: 4, actualUsd: 0.003 },
+            ],
+          },
+          {
+            taskId: 'b',
+            estimated: { inputTokens: 50, outputTokens: 5 },
+            attempts: [
+              {
+                attempt: 1,
+                model: 'p/small',
+                inputTokens: null,
+                outputTokens: null,
+                actualUsd: null,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(v.taskBreakdown).toEqual([
+      {
+        id: 'a',
+        title: '',
+        state: 'succeeded',
+        runner: null,
+        models: ['p/small', 'p/mid'],
+        attempts: 2,
+        tokens: { inputTokens: 30, outputTokens: 6, total: 36 },
+        costUsd: null,
+        tokensUnknown: null,
+        costUnknown: 'cost not reported for every attempt on this task',
+      },
+      {
+        id: 'b',
+        title: '',
+        state: 'running',
+        runner: null,
+        models: ['p/small'],
+        attempts: 1,
+        tokens: null,
+        costUsd: null,
+        tokensUnknown: 'tokens not reported for every attempt on this task',
+        costUnknown: 'cost not reported for every attempt on this task',
+      },
+    ]);
+  });
 });

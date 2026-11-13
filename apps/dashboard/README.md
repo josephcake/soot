@@ -17,11 +17,26 @@ soot dashboard --open          # also open a browser (off by default)
 - **Data:** the CLI passes its engine as a read-only `DashboardSource` (`status`, `cost`); the
   dashboard has no store of its own. State comes from the same `--data-dir` / `SOOT_DATA_DIR` /
   `~/.soot` as every command. No `.env` file is read.
-- **API:** `GET /api/runs` (run list) and `GET /api/runs/<id>` (`DashboardRun`: prompt, task
-  graph by layer, task count, active agents, models per task, model transitions, token usage,
-  planner/router estimates and reported actual cost, cost per model, duration, success and
-  failure counts and rates, soot-run checks, final validation, problems, and a fixed
-  "no savings claimed" note). Unknown values are `null`, never zero-filled.
+- **API:** `GET /api/runs` returns the run list plus an `overview` (every recorded prompt,
+  newest first, with date, status, reported tokens and cost when the cost report exists, and
+  task counts per model; plus `flows` / `byModel` for the aggregate graph). `GET /api/runs/<id>`
+  returns `DashboardRun`: prompt, task graph by layer, task count, active agents, models per
+  task, a `taskBreakdown` (runner, models, reported in/out/total tokens and cost per task, or
+  a reason when those were not reported), model transitions, token usage, planner/router
+  estimates and reported actual cost, cost per model, duration, success and failure counts and
+  rates, soot-run checks, final validation, problems, and a fixed "no savings claimed" note.
+  Unknown values are `null`, never zero-filled. soot records one agent/harness per run, not
+  per task; `taskBreakdown.runner` is that run-level label. Per-task tokens come from the cost
+  report's attempt usage, when every attempt on the task reported them.
+- **Centerpiece (D-04):** a hand-drawn `<canvas>` (2D context, no chart library) at the
+  top-center shows where tasks went across every recorded prompt: pixel pipes from prompts to
+  models, sized by unique tasks that had an attempt on that model (a task that escalated counts
+  under each). The largest share is orange `#ff7a1a`. Empty state is a pixel "no data" block.
+  Prompt text is drawn with `fillText` only.
+- **Previous prompts (D-04):** a list of every recorded run, newest first, with the prompt text
+  as soot stored it, date, status, and total tokens/cost when recorded. Clicking a prompt opens
+  its detail: each task with the run's runner and the model(s) that took it, in/out/total
+  tokens per task (or an explicit "not reported" reason), plus totals.
 - **Charts (D-02):** usage by model, by task and by runner (`usage`: estimated USD, actual USD,
   planner tokens, reported tokens, each its own CSS bar chart; hatched cream = estimate, solid
   orange = actual; null is written "unknown", never a bar), and an assignment view (`assignment`: the
@@ -29,18 +44,20 @@ soot dashboard --open          # also open a browser (off by default)
   with assign/retry/fallback/escalate/downgrade and the runner-reported model).
 - **More chart types (D-03):** outcome pixel donut (zero slices left out) and success-rate meter
   ("n/a" with no fill when unknown), stacked input/output token bars for planned and for
-  reported, estimate-only and actual-only cost charts, an attempt timeline (a running or unknown
-  end is a start tick with a label), validation counts by status, a transition count chart, and
-  separate estimated and actual USD share donuts per usage block.
+  reported (and per-model reported in/out when those tokens are known), estimate-only and
+  actual-only cost charts, an attempt timeline (a running or unknown end is a start tick with a
+  label), validation counts by status, a transition count chart, and separate estimated and
+  actual USD share donuts per usage block.
 - **Palette:** page `#0a0a0a`, blocks `#141414`, orange `#ff7a1a` accent, cream `#e8dcc8`
   highlights and estimates, warm-gray notes, redder-orange `#ff4d2e` errors.
 - **Logo:** the page header and favicon use the pixel soot mark from `docs/brand/`
   (`GET /logo.png`, `GET /mark.png`).
-- **Page order:** a selected run leads with a compact ident (id, state, duration — not the full
-  prompt), the assignment graph, usage-by-model charts, and a short "how to read the charts"
-  legend, then outcomes, cost, tokens, usage by task and by runner, the duration timeline,
-  validation and transitions. Text details (task graph, tasks and models, active agents, the
-  full prompt, the savings note) come after. Header and the runs nav stay above the run body.
+- **Page order:** the canvas aggregate and the previous-prompts list sit above the selected
+  prompt. A selected prompt leads with the full prompt text, the per-task breakdown, the
+  assignment graph, usage-by-model charts, and a short "how to read the charts" legend, then
+  outcomes, cost, tokens, usage by task and by runner, the duration timeline, validation and
+  transitions. Text details (task graph, tasks and models, active agents, the full prompt, the
+  savings note) come after.
 - **Page:** plain HTML, one stylesheet, one script, no framework (ADR-009): each section is a
   text block. All text is set with `textContent`. It polls while a run is running.
 - **Safety:** GET/HEAD only, `Host` must be `127.0.0.1:<port>` or `localhost:<port>`, strict

@@ -160,8 +160,18 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
 
       const list = (await (await fetch(`${base}/api/runs`)).json()) as {
         runs: { runId: string }[];
+        overview: {
+          promptCount: number;
+          taskCount: number;
+          byModel: { model: string; tasks: number }[];
+          prompts: { runId: string; prompt: string; tokens: { inputTokens: number } | null }[];
+        };
       };
       expect(list.runs.map((x) => x.runId)).toEqual(['dash-1']);
+      expect(list.overview.promptCount).toBe(1);
+      expect(list.overview.taskCount).toBe(2);
+      expect(list.overview.byModel).toEqual([{ model: 'demo-a/demo-small', tasks: 2 }]);
+      expect(list.overview.prompts[0]?.prompt).toBe(TEST_1);
 
       const { run: view } = (await (await fetch(`${base}/api/runs/dash-1`)).json()) as {
         run: Record<string, unknown> & {
@@ -176,6 +186,12 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
             problems: string[];
           };
           savings: { claimed: boolean };
+          taskBreakdown: {
+            id: string;
+            runner: string | null;
+            models: string[];
+            tokens: { inputTokens: number; outputTokens: number; total: number } | null;
+          }[];
         };
       };
       expect(view.prompt).toBe(TEST_1);
@@ -203,6 +219,19 @@ describe('soot dashboard binds 127.0.0.1 only', () => {
         expect.stringMatching(/^working tree not updated: approval unavailable/),
       ]);
       expect(view.savings.claimed).toBe(false);
+      expect(view.taskBreakdown.map((t) => [t.id, t.models, t.tokens])).toEqual([
+        [
+          'update-page-title',
+          ['demo-a/demo-small'],
+          { inputTokens: 1800, outputTokens: 250, total: 2050 },
+        ],
+        [
+          'update-button-color',
+          ['demo-a/demo-small'],
+          { inputTokens: 2100, outputTokens: 280, total: 2380 },
+        ],
+      ]);
+      expect(view.taskBreakdown.every((t) => t.runner !== null)).toBe(true);
 
       // Read-only, and only for requests addressed to this loopback server.
       expect((await fetch(`${base}/api/runs`, { method: 'POST' })).status).toBe(405);

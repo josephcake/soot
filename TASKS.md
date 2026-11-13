@@ -249,11 +249,12 @@ Planner notes (2026-11-12):
 
 A new optional local surface, not a milestone. This row does not change any milestone status.
 
-| ID   | Description                                                                                   | Priority | Milestone | Dependencies | Status      | Component                | Acceptance criteria                                                                                                                           |
-| ---- | --------------------------------------------------------------------------------------------- | -------- | --------- | ------------ | ----------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| D-01 | `soot dashboard`: simple local page + read-only JSON API for spec §12 fields                  | P3       | — (cross) | M6-01        | Implemented | apps/dashboard, apps/cli | Binds 127.0.0.1 only (tested on the socket); opt-in, lazy-loaded; headless commands never load it; unknowns stay null.                        |
-| D-02 | Dashboard charts: usage by model/task/runner; prompt → task → model assignment view           | P3       | — (cross) | D-01         | Implemented | apps/dashboard, apps/cli | Estimates and actuals in separate charts; unknown shown as unknown; transitions shown per task.                                               |
-| D-03 | Dashboard palette (black/orange/cream) and more chart types (donut, meter, stacked, timeline) | P3       | — (cross) | D-02         | Implemented | apps/dashboard           | Zero slices omitted; null rate n/a with no fill; estimates and actuals never share a chart; no zero-length bar for an unknown or running end. |
+| ID   | Description                                                                                   | Priority | Milestone | Dependencies | Status      | Component                | Acceptance criteria                                                                                                                                         |
+| ---- | --------------------------------------------------------------------------------------------- | -------- | --------- | ------------ | ----------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-01 | `soot dashboard`: simple local page + read-only JSON API for spec §12 fields                  | P3       | — (cross) | M6-01        | Implemented | apps/dashboard, apps/cli | Binds 127.0.0.1 only (tested on the socket); opt-in, lazy-loaded; headless commands never load it; unknowns stay null.                                      |
+| D-02 | Dashboard charts: usage by model/task/runner; prompt → task → model assignment view           | P3       | — (cross) | D-01         | Implemented | apps/dashboard, apps/cli | Estimates and actuals in separate charts; unknown shown as unknown; transitions shown per task.                                                             |
+| D-03 | Dashboard palette (black/orange/cream) and more chart types (donut, meter, stacked, timeline) | P3       | — (cross) | D-02         | Implemented | apps/dashboard           | Zero slices omitted; null rate n/a with no fill; estimates and actuals never share a chart; no zero-length bar for an unknown or running end.               |
+| D-04 | Center canvas (tasks→models across all prompts) and previous-prompts detail                   | P3       | — (cross) | D-03         | Implemented | apps/dashboard           | Hand-drawn canvas, no chart library; biggest share prominent; prompt list newest first; per-task tokens from the cost report or an explicit unknown reason. |
 
 Dashboard notes (2026-11-12):
 
@@ -269,6 +270,12 @@ Dashboard notes (2026-11-12):
   dependency change. Mock runs only; checked by `apps/dashboard/src/ui.test.ts` (fake DOM) and a
   headless Chrome screenshot of an escalated mock run. Not looked at in a desktop browser by
   anyone yet.
+- **D-04:** aggregate canvas and previous-prompts list, from the same status/cost data (the
+  list endpoint now also loads each run to build `overview`). Per-task tokens are the cost
+  report's attempt usage when complete; otherwise the page says they were not reported. Runner
+  is the run-level agent label (soot does not record a per-task agent). Mock runs only;
+  checked by `overview.test.ts`, `ui.test.ts`, `view.test.ts`, `server.test.ts` and a headless
+  screenshot of several mock runs. Not looked at in a desktop browser by anyone yet.
 
 ## Engine hardening (cross-cutting, ADR-030)
 

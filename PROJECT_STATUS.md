@@ -52,7 +52,10 @@ from the engine's own status and cost data, keeps unknown costs unknown, and cla
 Chart blocks (D-02) show usage by model, task and runner, with estimates and actuals in
 separate charts, and an assignment view from the prompt to each task's model chain.
 D-03 restyles it black/orange/cream and adds an outcome donut, success-rate meter, stacked token
-bars, an attempt timeline and validation counts (page script only, no API change).
+bars, an attempt timeline and validation counts.
+D-04 adds a top-center canvas of task counts per model across every recorded prompt, a previous
+prompts list (newest first, with tokens and cost when recorded), and a per-task breakdown
+(runner, models, in/out/total tokens) when a prompt is opened.
 
 Milestone 5 is Completed and verified locally on real temporary git repositories, with real
 `node --test`, `tsc` and lint commands run by soot itself and mock agents that write files (no

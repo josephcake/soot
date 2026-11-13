@@ -17,21 +17,66 @@ interface FakeNode {
   title: string;
   style: { width?: string; left?: string; background?: string };
   children: FakeNode[];
+  width?: number;
+  height?: number;
+  clientWidth?: number;
+  clientHeight?: number;
+  dataset?: Record<string, string>;
+  _calls: unknown[];
+  _ctx?: unknown;
   append(...n: FakeNode[]): void;
+  replaceChildren?(...n: FakeNode[]): void;
+  addEventListener?(type: string, fn: () => void): void;
+  getContext?(type: string): unknown;
 }
 
 function node(tag: string): FakeNode {
-  return {
+  const n: FakeNode = {
     tag,
     className: '',
     textContent: '',
     title: '',
     style: {},
     children: [],
-    append(...n) {
-      this.children.push(...n);
+    width: 0,
+    height: 0,
+    clientWidth: 960,
+    clientHeight: 320,
+    dataset: {},
+    _calls: [],
+    append(...c) {
+      this.children.push(...c);
+    },
+    replaceChildren(...c) {
+      this.children = c;
+    },
+    addEventListener() {
+      /* tests do not fire events */
+    },
+    getContext(type: string) {
+      if (tag !== 'canvas' || type !== '2d') return null;
+      if (!this._ctx) {
+        const calls = this._calls;
+        const ctx: Record<string, unknown> = {
+          measureText: (t: string) => ({ width: t.length * 7 }),
+          fillRect: (...a: unknown[]) => calls.push(['fillRect', a]),
+          fillText: (...a: unknown[]) => calls.push(['fillText', a]),
+          strokeRect: (...a: unknown[]) => calls.push(['strokeRect', a]),
+          clearRect: (...a: unknown[]) => calls.push(['clearRect', a]),
+        };
+        this._ctx = new Proxy(ctx, {
+          set(t, prop, v) {
+            const key = typeof prop === 'string' ? prop : prop.toString();
+            calls.push(['set', key, v]);
+            t[key] = v;
+            return true;
+          },
+        });
+      }
+      return this._ctx;
     },
   };
+  return n;
 }
 
 const all = (n: FakeNode): FakeNode[] => [n, ...n.children.flatMap(all)];
@@ -59,7 +104,7 @@ function load() {
     clearTimeout: () => undefined,
   };
   return runInNewContext(
-    `${APP_JS}\n;({ chart, usageBlock, assignmentBlock, donut, meter, outcomesBlock, tokensBlock, costBlock, timelineBlock, validationBlock, transitionsBlock, BLOCKS, ACT_SHADES, EST_SHADES });`,
+    `${APP_JS}\n;({ chart, usageBlock, assignmentBlock, donut, meter, outcomesBlock, tokensBlock, costBlock, timelineBlock, validationBlock, transitionsBlock, BLOCKS, ACT_SHADES, EST_SHADES, FLOW_COLORS, drawFlow, renderPrompts, taskBreakdownBlock, identBlock });`,
     fake,
   ) as {
     chart: (title: string, kind: string, rows: unknown[], fmt: (v: number) => string) => FakeNode;
@@ -76,6 +121,11 @@ function load() {
     BLOCKS: ((run: unknown) => FakeNode)[];
     ACT_SHADES: string[];
     EST_SHADES: string[];
+    FLOW_COLORS: string[];
+    drawFlow: (canvas: FakeNode, overview: unknown) => void;
+    renderPrompts: (prompts: unknown[]) => void;
+    taskBreakdownBlock: (run: unknown) => FakeNode;
+    identBlock: (run: unknown) => FakeNode;
   };
 }
 
@@ -425,11 +475,12 @@ describe('page chart blocks', () => {
     expect(bars(ui.transitionsBlock(baseRun({ events: [] })))).toEqual([]);
   });
 
-  it('the run view leads with the assignment graph and charts, not the text details', () => {
+  it('the run view leads with the prompt, its task breakdown, then charts', () => {
     const run = baseRun();
     const sections = ui.BLOCKS.map((b) => b(run));
     expect(sections.map((s) => s.children[0]?.textContent)).toEqual([
-      '== Run ==',
+      '== Prompt ==',
+      '== Tasks in this prompt ==',
       '== Assignment: prompt → tasks → models ==',
       '== Usage by model (also the cost-by-model numbers) ==',
       '== How to read the charts ==',
@@ -449,14 +500,122 @@ describe('page chart blocks', () => {
     ]);
     const ident = text(at(sections, 0));
     expect(ident).toContain('r  ·  incomplete  ·  ');
-    expect(ident).not.toContain('Prompt:');
-    expect(ident).not.toMatch(/\bp\b/);
-    const details = text(at(sections, 15));
+    expect(ident).toContain('p');
+    const details = text(at(sections, 16));
     expect(details).toContain('Prompt:');
     expect(details).toContain('p');
-    // The ident is wide so it sits above the wide assignment and usage charts.
     expect(at(sections, 0).className).toBe('block wide');
     expect(at(sections, 1).className).toBe('block wide');
     expect(at(sections, 2).className).toBe('block wide');
+  });
+
+  it('task breakdown lists each task with runner, models, and recorded tokens or a reason', () => {
+    const run = toDashboardRun(
+      {
+        runId: 'r',
+        prompt: 'do it',
+        agentLabel: 'mock-test-double',
+        agent: 'mock-test-double',
+        createdAt: '2026-11-12T10:00:00.000Z',
+        tasks: [
+          {
+            taskId: 'a',
+            title: 'Part A',
+            state: 'succeeded',
+            models: ['p/small'],
+            attemptDetails: [{ attempt: 1, state: 'succeeded', model: 'p/small' }],
+          },
+        ],
+      },
+      {
+        cost: {
+          tasks: [
+            {
+              taskId: 'a',
+              estimated: { inputTokens: 10, outputTokens: 1 },
+              attempts: [
+                { attempt: 1, model: 'p/small', inputTokens: 8, outputTokens: 2, actualUsd: 0.001 },
+              ],
+            },
+          ],
+          totals: {
+            estimated: { inputTokens: 10, outputTokens: 1, usd: 0.01 },
+            actual: {
+              inputTokens: 8,
+              outputTokens: 2,
+              usd: 0.001,
+              unpricedAttempts: 0,
+              unreportedAttempts: 0,
+            },
+          },
+        },
+      },
+    );
+    const t = text(ui.taskBreakdownBlock(run));
+    expect(t).toContain('Runner is recorded per run, not per task: mock-test-double');
+    expect(t).toContain('a  [succeeded]');
+    expect(t).toContain('Part A');
+    expect(t).toContain('runner: mock-test-double');
+    expect(t).toContain('model: p/small');
+    expect(t).toContain('8 in / 2 out / 10 total tok');
+    expect(t).toContain('$0.001000');
+    expect(t).toContain('total tokens  10');
+    const bare = text(ui.taskBreakdownBlock(baseRun()));
+    expect(bare).toContain('no cost data recorded for this task');
+  });
+
+  it('drawFlow paints a no-data block when there are no runs, and fills prompt text safely', () => {
+    const empty = node('canvas');
+    ui.drawFlow(empty, { prompts: [], flows: [], byModel: [], promptCount: 0, taskCount: 0 });
+    const emptyText = empty._calls
+      .filter((c) => Array.isArray(c) && c[0] === 'fillText')
+      .map((c) => (c as [string, unknown[]])[1][0]);
+    expect(emptyText).toContain('no data');
+    expect(
+      empty._calls.some(
+        (c) =>
+          Array.isArray(c) && c[0] === 'set' && c[1] === 'imageSmoothingEnabled' && c[2] === false,
+      ),
+    ).toBe(true);
+
+    const nasty = '<img src=x onerror=alert(1)> & prompt';
+    const canvas = node('canvas');
+    ui.drawFlow(canvas, {
+      promptCount: 2,
+      taskCount: 3,
+      prompts: [
+        {
+          runId: 'r1',
+          prompt: nasty,
+          createdAt: '2026-11-12T11:00:00.000Z',
+          taskCountsByModel: [{ model: 'p/small', tasks: 2 }],
+        },
+        {
+          runId: 'r2',
+          prompt: 'other',
+          createdAt: '2026-11-12T10:00:00.000Z',
+          taskCountsByModel: [{ model: 'p/mid', tasks: 1 }],
+        },
+      ],
+      flows: [
+        { runId: 'r1', prompt: nasty, model: 'p/small', tasks: 2 },
+        { runId: 'r2', prompt: 'other', model: 'p/mid', tasks: 1 },
+      ],
+      byModel: [
+        { model: 'p/small', tasks: 2 },
+        { model: 'p/mid', tasks: 1 },
+      ],
+    });
+    const texts = canvas._calls
+      .filter((c) => Array.isArray(c) && c[0] === 'fillText')
+      .map((c) => String((c as [string, unknown[]])[1][0]));
+    expect(texts.some((t) => t.includes(nasty) || t.includes('<img'))).toBe(true);
+    expect(texts.join(' ')).not.toMatch(/innerHTML|createElement/);
+    // Biggest share (p/small, 2 tasks) uses the lead orange.
+    const styles = canvas._calls
+      .filter((c) => Array.isArray(c) && c[0] === 'set' && c[1] === 'fillStyle')
+      .map((c) => (c as unknown[])[2]);
+    expect(styles).toContain(ui.FLOW_COLORS[0]);
+    expect(ui.FLOW_COLORS[0]).toBe('#ff7a1a');
   });
 });

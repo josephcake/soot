@@ -2,7 +2,8 @@
  * The dashboard page: plain HTML, one stylesheet and one small script, no framework (ADR-009,
  * ADR-031). Every section is a text block built from the JSON API; swapping a block means
  * changing one function. All text is set with textContent (prompts and reasons are untrusted).
- * The script only talks to this server's own /api paths.
+ * Prompt text drawn on the canvas uses fillText only. The script only talks to this server's
+ * own /api paths.
  */
 
 export const INDEX_HTML = `<!doctype html>
@@ -22,7 +23,12 @@ export const INDEX_HTML = `<!doctype html>
       </h1>
       <p class="note">Read-only view of this machine's soot state (127.0.0.1 only). Headless soot does not need it.</p>
     </header>
-    <nav id="runs" aria-label="runs">loading…</nav>
+    <section id="centerpiece" class="centerpiece">
+      <h2>== Where tasks went ==</h2>
+      <p class="note">Task count per model across every recorded prompt. A task that used more than one model is counted under each. The biggest share is in orange.</p>
+      <canvas id="flow" width="960" height="320" aria-label="Tasks from prompts to models"></canvas>
+    </section>
+    <section id="prompts" class="block wide prompts" aria-label="previous prompts">loading…</section>
     <main id="run"></main>
     <script src="/app.js" defer></script>
   </body>
@@ -39,9 +45,18 @@ body { margin: 0; padding: 12px; background: var(--page); color: var(--text); fo
 h1 { display: flex; align-items: center; gap: 10px; font-size: 16px; margin: 0 0 4px; color: var(--orange); }
 h1 img { height: 32px; width: auto; image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
 .note { margin: 0 0 12px; color: var(--muted); }
-nav { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-nav button { font: inherit; color: var(--cream); background: var(--block); border: 2px solid var(--line); padding: 2px 6px; cursor: pointer; }
-nav button.current { border-color: var(--orange); color: var(--orange); }
+.centerpiece { display: flex; flex-direction: column; align-items: center; margin: 0 auto 16px; max-width: 960px; }
+.centerpiece h2 { font-size: 14px; margin: 0 0 4px; color: var(--orange); align-self: stretch; }
+.centerpiece .note { max-width: 960px; align-self: stretch; }
+#flow { width: min(960px, 100%); height: auto; background: var(--block); border: 2px solid var(--line); image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+.prompts { margin-bottom: 12px; }
+.prompt-list { display: flex; flex-direction: column; gap: 6px; }
+button.prompt-row { font: inherit; color: var(--text); background: var(--page); border: 2px solid var(--line); padding: 6px 8px; cursor: pointer; text-align: left; width: 100%; }
+button.prompt-row.current { border-color: var(--orange); }
+.prompt-head { color: var(--orange); }
+.prompt-text { color: var(--cream); white-space: pre-wrap; word-break: break-word; margin: 2px 0; }
+.task-row { display: grid; grid-template-columns: 16em 1fr 18em; gap: 8px; align-items: start; margin: 6px 0; border-top: 2px solid var(--line); padding-top: 6px; }
+.task-row .t { color: var(--orange); }
 main { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 8px; }
 .block { border: 2px solid var(--line); background: var(--block); padding: 6px 8px; }
 .block h2 { font-size: 14px; margin: 0 0 4px; color: var(--orange); }
@@ -89,6 +104,7 @@ const pct = (v) => (v === null ? 'n/a' : (v * 100).toFixed(0) + '%');
 const short = (m) => (m === null ? 'no model' : m.split('/').pop());
 let shown = null;
 let timer = null;
+let lastOverview = null;
 
 function block(title, lines, wide) {
   const s = document.createElement('section');
@@ -142,10 +158,9 @@ const tok = (v) => v + ' tok';
 const ACT_SHADES = ['#ff7a1a', '#c25510', '#ffa25c', '#8a3a08', '#ffc79a'];
 const EST_SHADES = ['#e8dcc8', '#b8ab96', '#8c8278', '#f5efe4', '#6e665c'];
 const OUTCOME_COLORS = { succeeded: '#ff7a1a', failed: '#ff4d2e', cancelled: '#8c8278', skipped: '#b8ab96', unfinished: '#3a3430' };
+const FLOW_COLORS = ['#ff7a1a', '#c25510', '#e8dcc8', '#8c8278', '#ffa25c', '#b8ab96'];
+const CELL = 8;
 
-// Pixel donut: an 11x11 grid of cells, ring cells coloured by angle (clockwise from the top).
-// Slices must be known, non-negative numbers; zero slices are left out of the ring and legend.
-// The caller decides what to say when a value is unknown (no donut is drawn then).
 function donut(title, slices, fmt) {
   const c = el('div', 'chart share-chart');
   c.append(el('h3', '', title));
@@ -188,7 +203,6 @@ function donut(title, slices, fmt) {
   return c;
 }
 
-// A 0..100% meter. A null rate is "n/a" with no fill element at all.
 function meter(title, rate) {
   const c = el('div', 'chart');
   c.append(el('h3', '', title));
@@ -207,7 +221,6 @@ function meter(title, rate) {
   return c;
 }
 
-// One bar split into segments of the same kind family (e.g. input vs output tokens).
 function stacked(title, kind, parts, fmt, why) {
   const c = el('div', 'chart');
   c.append(el('h3', '', title));
@@ -250,7 +263,6 @@ function usageBlock(title, rows, note) {
     chart('estimated tokens (planner)', 'est', pick((r) => tokensOf(r.estimated), () => 'unknown'), tok),
     chart('actual tokens (reported)', 'act', pick((r) => tokensOf(r.actual), () => 'not reported'), tok),
   );
-  // Shares: one donut per side, never mixed. Drawn only when every part is known.
   const pair = el('div', 'pair');
   const share = (t, side, shades) => {
     const unknown = rows.filter((r) => r[side].usd === null).length;
@@ -263,7 +275,6 @@ function usageBlock(title, rows, note) {
   };
   pair.append(share('estimated USD share', 'estimated', EST_SHADES), share('actual USD share', 'actual', ACT_SHADES));
   s.append(pair);
-  // The numbers behind the bars, so nothing is only readable from a bar length.
   const n = (v) => (v === null ? 'unknown' : String(v));
   s.append(el('pre', 'note', rows.map((r) => r.label + ': ' + r.attempts + ' attempt(s) · estimated ' + n(r.estimated.inputTokens) + ' in / ' + n(r.estimated.outputTokens) + ' out, ' + usd(r.estimated.usd) + ' · actual ' + n(r.actual.inputTokens) + ' in / ' + n(r.actual.outputTokens) + ' out, ' + usd(r.actual.usd)).join('\n')));
   return s;
@@ -284,6 +295,17 @@ function tokensBlock(r) {
   s.append(stacked('planned (planner estimate)', 'est', [{ label: 'in', value: e ? e.inputTokens : null }, { label: 'out', value: e ? e.outputTokens : null }], tok, 'no plan data'));
   s.append(stacked('reported (runner usage)', 'act', [{ label: 'in', value: a ? a.inputTokens : null }, { label: 'out', value: a ? a.outputTokens : null }], tok, 'not reported'));
   if (a && a.unreportedAttempts > 0) s.append(el('div', 'unknown', a.unreportedAttempts + ' attempt(s) reported nothing (not in the reported bar)'));
+  if (r.usage.byModel.length > 0) {
+    for (const row of r.usage.byModel) {
+      s.append(stacked(
+        short(row.label) + ' reported in / out',
+        'act',
+        [{ label: 'in', value: row.actual.inputTokens }, { label: 'out', value: row.actual.outputTokens }],
+        tok,
+        'not reported',
+      ));
+    }
+  }
   return s;
 }
 
@@ -300,8 +322,6 @@ function costBlock(r) {
   return s;
 }
 
-// Attempt timeline on one wall-clock axis from the run start to the latest known time.
-// An attempt without a finish is drawn as a start tick only and labelled; never a done bar.
 function timelineBlock(r) {
   const s = section('Duration (attempt timeline)', true);
   const t0 = r.duration.startedAt ? Date.parse(r.duration.startedAt) : NaN;
@@ -351,7 +371,6 @@ function timelineBlock(r) {
 
 const statusKind = (st) => (st === 'passed' ? 'pass' : st === 'failed' ? 'fail' : 'other');
 
-// Count of checks by status as one stacked bar; null (no final validation) stays text.
 function statusBar(title, checks) {
   const c = el('div', 'chart');
   c.append(el('h3', '', title));
@@ -436,6 +455,223 @@ function assignmentBlock(r) {
   return s;
 }
 
+function identBlock(r) {
+  const s = section('Prompt', true);
+  s.append(el('div', 'prompt', r.prompt));
+  const duration = r.duration.ms === null ? (r.running ? 'running' : 'unknown') : (r.duration.ms / 1000).toFixed(1) + ' s';
+  s.append(el('pre', '', r.runId + '  ·  ' + r.state + (r.running ? ' (running)' : '') + '  ·  ' + (r.createdAt || 'date unknown') + '  ·  ' + duration));
+  return s;
+}
+
+function taskBreakdownBlock(r) {
+  const s = section('Tasks in this prompt', true);
+  s.append(el('div', 'note', 'Runner is recorded per run, not per task: ' + (r.agent.label || 'unknown (no saved report yet)') + (r.agent.kind ? '  [' + r.agent.kind + ']' : '')));
+  if (r.taskBreakdown.length === 0) {
+    s.append(el('div', 'unknown', '(no tasks)'));
+    return s;
+  }
+  for (const t of r.taskBreakdown) {
+    const row = el('div', 'task-row');
+    const left = el('div', '');
+    left.append(el('div', 't', t.id + '  [' + t.state + ']'));
+    if (t.title) left.append(el('div', '', t.title));
+    const mid = el('div', '');
+    mid.append(el('div', '', 'runner: ' + (t.runner || 'unknown')));
+    mid.append(el('div', '', 'model: ' + (t.models.length ? t.models.map((m) => m || 'no model').join(' → ') : 'not started') + '  ·  ' + t.attempts + ' attempt(s)'));
+    const right = el('div', '');
+    if (t.tokens === null) {
+      right.append(el('div', 'unknown', t.tokensUnknown || 'tokens unknown'));
+    } else {
+      right.append(el('div', '', t.tokens.inputTokens + ' in / ' + t.tokens.outputTokens + ' out / ' + t.tokens.total + ' total tok'));
+    }
+    if (t.costUsd === null) {
+      right.append(el('div', 'unknown', t.costUnknown || 'cost unknown'));
+    } else {
+      right.append(el('div', '', usd(t.costUsd)));
+    }
+    row.append(left, mid, right);
+    s.append(row);
+  }
+  const tok = r.tokens.actual;
+  const tokLine = tok === null
+    ? 'total tokens unknown (no cost data)'
+    : 'total tokens  ' + (tok.inputTokens + tok.outputTokens) + '  (' + tok.inputTokens + ' in / ' + tok.outputTokens + ' out)' + (tok.unreportedAttempts > 0 ? '; ' + tok.unreportedAttempts + ' attempt(s) unreported' : '');
+  const costLine = r.cost.actualUsd === null
+    ? (r.cost.unpricedAttempts ? 'total cost unknown (' + r.cost.unpricedAttempts + ' unpriced attempt(s))' : 'total cost unknown')
+    : 'total cost  ' + usd(r.cost.actualUsd);
+  s.append(el('pre', 'note', tokLine + '\n' + costLine));
+  return s;
+}
+
+function snap(v) {
+  return Math.round(v / CELL) * CELL;
+}
+
+function clipText(ctx, text, max) {
+  const raw = String(text);
+  if (ctx.measureText(raw).width <= max) return raw;
+  let s = raw;
+  const ell = '...';
+  while (s.length > 0 && ctx.measureText(s + ell).width > max) s = s.slice(0, -1);
+  return s + ell;
+}
+
+// Pixel flow: prompts on the left, models on the right, 8px-grid pipes between them.
+// Prompt strings are drawn with fillText only (never interpreted as HTML).
+function drawFlow(canvas, overview) {
+  if (!canvas || !canvas.getContext) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const cssW = Math.max(canvas.clientWidth || 960, 320);
+  const prompts = overview && overview.prompts ? overview.prompts : [];
+  const models = overview && overview.byModel ? overview.byModel : [];
+  const flows = overview && overview.flows ? overview.flows : [];
+  const rows = Math.max(prompts.length, models.length, 1);
+  const height = Math.max(240, 56 + rows * 32 + 24);
+  canvas.width = cssW;
+  canvas.height = height;
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = '#141414';
+  ctx.fillRect(0, 0, cssW, height);
+  ctx.font = '12px ui-monospace, Menlo, Consolas, monospace';
+  ctx.textBaseline = 'middle';
+  if (!overview || overview.promptCount === 0) {
+    const bw = 16 * CELL, bh = 6 * CELL;
+    const bx = snap((cssW - bw) / 2), by = snap((height - bh) / 2);
+    ctx.fillStyle = '#1f1c1a';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeStyle = '#2e2a27';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(bx + 1, by + 1, bw - 2, bh - 2);
+    ctx.fillStyle = '#8c8278';
+    ctx.textAlign = 'center';
+    ctx.fillText('no data', cssW / 2, height / 2);
+    ctx.textAlign = 'left';
+    return;
+  }
+  if (overview.taskCount === 0 || models.length === 0) {
+    ctx.fillStyle = '#8c8278';
+    ctx.textAlign = 'center';
+    ctx.fillText('no model assignments yet', cssW / 2, height / 2);
+    ctx.textAlign = 'left';
+    return;
+  }
+  const pad = 16;
+  const leftW = Math.min(280, Math.floor(cssW * 0.28));
+  const rightW = Math.min(220, Math.floor(cssW * 0.24));
+  const barW = 3 * CELL;
+  const leftBarX = pad + leftW + CELL;
+  const midL = leftBarX + barW + CELL;
+  const midR = cssW - pad - rightW - barW - CELL;
+  const rightBarX = midR + CELL;
+  const top = 36;
+  const bottom = height - 16;
+  const usable = bottom - top;
+  ctx.fillStyle = '#ff7a1a';
+  ctx.textAlign = 'left';
+  ctx.fillText('prompts', pad, 16);
+  ctx.textAlign = 'right';
+  ctx.fillText('models  (' + overview.taskCount + ' tasks, ' + overview.promptCount + ' prompts)', cssW - pad, 16);
+  ctx.textAlign = 'left';
+  const stack = (items, weightOf) => {
+    const total = items.reduce((n, it) => n + Math.max(weightOf(it), 1), 0);
+    let y = top;
+    const gap = CELL;
+    const inner = usable - gap * Math.max(items.length - 1, 0);
+    const out = [];
+    for (let i = 0; i < items.length; i++) {
+      let h = Math.max(2 * CELL, snap((Math.max(weightOf(items[i]), 1) / total) * inner));
+      if (y + h > bottom) h = Math.max(CELL, bottom - y);
+      out.push({ item: items[i], y: y, h: h });
+      y += h + gap;
+    }
+    return out;
+  };
+  const promptWeight = (p) => p.taskCountsByModel.reduce((n, m) => n + m.tasks, 0);
+  const pSlots = stack(prompts, promptWeight);
+  const mSlots = stack(models, (m) => m.tasks);
+  const modelColor = {};
+  for (let i = 0; i < models.length; i++) modelColor[models[i].model] = FLOW_COLORS[i % FLOW_COLORS.length];
+  const pUsed = pSlots.map(() => 0);
+  const mUsed = mSlots.map(() => 0);
+  const pIndex = {};
+  const mIndex = {};
+  pSlots.forEach((s, i) => { pIndex[s.item.runId] = i; });
+  mSlots.forEach((s, i) => { mIndex[s.item.model] = i; });
+  for (const flow of flows) {
+    const pi = pIndex[flow.runId];
+    const mi = mIndex[flow.model];
+    if (pi === undefined || mi === undefined) continue;
+    const ps = pSlots[pi], ms = mSlots[mi];
+    const weight = Math.max(promptWeight(ps.item), 1);
+    let thick = Math.max(CELL, snap((flow.tasks / weight) * ps.h));
+    thick = Math.min(thick, Math.max(CELL, ps.h - pUsed[pi]), Math.max(CELL, ms.h - mUsed[mi]));
+    const y1 = snap(ps.y + pUsed[pi]);
+    const y2 = snap(ms.y + mUsed[mi]);
+    pUsed[pi] += thick;
+    mUsed[mi] += thick;
+    const mid = snap((midL + midR) / 2);
+    ctx.fillStyle = modelColor[flow.model];
+    ctx.fillRect(snap(leftBarX + barW), y1, Math.max(CELL, snap(mid - (leftBarX + barW))), thick);
+    const topY = Math.min(y1, y2);
+    ctx.fillRect(snap(mid), topY, CELL, Math.max(CELL, Math.max(y1, y2) - topY + thick));
+    ctx.fillRect(snap(mid), y2, Math.max(CELL, snap(rightBarX - mid)), thick);
+  }
+  for (const s of pSlots) {
+    ctx.fillStyle = '#2e2a27';
+    ctx.fillRect(snap(leftBarX), snap(s.y), barW, Math.max(CELL, snap(s.h)));
+    ctx.fillStyle = '#e8dcc8';
+    ctx.textAlign = 'right';
+    ctx.fillText(clipText(ctx, s.item.prompt, leftW - 4), pad + leftW - 4, s.y + s.h / 2);
+  }
+  for (let i = 0; i < mSlots.length; i++) {
+    const s = mSlots[i];
+    ctx.fillStyle = modelColor[s.item.model];
+    ctx.fillRect(snap(rightBarX), snap(s.y), barW, Math.max(CELL, snap(s.h)));
+    if (i === 0) {
+      ctx.fillStyle = '#e8dcc8';
+      ctx.fillRect(snap(rightBarX) - 2, snap(s.y), 2, Math.max(CELL, snap(s.h)));
+      ctx.fillRect(snap(rightBarX) + barW, snap(s.y), 2, Math.max(CELL, snap(s.h)));
+    }
+    ctx.fillStyle = i === 0 ? '#ff7a1a' : '#d6ccbd';
+    ctx.textAlign = 'left';
+    const name = s.item.model.split('/').pop() || s.item.model;
+    ctx.fillText(clipText(ctx, name + '  ' + s.item.tasks, rightW - 4), rightBarX + barW + 6, s.y + s.h / 2);
+  }
+  ctx.textAlign = 'left';
+}
+
+function renderPrompts(prompts) {
+  const nav = $('prompts');
+  nav.replaceChildren();
+  nav.append(el('h2', '', '== Previous prompts =='));
+  if (prompts.length === 0) {
+    nav.append(el('div', 'unknown', 'No runs in this state directory yet (start one with soot run).'));
+    $('run').replaceChildren();
+    return;
+  }
+  const list = el('div', 'prompt-list');
+  for (const p of prompts) {
+    const b = el('button', 'prompt-row');
+    b.dataset.run = p.runId;
+    b.append(
+      el('div', 'prompt-head', '[' + p.state + ']  ' + (p.createdAt || 'date unknown')),
+      el('div', 'prompt-text', p.prompt),
+    );
+    const tok = p.tokens === null
+      ? 'tokens unknown'
+      : (p.tokens.inputTokens + p.tokens.outputTokens) + ' tok (' + p.tokens.inputTokens + ' in / ' + p.tokens.outputTokens + ' out)' + (p.tokens.unreportedAttempts > 0 ? '; ' + p.tokens.unreportedAttempts + ' unreported' : '');
+    const cost = p.cost.actualUsd === null
+      ? (p.cost.unpricedAttempts ? p.cost.unpricedAttempts + ' unpriced attempt(s)' : 'cost unknown')
+      : usd(p.cost.actualUsd);
+    b.append(el('div', 'note', p.taskCount + ' task(s) · ' + tok + ' · ' + cost + (p.agent.label ? ' · ' + p.agent.label : '')));
+    b.title = p.prompt;
+    b.addEventListener('click', () => { location.hash = encodeURIComponent(p.runId); });
+    list.append(b);
+  }
+  nav.append(list);
+}
+
 async function getJson(path) {
   const r = await fetch(path, { cache: 'no-store' });
   const j = await r.json();
@@ -443,16 +679,9 @@ async function getJson(path) {
   return j;
 }
 
-function identBlock(r) {
-  const duration = r.duration.ms === null ? (r.running ? 'running' : 'unknown') : (r.duration.ms / 1000).toFixed(1) + ' s';
-  // One-line ident so the first screen can lead with charts, not the full prompt.
-  return block('Run', [r.runId + '  ·  ' + r.state + (r.running ? ' (running)' : '') + '  ·  ' + duration], true);
-}
-
-// Insights first: compact ident, assignment graph, usage charts and the legend, then the
-// remaining charts, then the text detail blocks (task graph, agents, full prompt, savings).
 const BLOCKS = [
   (r) => identBlock(r),
+  (r) => taskBreakdownBlock(r),
   (r) => assignmentBlock(r),
   (r) => usageBlock('Usage by model (also the cost-by-model numbers)', r.usage.byModel, r.usage.note),
   (r) => block('How to read the charts', [r.usage.note, 'Hatched cream = estimate, solid orange = reported actual; they never share a chart or a donut. Each magnitude chart is scaled to its own largest known value. Unknown is written as unknown, with no bar or slice.', r.savings.note]),
@@ -494,7 +723,7 @@ async function showRun(runId) {
     const { run } = await getJson('/api/runs/' + encodeURIComponent(runId));
     shown = runId;
     main.replaceChildren(...BLOCKS.map((b) => b(run)));
-    for (const b of document.querySelectorAll('nav button')) b.classList.toggle('current', b.dataset.run === runId);
+    for (const b of document.querySelectorAll('#prompts button')) b.classList.toggle('current', b.dataset.run === runId);
     if (run.running) timer = setTimeout(() => { void refresh(); }, 1500);
   } catch (e) {
     const p = document.createElement('p');
@@ -505,24 +734,15 @@ async function showRun(runId) {
 }
 
 async function refresh() {
-  const nav = $('runs');
+  const nav = $('prompts');
   try {
-    const { runs } = await getJson('/api/runs');
-    nav.replaceChildren();
-    if (runs.length === 0) {
-      nav.textContent = 'No runs in this state directory yet (start one with soot run).';
-      $('run').replaceChildren();
-      return;
-    }
-    for (const r of [...runs].reverse()) {
-      const b = document.createElement('button');
-      b.dataset.run = r.runId;
-      b.textContent = '[' + r.state + '] ' + r.runId + ' · ' + r.tasks + ' tasks';
-      b.title = r.prompt;
-      b.addEventListener('click', () => { location.hash = encodeURIComponent(r.runId); });
-      nav.append(b);
-    }
-    const wanted = decodeURIComponent(location.hash.slice(1)) || shown || runs[runs.length - 1].runId;
+    const data = await getJson('/api/runs');
+    const overview = data.overview || { prompts: [], flows: [], byModel: [], promptCount: 0, taskCount: 0 };
+    lastOverview = overview;
+    drawFlow($('flow'), overview);
+    renderPrompts(overview.prompts);
+    if (overview.prompts.length === 0) return;
+    const wanted = decodeURIComponent(location.hash.slice(1)) || shown || overview.prompts[0].runId;
     await showRun(wanted);
   } catch (e) {
     nav.textContent = 'Could not reach the soot dashboard API: ' + e.message;
@@ -530,5 +750,6 @@ async function refresh() {
 }
 
 window.addEventListener('hashchange', () => { void showRun(decodeURIComponent(location.hash.slice(1))); });
+window.addEventListener('resize', () => { if (lastOverview) drawFlow($('flow'), lastOverview); });
 void refresh();
 `;

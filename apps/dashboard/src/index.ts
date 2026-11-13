@@ -12,6 +12,14 @@ export {
 } from './server.js';
 export { usageCharts, type UsageCharts, type UsageRow, type UsageSide } from './charts.js';
 export {
+  toOverview,
+  toPromptIndexItem,
+  taskCountsByModel,
+  type Overview,
+  type PromptIndexItem,
+  type TaskModelFlow,
+} from './overview.js';
+export {
   SAVINGS_NOTE,
   toDashboardRun,
   toRunList,
@@ -19,4 +27,5 @@ export {
   type DashboardSource,
   type RunListItem,
   type SourceResult,
+  type TaskBreakdown,
 } from './view.js';

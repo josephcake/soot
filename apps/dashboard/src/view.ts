@@ -156,6 +156,32 @@ export interface DashboardRun {
     readonly problems: readonly string[];
   };
   readonly savings: { readonly claimed: false; readonly note: string };
+  /**
+   * Per-task tokens, models and the run's runner. soot records one agent/harness
+   * per run, not per task; `runner` is that run-level label. Tokens come from
+   * the cost report's per-task actuals; null when not reported.
+   */
+  readonly taskBreakdown: readonly TaskBreakdown[];
+}
+
+export interface TaskBreakdown {
+  readonly id: string;
+  readonly title: string;
+  readonly state: string;
+  /** Runner for the whole run (soot does not record a per-task agent). */
+  readonly runner: string | null;
+  readonly models: readonly (string | null)[];
+  readonly attempts: number;
+  readonly tokens: {
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly total: number;
+  } | null;
+  readonly costUsd: number | null;
+  /** Why tokens are unknown; null when reported for every attempt on this task. */
+  readonly tokensUnknown: string | null;
+  /** Why cost is unknown; null when every attempt on this task is priced. */
+  readonly costUnknown: string | null;
 }
 
 export const SAVINGS_NOTE =
@@ -198,6 +224,50 @@ function layersOf(tasks: readonly { id: string; dependsOn: readonly string[] }[]
   };
   for (const t of tasks) visit(t.id, new Set());
   return layer;
+}
+
+function taskBreakdown(
+  tasks: readonly TaskView[],
+  usage: UsageCharts,
+  runner: string | null,
+): TaskBreakdown[] {
+  const byId = new Map(usage.byTask.map((r) => [r.label, r]));
+  return tasks.map((t) => {
+    const row = byId.get(t.id);
+    if (row === undefined) {
+      return {
+        id: t.id,
+        title: t.title,
+        state: t.state,
+        runner,
+        models: t.models,
+        attempts: t.attempts.length,
+        tokens: null,
+        costUsd: null,
+        tokensUnknown: 'no cost data recorded for this task',
+        costUnknown: 'no cost data recorded for this task',
+      };
+    }
+    const input = row.actual.inputTokens;
+    const output = row.actual.outputTokens;
+    const tokens =
+      input === null || output === null
+        ? null
+        : { inputTokens: input, outputTokens: output, total: input + output };
+    return {
+      id: t.id,
+      title: t.title,
+      state: t.state,
+      runner,
+      models: t.models,
+      attempts: t.attempts.length,
+      tokens,
+      costUsd: row.actual.usd,
+      tokensUnknown: tokens === null ? 'tokens not reported for every attempt on this task' : null,
+      costUnknown:
+        row.actual.usd === null ? 'cost not reported for every attempt on this task' : null,
+    };
+  });
 }
 
 export function toRunList(status: SourceResult): readonly RunListItem[] {
@@ -295,6 +365,8 @@ export function toDashboardRun(
   const cancelled = count('cancelled');
   const skipped = count('skipped');
   const done = succeeded + failed + cancelled + skipped;
+  const agentLabel = strOrNull(status.agentLabel);
+  const usage = usageCharts(cost, agentLabel);
 
   return {
     runId: str(status.runId),
@@ -303,7 +375,7 @@ export function toDashboardRun(
     prompt: str(status.prompt),
     createdAt: strOrNull(status.createdAt),
     agent: { kind: strOrNull(status.agent), label: strOrNull(status.agentLabel) },
-    usage: usageCharts(cost, strOrNull(status.agentLabel)),
+    usage,
     assignment: {
       prompt: str(status.prompt),
       tasks: tasks.map((t) => ({
@@ -311,7 +383,7 @@ export function toDashboardRun(
         title: t.title,
         instructions: t.instructions,
         dependsOn: t.dependsOn,
-        runner: strOrNull(status.agentLabel),
+        runner: agentLabel,
         attempts: t.attempts.map((a) => {
           const ct = arr(rec(cost?.cost).tasks)
             .map(rec)
@@ -405,5 +477,6 @@ export function toDashboardRun(
       problems: arr(status.problems).map((p) => str(p)),
     },
     savings: { claimed: false, note: SAVINGS_NOTE },
+    taskBreakdown: taskBreakdown(tasks, usage, agentLabel),
   };
 }

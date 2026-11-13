@@ -3,8 +3,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { toOverview } from './overview.js';
 import { APP_JS, INDEX_HTML, STYLE_CSS } from './ui.js';
-import { toDashboardRun, toRunList, type DashboardSource } from './view.js';
+import { toDashboardRun, toRunList, type DashboardRun, type DashboardSource } from './view.js';
 
 /** Pixel logo masters live in the repo at docs/brand (same files the README uses). */
 const BRAND_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../../docs/brand');
@@ -72,6 +73,28 @@ const sendJson = (res: ServerResponse, code: number, value: unknown, head: boole
   send(res, code, 'application/json; charset=utf-8', `${JSON.stringify(value)}\n`, head);
 };
 
+async function loadRecordedRuns(source: DashboardSource): Promise<
+  | {
+      ok: true;
+      list: ReturnType<typeof toRunList>;
+      runs: DashboardRun[];
+    }
+  | { ok: false; text: string }
+> {
+  const status = await source.status();
+  if (!status.ok) return { ok: false, text: status.text };
+  const list = toRunList(status);
+  const runs: DashboardRun[] = [];
+  for (const item of list) {
+    if (item.runId === '') continue;
+    const one = await source.status(item.runId);
+    if (!one.ok) continue;
+    const cost = await source.cost(item.runId);
+    runs.push(toDashboardRun(one.data, cost.ok ? cost.data : null));
+  }
+  return { ok: true, list, runs };
+}
+
 async function handle(
   req: IncomingMessage,
   res: ServerResponse,
@@ -112,12 +135,12 @@ async function handle(
     return;
   }
   if (path === '/api/runs') {
-    const status = await source.status();
-    if (!status.ok) {
-      sendJson(res, 500, { error: status.text }, head);
+    const loaded = await loadRecordedRuns(source);
+    if (!loaded.ok) {
+      sendJson(res, 500, { error: loaded.text }, head);
       return;
     }
-    sendJson(res, 200, { runs: toRunList(status) }, head);
+    sendJson(res, 200, { runs: loaded.list, overview: toOverview(loaded.runs) }, head);
     return;
   }
   const m = /^\/api\/runs\/([^/]+)$/.exec(path);
