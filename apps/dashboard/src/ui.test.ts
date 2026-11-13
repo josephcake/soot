@@ -15,7 +15,10 @@ interface FakeNode {
   className: string;
   textContent: string;
   title: string;
-  style: { width?: string; left?: string; background?: string };
+  style: { width?: string; left?: string; background?: string; backgroundColor?: string };
+  attrs: Record<string, string>;
+  setAttribute(k: string, v: string): void;
+  removeAttribute(k: string): void;
   children: FakeNode[];
   width?: number;
   height?: number;
@@ -37,6 +40,14 @@ function node(tag: string): FakeNode {
     textContent: '',
     title: '',
     style: {},
+    attrs: {},
+    setAttribute(k, v) {
+      this.attrs[k] = v;
+    },
+    removeAttribute(k) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+      delete this.attrs[k];
+    },
     children: [],
     width: 0,
     height: 0,
@@ -104,11 +115,16 @@ function load() {
     clearTimeout: () => undefined,
   };
   return runInNewContext(
-    `${APP_JS}\n;({ chart, usageBlock, assignmentBlock, donut, meter, outcomesBlock, tokensBlock, costBlock, timelineBlock, validationBlock, transitionsBlock, BLOCKS, ACT_SHADES, EST_SHADES, FLOW_COLORS, drawFlow, renderPrompts, taskBreakdownBlock, identBlock });`,
+    `${APP_JS}\n;({ chart, usageBlock, assignmentBlock, donut, meter, outcomesBlock, tokensBlock, costBlock, timelineBlock, validationBlock, transitionsBlock, BLOCKS, AGG_BLOCKS, ACT_SHADES, EST_SHADES, MODEL_COLORS, MODEL_PATTERNS, drawFlow, renderPrompts, taskBreakdownBlock, identBlock, parseRoute, truncate, fmtDate, buildModelStyles, modelStyle, useModels, tilesFor, patternInk, notFoundBlock, promptRow });`,
     fake,
   ) as {
     chart: (title: string, kind: string, rows: unknown[], fmt: (v: number) => string) => FakeNode;
-    usageBlock: (title: string, rows: unknown[], note: string) => FakeNode;
+    usageBlock: (
+      title: string,
+      rows: unknown[],
+      note: string,
+      opts?: { byModel: boolean },
+    ) => FakeNode;
     assignmentBlock: (run: unknown) => FakeNode;
     donut: (title: string, slices: unknown[], fmt: (v: number) => string) => FakeNode;
     meter: (title: string, rate: number | null) => FakeNode;
@@ -119,9 +135,23 @@ function load() {
     validationBlock: (run: unknown) => FakeNode;
     transitionsBlock: (run: unknown) => FakeNode;
     BLOCKS: ((run: unknown) => FakeNode)[];
+    AGG_BLOCKS: ((overview: unknown) => FakeNode)[];
     ACT_SHADES: string[];
     EST_SHADES: string[];
-    FLOW_COLORS: string[];
+    MODEL_COLORS: string[];
+    MODEL_PATTERNS: string[];
+    parseRoute: (hash: string) => { view: string; runId?: string };
+    truncate: (s: string, max: number) => string;
+    fmtDate: (iso: string | null, locale?: string, timeZone?: string) => string | null;
+    buildModelStyles: (
+      names: (string | null)[],
+    ) => Record<string, { color: string; pattern: string; index: number }>;
+    modelStyle: (name: string | null) => { color: string; pattern: string; index: number };
+    useModels: (names: string[]) => void;
+    tilesFor: (overview: unknown) => FakeNode[];
+    patternInk: (pattern: string, i: number, j: number) => boolean;
+    notFoundBlock: (runId: string) => FakeNode;
+    promptRow: (p: unknown) => FakeNode;
     drawFlow: (canvas: FakeNode, overview: unknown) => void;
     renderPrompts: (prompts: unknown[]) => void;
     taskBreakdownBlock: (run: unknown) => FakeNode;
@@ -192,7 +222,7 @@ describe('page chart blocks', () => {
       'mock',
     );
     const block = ui.usageBlock('Usage by model', [...usage.byModel], usage.note);
-    const charts = block.children.filter((n) => n.className === 'chart');
+    const charts = all(block).filter((n) => n.className === 'chart');
     expect(charts.map((c) => c.children[0]?.textContent)).toEqual([
       'estimated USD (router, not spent)',
       'actual USD (reported by the runner)',
@@ -410,7 +440,10 @@ describe('page chart blocks', () => {
       },
       'mock',
     );
-    const block = ui.usageBlock('Usage by model', [...usage.byModel], usage.note);
+    ui.useModels(['m1', 'm2']);
+    const block = ui.usageBlock('Usage by model', [...usage.byModel], usage.note, {
+      byModel: true,
+    });
     const shares = all(block).filter((n) => n.className === 'chart share-chart');
     expect(shares.map((c) => c.children[0]?.textContent)).toEqual([
       'estimated USD share',
@@ -418,7 +451,22 @@ describe('page chart blocks', () => {
     ]);
     const estCells = ringCells(at(shares, 0));
     expect(estCells.length).toBeGreaterThan(0);
-    expect(estCells.every((c) => ui.EST_SHADES.includes(c.style.background ?? ''))).toBe(true);
+    // By model, each slice wears its model's colour and pattern (same as the canvas).
+    expect(new Set(estCells.map((c) => c.style.backgroundColor))).toEqual(
+      new Set([ui.modelStyle('m1').color, ui.modelStyle('m2').color]),
+    );
+    expect(estCells.some((c) => c.className.includes('pat-' + ui.modelStyle('m2').pattern))).toBe(
+      true,
+    );
+    // By task (not models), the estimate shades are kept.
+    const byTask = ui.usageBlock('Usage by task', [...usage.byTask], usage.note);
+    const taskCells = ringCells(
+      at(
+        all(byTask).filter((n) => n.className === 'chart share-chart'),
+        0,
+      ),
+    );
+    expect(taskCells.every((c) => ui.EST_SHADES.includes(c.style.background ?? ''))).toBe(true);
     // One model's actual is unknown: no actual donut, only the reason.
     expect(ringCells(at(shares, 1))).toEqual([]);
     expect(text(at(shares, 1))).toContain('unknown (1 of 2 without a known amount)');
@@ -432,7 +480,7 @@ describe('page chart blocks', () => {
     const run = baseRun({ running: true, state: 'running' });
     const block = ui.timelineBlock(run);
     const rows = all(block).filter((n) => n.className === 'row');
-    expect(rows.map((r) => r.children[0]?.textContent)).toEqual([
+    expect(rows.map((r) => (r.children[0] ? text(r.children[0]).trim() : ''))).toEqual([
       'run total',
       'a #1 small',
       'b #1 mid',
@@ -479,27 +527,29 @@ describe('page chart blocks', () => {
     const run = baseRun();
     const sections = ui.BLOCKS.map((b) => b(run));
     expect(sections.map((s) => s.children[0]?.textContent)).toEqual([
-      '== Prompt ==',
-      '== Tasks in this prompt ==',
-      '== Assignment: prompt → tasks → models ==',
-      '== Usage by model (also the cost-by-model numbers) ==',
-      '== How to read the charts ==',
-      '== Success and failure ==',
-      '== Cost ==',
-      '== Token usage ==',
-      '== Usage by task ==',
-      '== Usage by runner (agent/bot) ==',
-      '== Duration (attempt timeline) ==',
-      '== Validation ==',
-      '== Model transitions ==',
-      '== Task graph (2 tasks) ==',
-      '== Tasks and models ==',
-      '== Active agents ==',
-      '== Run details ==',
-      '== Savings ==',
+      'Prompt',
+      'Tasks in this prompt',
+      'Assignment: prompt → tasks → models',
+      'Usage by model (also the cost-by-model numbers)',
+      'How to read the charts',
+      'Success and failure',
+      'Cost',
+      'Token usage',
+      'Usage by task',
+      'Usage by runner (agent/bot)',
+      'Duration (attempt timeline)',
+      'Validation',
+      'Model transitions',
+      'Task graph (2 tasks)',
+      'Tasks and models',
+      'Active agents',
+      'Run details',
+      'Savings',
     ]);
     const ident = text(at(sections, 0));
-    expect(ident).toContain('r  ·  incomplete  ·  ');
+    expect(ident).toContain('incomplete');
+    expect(ident).toMatch(/Nov 12/);
+    expect(ident).not.toContain('2026-11-12T10:00:00.000Z');
     expect(ident).toContain('p');
     const details = text(at(sections, 16));
     expect(details).toContain('Prompt:');
@@ -553,11 +603,12 @@ describe('page chart blocks', () => {
     );
     const t = text(ui.taskBreakdownBlock(run));
     expect(t).toContain('Runner is recorded per run, not per task: mock-test-double');
-    expect(t).toContain('a  [succeeded]');
+    expect(t).toMatch(/\ba\s+succeeded\b/);
     expect(t).toContain('Part A');
     expect(t).toContain('runner: mock-test-double');
-    expect(t).toContain('model: p/small');
-    expect(t).toContain('8 in / 2 out / 10 total tok');
+    expect(t).toMatch(/model:\s+p\/small/);
+    expect(t).toContain('10 tok');
+    expect(t).toContain('8 in / 2 out');
     expect(t).toContain('$0.001000');
     expect(t).toContain('total tokens  10');
     const bare = text(ui.taskBreakdownBlock(baseRun()));
@@ -611,11 +662,193 @@ describe('page chart blocks', () => {
       .map((c) => String((c as [string, unknown[]])[1][0]));
     expect(texts.some((t) => t.includes(nasty) || t.includes('<img'))).toBe(true);
     expect(texts.join(' ')).not.toMatch(/innerHTML|createElement/);
-    // Biggest share (p/small, 2 tasks) uses the lead orange.
-    const styles = canvas._calls
+    // Pipes and model bars wear the shared model styles: p/mid sorts first (orange, solid),
+    // p/small second (cream, hatched with page-coloured ink).
+    ui.useModels(['p/small', 'p/mid']);
+    const styled = node('canvas');
+    ui.drawFlow(styled, {
+      promptCount: 2,
+      taskCount: 3,
+      prompts: [
+        { runId: 'r1', prompt: 'a', taskCountsByModel: [{ model: 'p/small', tasks: 2 }] },
+        { runId: 'r2', prompt: 'b', taskCountsByModel: [{ model: 'p/mid', tasks: 1 }] },
+      ],
+      flows: [
+        { runId: 'r1', prompt: 'a', model: 'p/small', tasks: 2 },
+        { runId: 'r2', prompt: 'b', model: 'p/mid', tasks: 1 },
+      ],
+      byModel: [
+        { model: 'p/small', tasks: 2 },
+        { model: 'p/mid', tasks: 1 },
+      ],
+    });
+    const styles = styled._calls
       .filter((c) => Array.isArray(c) && c[0] === 'set' && c[1] === 'fillStyle')
       .map((c) => (c as unknown[])[2]);
-    expect(styles).toContain(ui.FLOW_COLORS[0]);
-    expect(ui.FLOW_COLORS[0]).toBe('#ff7a1a');
+    expect(ui.modelStyle('p/mid')).toEqual({ color: '#ff7a1a', pattern: 'solid', index: 0 });
+    expect(ui.modelStyle('p/small')).toEqual({ color: '#e8dcc8', pattern: 'hatch', index: 1 });
+    expect(styles).toContain('#ff7a1a');
+    expect(styles).toContain('#e8dcc8');
+    expect(styles).toContain('rgba(10, 10, 10, 0.62)');
+  });
+});
+
+describe('page helpers', () => {
+  const ui = load();
+
+  it('parses hash routes for the overview, the prompt list and one prompt', () => {
+    for (const h of ['', '#', '#/', '#/nope/x'])
+      expect(ui.parseRoute(h)).toEqual({ view: 'overview' });
+    expect(ui.parseRoute('#/prompts')).toEqual({ view: 'prompts' });
+    expect(ui.parseRoute('#/prompts/')).toEqual({ view: 'prompts' });
+    expect(ui.parseRoute('#/prompts/run-1')).toEqual({ view: 'prompt', runId: 'run-1' });
+    expect(ui.parseRoute('#/prompts/a%2Fb/')).toEqual({ view: 'prompt', runId: 'a/b' });
+    // A malformed escape is kept as typed (the page then shows "not found").
+    expect(ui.parseRoute('#/prompts/%E0%A4%A')).toEqual({ view: 'prompt', runId: '%E0%A4%A' });
+    // Old single-page links (#<runId>) still open that prompt.
+    expect(ui.parseRoute('#dropdown-auth')).toEqual({ view: 'prompt', runId: 'dropdown-auth' });
+  });
+
+  it('truncates tags with an ellipsis and leaves short strings alone', () => {
+    expect(ui.truncate('mock', 8)).toBe('mock');
+    expect(ui.truncate('12345678', 8)).toBe('12345678');
+    expect(ui.truncate('mock-test-double (test double, no model is called)', 10)).toBe(
+      'mock-test…',
+    );
+    expect(ui.truncate('mock-test-double', 10)).toHaveLength(10);
+  });
+
+  it('formats dates as local date and time, never a raw ISO Z string', () => {
+    expect(ui.fmtDate('2026-11-13T06:49:22.524Z', 'en-US', 'America/Los_Angeles')).toBe(
+      'Nov 12, 10:49 PM',
+    );
+    expect(ui.fmtDate('2026-11-13T06:49:22.524Z', 'en-US', 'UTC')).toBe('Nov 13, 6:49 AM');
+    expect(ui.fmtDate(null)).toBeNull();
+    expect(ui.fmtDate('not a date')).toBeNull();
+  });
+
+  it('gives each model one deterministic colour and pattern, whatever order it arrives in', () => {
+    const a = ui.buildModelStyles(['p/small', 'p/mid', 'p/large', 'p/mid', null, '(no model)']);
+    const b = ui.buildModelStyles(['p/large', 'p/small', 'p/mid']);
+    expect(a).toEqual(b);
+    expect(Object.keys(a)).toEqual(['p/large', 'p/mid', 'p/small']);
+    // Distinct colour and pattern for every model up to the palette size.
+    const many = ui.buildModelStyles(
+      Array.from({ length: 24 }, (_, i) => `m${String(i).padStart(2, '0')}`),
+    );
+    const combos = new Set(Object.values(many).map((s) => `${s.color}|${s.pattern}`));
+    expect(combos.size).toBe(24);
+    expect(new Set(Object.values(a).map((s) => s.pattern)).size).toBe(3);
+    // The patterns differ pixel by pixel, so models stay apart without colour.
+    const sig = (p: string) =>
+      Array.from({ length: 36 }, (_, k) =>
+        ui.patternInk(p, k % 6, Math.floor(k / 6)) ? 1 : 0,
+      ).join('');
+    expect(new Set(ui.MODEL_PATTERNS.map(sig)).size).toBe(ui.MODEL_PATTERNS.length);
+    // A model outside the known set still gets a stable style.
+    ui.useModels(['p/small']);
+    expect(ui.modelStyle('x/other')).toEqual(ui.modelStyle('x/other'));
+    expect(ui.modelStyle(null).pattern).toBe('solid');
+  });
+
+  it('summary tiles show computed totals with coverage, and an em dash when unknown', () => {
+    const covered = (value: unknown, runs: number) => ({ value, runs });
+    const tiles = ui.tilesFor({
+      promptCount: 2,
+      taskCount: 5,
+      aggregate: {
+        tokens: {
+          actual: covered({ inputTokens: 1000, outputTokens: 234, unreportedAttempts: 0 }, 1),
+        },
+        cost: { actualUsd: covered(null, 0), unpricedAttempts: 2 },
+      },
+    });
+    expect(tiles.map((t) => text(t))).toEqual(
+      [
+        '2 Prompts recorded runs',
+        '5 Tasks planned, across all prompts',
+        '1,234 Tokens reported · 1/2 runs',
+        '— Cost actual not reported · 2 unpriced attempt(s)',
+      ].map((s) => ` ${s}`),
+    );
+    const none = ui.tilesFor({ promptCount: 0, taskCount: 0, aggregate: null });
+    expect(none.map((t) => t.children[0]?.textContent)).toEqual(['—', '—', '—', '—']);
+  });
+
+  it('overview blocks are all aggregates; nothing names one prompt', () => {
+    ui.useModels(['p/small']);
+    const covered = (value: unknown, runs: number) => ({ value, runs });
+    const ov = {
+      promptCount: 1,
+      taskCount: 1,
+      aggregate: {
+        usageByModel: [],
+        usageByAgent: [],
+        tokens: { estimated: covered(null, 0), actual: covered(null, 0) },
+        cost: {
+          estimatedUsd: covered(null, 0),
+          routedEstimateUsd: covered(null, 0),
+          actualUsd: covered(null, 0),
+          unpricedAttempts: 0,
+        },
+        outcomes: {
+          succeeded: 1,
+          failed: 0,
+          cancelled: 0,
+          skipped: 0,
+          unfinished: 0,
+          complete: 1,
+          successRate: 1,
+          failureRate: 0,
+        },
+        validation: { taskChecks: {}, final: {}, runsWithFinal: 0 },
+        transitions: {},
+        usageNote: 'usage note',
+        savingsNote: 'savings note',
+      },
+    };
+    const titles = ui.AGG_BLOCKS.map((b) => b(ov).children[0]?.textContent ?? '');
+    expect(titles.slice(0, -1).every((t) => t.endsWith('· all prompts'))).toBe(true);
+    expect(titles.join(' ')).not.toMatch(/this prompt|Assignment|timeline/i);
+    const how = text(ui.AGG_BLOCKS.at(-1)?.(ov) ?? node('div'));
+    expect(how).toContain('usage note');
+    expect(how).toContain('savings note');
+  });
+
+  it('an unknown prompt shows "not found" and a link back to the list', () => {
+    const block = ui.notFoundBlock('gone');
+    expect(text(block)).toContain('Prompt not found');
+    expect(text(block)).toContain('"gone"');
+    expect(
+      all(block).some(
+        (n) => n.tag === 'a' && (n as unknown as { href: string }).href === '#/prompts',
+      ),
+    ).toBe(true);
+  });
+
+  it('a prompt row links to its detail route and shows local dates and model swatches', () => {
+    ui.useModels(['p/small']);
+    const row = ui.promptRow({
+      runId: 'r 1',
+      createdAt: '2026-11-12T10:00:00.000Z',
+      state: 'succeeded',
+      prompt: 'do it',
+      taskCount: 1,
+      agent: { kind: 'mock', label: 'mock-test-double (test double, no model is called)' },
+      tokens: { inputTokens: 1200, outputTokens: 34, unreportedAttempts: 0 },
+      cost: { actualUsd: 0.001, unpricedAttempts: 0 },
+      taskCountsByModel: [{ model: 'p/small', tasks: 1 }],
+    });
+    expect((row as unknown as { href: string }).href).toBe('#/prompts/r%201');
+    const t = text(row);
+    expect(t).not.toContain('2026-11-12T10:00:00.000Z');
+    expect(t).toContain('1,234 tok');
+    const time = all(row).find((n) => n.tag === 'time');
+    expect(time?.title).toBe('2026-11-12T10:00:00.000Z');
+    const runner = all(row).find((n) => n.className === 'tag' && n.title.startsWith('mock-test'));
+    expect(runner?.title).toBe('mock-test-double (test double, no model is called)');
+    expect(runner?.textContent.endsWith('…')).toBe(true);
+    const sw = all(row).find((n) => n.className.startsWith('sw'));
+    expect(sw?.style.backgroundColor).toBe(ui.modelStyle('p/small').color);
   });
 });

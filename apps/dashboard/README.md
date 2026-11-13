@@ -27,16 +27,30 @@ soot dashboard --open          # also open a browser (off by default)
   rates, soot-run checks, final validation, problems, and a fixed "no savings claimed" note.
   Unknown values are `null`, never zero-filled. soot records one agent/harness per run, not
   per task; `taskBreakdown.runner` is that run-level label. Per-task tokens come from the cost
-  report's attempt usage, when every attempt on the task reported them.
+  report's attempt usage, when every attempt on the task reported them. The `overview` also
+  carries an `aggregate` across every run (usage by model and by runner, tokens, cost, outcomes,
+  validation and transition counts); a partial sum says how many runs it covers
+  (`{ value, runs }`) and is `null` when no run reported it.
 - **Centerpiece (D-04):** a hand-drawn `<canvas>` (2D context, no chart library) at the
   top-center shows where tasks went across every recorded prompt: pixel pipes from prompts to
   models, sized by unique tasks that had an attempt on that model (a task that escalated counts
-  under each). The largest share is orange `#ff7a1a`. Empty state is a pixel "no data" block.
+  under each). Each pipe and model bar wears that model's colour and pattern; the largest share
+  is bracketed in cream. Empty state is a pixel "no data" block.
   Prompt text is drawn with `fillText` only.
-- **Previous prompts (D-04):** a list of every recorded run, newest first, with the prompt text
-  as soot stored it, date, status, and total tokens/cost when recorded. Clicking a prompt opens
-  its detail: each task with the run's runner and the model(s) that took it, in/out/total
-  tokens per task (or an explicit "not reported" reason), plus totals.
+- **Views (hash routes, no router library):** a pixel tab bar switches between **Overview**
+  (`#/`: summary tiles for prompts, tasks, tokens and cost, the canvas, a shared model legend,
+  and aggregate charts across every prompt; nothing specific to one prompt) and **Prompts**
+  (`#/prompts`). The browser back and forward buttons work (`hashchange`).
+- **Previous prompts (D-04):** `#/prompts` lists every recorded run, newest first, with the
+  prompt text as soot stored it, local date (ISO in the title), status, models used, the runner
+  as a short tag, and total tokens/cost when recorded. Each row links to `#/prompts/<runId>`:
+  each task with the run's runner and the model(s) that took it, in/out/total tokens per task
+  (or an explicit "not reported" reason), totals, and the per-run charts below, with a back
+  link. An unknown run id shows "not found" and the back link.
+- **Model identity:** one deterministic model → style map (names sorted by code point; 8
+  colours × 6 pixel patterns: solid, hatch, dots, checker, horizontal and vertical stripes) is
+  used by the canvas, every chart, the legend and the prompt detail, so models stay apart
+  without colour too.
 - **Charts (D-02):** usage by model, by task and by runner (`usage`: estimated USD, actual USD,
   planner tokens, reported tokens, each its own CSS bar chart; hatched cream = estimate, solid
   orange = actual; null is written "unknown", never a bar), and an assignment view (`assignment`: the
@@ -49,11 +63,12 @@ soot dashboard --open          # also open a browser (off by default)
   label), validation counts by status, a transition count chart, and separate estimated and
   actual USD share donuts per usage block.
 - **Palette:** page `#0a0a0a`, blocks `#141414`, orange `#ff7a1a` accent, cream `#e8dcc8`
-  highlights and estimates, warm-gray notes, redder-orange `#ff4d2e` errors.
+  highlights and estimates, warm-gray notes, redder-orange `#ff4d2e` errors; extra per-model
+  series colours only for model identity. One 8px spacing scale, a 12-column grid in a 1280px
+  container (charts 2-up, one column under 760px), square 1px-hairline panels.
 - **Logo:** the page header and favicon use the pixel soot mark from `docs/brand/`
   (`GET /logo.png`, `GET /mark.png`).
-- **Page order:** the canvas aggregate and the previous-prompts list sit above the selected
-  prompt. A selected prompt leads with the full prompt text, the per-task breakdown, the
+- **Prompt detail order:** a selected prompt leads with the full prompt text, the per-task breakdown, the
   assignment graph, usage-by-model charts, and a short "how to read the charts" legend, then
   outcomes, cost, tokens, usage by task and by runner, the duration timeline, validation and
   transitions. Text details (task graph, tasks and models, active agents, the full prompt, the

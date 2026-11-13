@@ -7,13 +7,20 @@ const run = (over: Record<string, unknown>, cost: Record<string, unknown> | null
 
 describe('toOverview', () => {
   it('is empty when there are no runs, not zero-filled', () => {
-    expect(toOverview([])).toEqual({
+    const empty = toOverview([]);
+    expect(empty).toMatchObject({
       prompts: [],
       flows: [],
       byModel: [],
       promptCount: 0,
       taskCount: 0,
     });
+    // Aggregates over no runs: unknown (null with 0 runs covered), never a zero total.
+    expect(empty.aggregate.tokens.actual).toEqual({ value: null, runs: 0 });
+    expect(empty.aggregate.cost.actualUsd).toEqual({ value: null, runs: 0 });
+    expect(empty.aggregate.outcomes.successRate).toBeNull();
+    expect(empty.aggregate.usageByModel).toEqual([]);
+    expect(empty.aggregate.validation.runsWithFinal).toBe(0);
   });
 
   it('counts unique tasks per model, including a task that hit two models, and sorts prompts newest first', () => {
@@ -113,5 +120,78 @@ describe('toOverview', () => {
     expect(overview.prompts[0]?.cost).toEqual({ actualUsd: 0.02, unpricedAttempts: 0 });
     expect(overview.prompts[1]?.tokens).toBeNull();
     expect(overview.prompts[1]?.cost).toEqual({ actualUsd: null, unpricedAttempts: null });
+  });
+
+  it('aggregates across runs: partial sums say how many runs they cover, nothing is invented', () => {
+    const priced = run(
+      {
+        runId: 'p1',
+        createdAt: '2026-11-12T10:00:00.000Z',
+        reportStatus: 'complete',
+        finalValidation: [{ name: 'test', kind: 'test', status: 'passed', required: true }],
+        tasks: [
+          {
+            taskId: 'a',
+            state: 'succeeded',
+            checks: [{ name: 'lint', kind: 'lint', status: 'failed', exitCode: 1 }],
+            attemptDetails: [{ attempt: 1, state: 'succeeded', model: 'p/small' }],
+          },
+          { taskId: 'b', state: 'failed', attemptDetails: [] },
+        ],
+        events: [{ type: 'escalate', taskId: 'a', attempt: 2, model: 'p/mid', reason: 'r' }],
+      },
+      {
+        cost: {
+          tasks: [
+            {
+              taskId: 'a',
+              estimated: { inputTokens: 10, outputTokens: 1 },
+              attempts: [
+                {
+                  attempt: 1,
+                  model: 'p/small',
+                  estimatedUsd: 0.01,
+                  inputTokens: 8,
+                  outputTokens: 2,
+                  actualUsd: 0.001,
+                },
+              ],
+            },
+          ],
+          totals: {
+            estimated: { inputTokens: 10, outputTokens: 1, usd: 0.01 },
+            actual: {
+              inputTokens: 8,
+              outputTokens: 2,
+              usd: 0.001,
+              unpricedAttempts: 0,
+              unreportedAttempts: 0,
+            },
+          },
+        },
+      },
+    );
+    const bare = run({
+      runId: 'p2',
+      createdAt: '2026-11-12T09:00:00.000Z',
+      tasks: [{ taskId: 'c', state: 'succeeded', attemptDetails: [] }],
+    });
+    const ag = toOverview([priced, bare]).aggregate;
+    expect(ag.tokens.actual).toEqual({
+      value: { inputTokens: 8, outputTokens: 2, unreportedAttempts: 0 },
+      runs: 1,
+    });
+    expect(ag.cost.actualUsd).toEqual({ value: 0.001, runs: 1 });
+    expect(ag.outcomes).toMatchObject({ succeeded: 2, failed: 1, unfinished: 0 });
+    expect(ag.outcomes.successRate).toBeCloseTo(2 / 3);
+    expect(ag.validation.taskChecks).toEqual({ failed: 1 });
+    expect(ag.validation.final).toEqual({ passed: 1 });
+    expect(ag.validation.runsWithFinal).toBe(1);
+    expect(ag.transitions).toEqual({ escalate: 1 });
+    expect(ag.usageByModel.map((r) => [r.label, r.attempts, r.actual.usd])).toEqual([
+      ['p/small', 1, 0.001],
+    ]);
+    expect(ag.usageNote).toContain('Runner label is from the saved report');
+    expect(ag.savingsNote).toContain('does not claim savings');
   });
 });

@@ -1,9 +1,12 @@
 /*
  * The dashboard page: plain HTML, one stylesheet and one small script, no framework (ADR-009,
- * ADR-031). Every section is a text block built from the JSON API; swapping a block means
- * changing one function. All text is set with textContent (prompts and reasons are untrusted).
- * Prompt text drawn on the canvas uses fillText only. The script only talks to this server's
- * own /api paths.
+ * ADR-031). Every section is a block built from the JSON API; swapping a block means changing
+ * one function. All text is set with textContent (prompts and reasons are untrusted). Prompt
+ * text drawn on the canvas uses fillText only. The script only talks to this server's own
+ * /api paths.
+ *
+ * Views (hash routes, no router library): `#/` Overview (aggregates across every prompt only),
+ * `#/prompts` the prompt list, `#/prompts/<runId>` one prompt's detail.
  */
 
 export const INDEX_HTML = `<!doctype html>
@@ -16,59 +19,95 @@ export const INDEX_HTML = `<!doctype html>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <header>
-      <h1>
-        <img src="/logo.png" alt="soot" width="144" height="32" />
-        <span>local dashboard</span>
-      </h1>
-      <p class="note">Read-only view of this machine's soot state (127.0.0.1 only). Headless soot does not need it.</p>
-    </header>
-    <section id="centerpiece" class="centerpiece">
-      <h2>== Where tasks went ==</h2>
-      <p class="note">Task count per model across every recorded prompt. A task that used more than one model is counted under each. The biggest share is in orange.</p>
-      <canvas id="flow" width="960" height="320" aria-label="Tasks from prompts to models"></canvas>
-    </section>
-    <section id="prompts" class="block wide prompts" aria-label="previous prompts">loading…</section>
-    <main id="run"></main>
+    <div class="wrap">
+      <header class="top">
+        <h1>
+          <img src="/logo.png" alt="soot" width="144" height="32" />
+          <span>local dashboard</span>
+        </h1>
+        <p class="meta" id="meta">loading…</p>
+      </header>
+      <nav class="tabs" aria-label="views">
+        <a class="tab" id="tab-overview" href="#/">Overview</a>
+        <a class="tab" id="tab-prompts" href="#/prompts">Prompts</a>
+      </nav>
+      <main id="view-overview" class="grid">
+        <section id="tiles" class="tiles wide" aria-label="summary"></section>
+        <section id="centerpiece" class="block wide centerpiece">
+          <h2>Where tasks went · all prompts</h2>
+          <p class="note">Tasks per model across every recorded prompt. A task that used more than one model is counted under each. The largest share is bracketed in cream.</p>
+          <canvas id="flow" width="960" height="320" aria-label="Tasks from prompts to models"></canvas>
+          <div id="legend" class="model-legend" aria-label="model legend"></div>
+        </section>
+        <div id="agg" class="grid wide"></div>
+      </main>
+      <main id="view-prompts" class="grid" hidden>
+        <section id="prompts" class="block wide prompts" aria-label="previous prompts">loading…</section>
+      </main>
+      <main id="view-prompt" class="grid" hidden>
+        <p class="wide"><a class="back" href="#/prompts">← All prompts</a></p>
+        <div id="run" class="grid wide"></div>
+      </main>
+    </div>
     <script src="/app.js" defer></script>
   </body>
 </html>
 `;
 
-export const STYLE_CSS = `/* Palette (ADR-031 amendment): near-black, orange accent, cream for estimates, warm grays. */
+export const STYLE_CSS = `/* Palette (ADR-031 amendment): near-black, orange accent, cream text, warm grays.
+   Spacing: one 8px scale. Square corners, 1px hairlines, blocky pieces (ADR-009). */
 :root {
-  --page: #0a0a0a; --block: #141414; --line: #2e2a27; --text: #d6ccbd; --cream: #e8dcc8;
-  --muted: #8c8278; --orange: #ff7a1a; --orange-dark: #c25510; --error: #ff4d2e;
+  --page: #0a0a0a; --block: #141414; --raised: #1f1b18; --line: #2e2a27; --line-2: #4a433d;
+  --text: #d6ccbd; --cream: #e8dcc8; --muted: #8c8278; --orange: #ff7a1a; --orange-dark: #c25510;
+  --error: #ff4d2e; --ink: rgba(10, 10, 10, 0.62);
+  --s1: 8px; --s2: 16px; --s3: 24px; --s4: 32px;
 }
 * { box-sizing: border-box; }
-body { margin: 0; padding: 12px; background: var(--page); color: var(--text); font: 14px/1.35 ui-monospace, Menlo, Consolas, monospace; }
-h1 { display: flex; align-items: center; gap: 10px; font-size: 16px; margin: 0 0 4px; color: var(--orange); }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--page); color: var(--text); font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace; }
+a { color: var(--orange); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--cream); outline-offset: 2px; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: var(--s3) var(--s2) var(--s4); }
+.grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--s2); }
+.wide { grid-column: 1 / -1; }
+.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--s1) var(--s2); margin-bottom: var(--s2); }
+h1 { display: flex; align-items: center; gap: var(--s1); font-size: 16px; margin: 0; color: var(--orange); font-weight: normal; }
 h1 img { height: 32px; width: auto; image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
-.note { margin: 0 0 12px; color: var(--muted); }
-.centerpiece { display: flex; flex-direction: column; align-items: center; margin: 0 auto 16px; max-width: 960px; }
-.centerpiece h2 { font-size: 14px; margin: 0 0 4px; color: var(--orange); align-self: stretch; }
-.centerpiece .note { max-width: 960px; align-self: stretch; }
-#flow { width: min(960px, 100%); height: auto; background: var(--block); border: 2px solid var(--line); image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
-.prompts { margin-bottom: 12px; }
-.prompt-list { display: flex; flex-direction: column; gap: 6px; }
-button.prompt-row { font: inherit; color: var(--text); background: var(--page); border: 2px solid var(--line); padding: 6px 8px; cursor: pointer; text-align: left; width: 100%; }
-button.prompt-row.current { border-color: var(--orange); }
-.prompt-head { color: var(--orange); }
-.prompt-text { color: var(--cream); white-space: pre-wrap; word-break: break-word; margin: 2px 0; }
-.task-row { display: grid; grid-template-columns: 16em 1fr 18em; gap: 8px; align-items: start; margin: 6px 0; border-top: 2px solid var(--line); padding-top: 6px; }
-.task-row .t { color: var(--orange); }
-main { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 8px; }
-.block { border: 2px solid var(--line); background: var(--block); padding: 6px 8px; }
-.block h2 { font-size: 14px; margin: 0 0 4px; color: var(--orange); }
+.meta { margin: 0; color: var(--muted); font-size: 12px; }
+.meta time { color: var(--cream); }
+.tabs { display: flex; border-bottom: 1px solid var(--line); margin-bottom: var(--s3); }
+.tab { display: block; padding: var(--s1) var(--s2); margin-right: -1px; border: 1px solid var(--line); border-bottom: 0; color: var(--muted); text-decoration: none; text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; }
+.tab:hover { color: var(--cream); background: var(--raised); }
+.tab.active { color: var(--page); background: var(--orange); border-color: var(--orange); }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s2); }
+.tile { background: var(--block); border: 1px solid var(--line); border-top: 4px solid var(--orange); padding: var(--s2); min-width: 0; }
+.tile .num { font-size: 28px; line-height: 1.1; color: var(--cream); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile .lbl { margin-top: var(--s1); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--orange); }
+.tile .sub { font-size: 12px; color: var(--muted); }
+.block { grid-column: span 6; min-width: 0; border: 1px solid var(--line); background: var(--block); padding: var(--s2); }
+.block.wide { grid-column: 1 / -1; }
+.block h2 { display: flex; align-items: center; gap: var(--s1); font-size: 12px; font-weight: normal; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 var(--s2); padding-bottom: var(--s1); border-bottom: 1px solid var(--line); color: var(--orange); }
+.block h2::before { content: ''; width: 8px; height: 8px; background: var(--orange); flex: none; }
 .block pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.note { margin: 0 0 var(--s2); color: var(--muted); font-size: 12px; }
+pre.note { margin: var(--s1) 0 0; }
 .error { color: var(--error); }
-.chart { margin: 4px 0 8px; }
-.chart h3 { font-size: 13px; margin: 0 0 2px; color: var(--muted); font-weight: normal; }
-.row { display: grid; grid-template-columns: 11em 1fr 9em; gap: 6px; align-items: center; }
-.row.long { grid-template-columns: 11em 1fr 15em; }
+.centerpiece { display: flex; flex-direction: column; }
+#flow { width: 100%; height: auto; background: var(--block); border: 1px solid var(--line); image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+.model-legend { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s3); margin-top: var(--s2); font-size: 12px; }
+.model-legend .item { display: flex; align-items: center; color: var(--cream); }
+.model-legend .n { color: var(--muted); margin-left: var(--s1); }
+.sub-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s1) var(--s3); }
+.chart { margin: 0 0 var(--s2); min-width: 0; }
+.chart h3 { font-size: 12px; margin: 0 0 var(--s1); color: var(--muted); font-weight: normal; text-transform: uppercase; letter-spacing: 0.06em; }
+.row { display: grid; grid-template-columns: minmax(0, 17em) minmax(0, 1fr) minmax(0, 9em); gap: var(--s1); align-items: center; min-height: 20px; font-size: 12px; }
+.row.long { grid-template-columns: minmax(0, 8em) minmax(0, 1fr) minmax(0, 15em); }
 .row .label, .row .value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.track { height: 10px; background: #1f1c1a; position: relative; display: flex; }
-.bar { height: 10px; }
+.row .label { display: flex; align-items: center; min-width: 0; }
+.row .label > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.row .value { text-align: right; color: var(--cream); }
+.track { height: 12px; background: #1f1c1a; position: relative; display: flex; }
+.bar { height: 12px; }
 .bar.act { background: var(--orange); }
 .bar.act-2 { background: var(--orange-dark); }
 .bar.est { background: repeating-linear-gradient(90deg, var(--cream) 0 4px, transparent 4px 6px); border: 1px solid var(--cream); }
@@ -77,24 +116,66 @@ main { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr
 .bar.pass { background: var(--orange); }
 .bar.fail { background: var(--error); }
 .bar.other { background: var(--muted); }
-.span { position: absolute; top: 0; height: 10px; }
-.tick { position: absolute; top: -2px; width: 2px; height: 14px; background: var(--cream); }
+.span { position: absolute; top: 0; height: 12px; }
+.tick { position: absolute; top: -2px; width: 2px; height: 16px; background: var(--cream); }
 .unknown { color: var(--muted); font-style: italic; }
-.wide { grid-column: 1 / -1; }
-.pair { display: flex; flex-wrap: wrap; gap: 16px; }
-.donut { display: grid; grid-template-columns: repeat(11, 8px); grid-auto-rows: 8px; gap: 1px; margin: 2px 0; }
+.pair { display: flex; flex-wrap: wrap; gap: var(--s3); }
+.donut { display: grid; grid-template-columns: repeat(11, 8px); grid-auto-rows: 8px; gap: 1px; margin: 2px 0; flex: none; }
 .px { width: 8px; height: 8px; }
-.legend { display: flex; flex-direction: column; gap: 1px; }
-.sw { display: inline-block; width: 8px; height: 8px; margin-right: 4px; }
-.share { display: flex; gap: 10px; align-items: center; }
-.prompt { border: 2px dashed var(--orange); padding: 4px 6px; white-space: pre-wrap; color: var(--cream); }
-.split { color: var(--muted); margin: 4px 0 4px 1em; }
-.layer { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px 1em; }
-.card { border: 2px solid var(--line); padding: 4px 6px; min-width: 16em; max-width: 34em; }
+.legend { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+.legend .item { display: flex; align-items: center; }
+.sw { display: inline-block; width: 12px; height: 12px; margin-right: var(--s1); flex: none; border: 1px solid var(--ink); }
+.pat-hatch { background-image: repeating-linear-gradient(45deg, var(--ink) 0 2px, transparent 2px 6px); }
+.pat-dots { background-image: radial-gradient(var(--ink) 1.5px, transparent 1.7px); background-size: 6px 6px; }
+.pat-checker { background-image: conic-gradient(var(--ink) 25%, transparent 0 50%, var(--ink) 0 75%, transparent 0); background-size: 6px 6px; }
+.pat-hstripe { background-image: repeating-linear-gradient(0deg, var(--ink) 0 2px, transparent 2px 5px); }
+.pat-vstripe { background-image: repeating-linear-gradient(90deg, var(--ink) 0 2px, transparent 2px 5px); }
+.share { display: flex; gap: var(--s2); align-items: center; }
+.tag { display: inline-block; max-width: 100%; vertical-align: middle; border: 1px solid var(--line-2); padding: 0 6px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tag.state { color: var(--cream); }
+.tag.state-succeeded, .tag.state-passed { color: var(--orange); border-color: var(--orange-dark); }
+.tag.state-failed { color: var(--error); border-color: var(--error); }
+.tags { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; }
+.tags .note, .model-chain .note, .tags p { margin: 0; }
+.model { display: inline-flex; align-items: center; min-width: 0; }
+.prompt-list { display: flex; flex-direction: column; gap: var(--s1); }
+a.prompt-row { display: grid; grid-template-columns: 11em minmax(0, 1fr) auto; gap: var(--s1) var(--s2); align-items: start; color: var(--text); text-decoration: none; background: var(--page); border: 1px solid var(--line); border-left: 4px solid var(--line); padding: var(--s1) var(--s2); }
+a.prompt-row:hover { background: var(--raised); border-left-color: var(--line-2); }
+a.prompt-row.current { background: var(--raised); border-color: var(--orange); border-left-color: var(--orange); }
+.prompt-when { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; font-size: 12px; color: var(--muted); }
+.prompt-text { color: var(--cream); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+.prompt-models { display: flex; flex-wrap: wrap; gap: 4px var(--s2); margin-top: 4px; font-size: 12px; color: var(--muted); }
+.prompt-models .item { display: flex; align-items: center; }
+.prompt-stats { text-align: right; font-size: 12px; color: var(--cream); white-space: nowrap; }
+.prompt-stats .sub { color: var(--muted); }
+.prompt-stats b { color: var(--cream); font-weight: normal; }
+.back { display: inline-block; text-decoration: none; text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; border: 1px solid var(--line); padding: 4px var(--s1); margin: 0; }
+.back:hover { background: var(--raised); }
+p.wide { margin: 0; }
+.prompt { border: 1px dashed var(--orange); padding: var(--s1); white-space: pre-wrap; color: var(--cream); margin-bottom: var(--s1); }
+.task-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--s2); align-items: start; border-top: 1px solid var(--line); padding: var(--s1) 0; }
+.task-row .t { color: var(--orange); }
+.task-row .r { text-align: right; }
+.model-chain { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.split { color: var(--muted); margin: var(--s1) 0; }
+.layer { display: flex; flex-wrap: wrap; gap: var(--s1); margin: 0 0 var(--s1) var(--s2); }
+.card { border: 1px solid var(--line); background: var(--page); padding: var(--s1); min-width: 16em; max-width: 34em; }
 .card .t { color: var(--orange); }
-.chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; }
-.chip { border: 1px solid var(--muted); padding: 0 4px; color: var(--cream); }
-.via { color: var(--orange); }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: var(--s1); }
+.chip { display: inline-flex; align-items: center; border: 1px solid var(--line-2); padding: 0 6px; color: var(--cream); font-size: 12px; }
+.chip .sw { margin-right: 6px; width: 10px; height: 10px; }
+.via { color: var(--orange); font-size: 12px; }
+@media (max-width: 760px) {
+  .block { grid-column: 1 / -1; }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sub-grid { grid-template-columns: minmax(0, 1fr); }
+  a.prompt-row { grid-template-columns: minmax(0, 1fr); }
+  .prompt-when { flex-direction: row; flex-wrap: wrap; }
+  .prompt-stats { text-align: left; }
+  .task-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .task-row .r { text-align: left; }
+  .row, .row.long { grid-template-columns: minmax(0, 9em) minmax(0, 1fr) minmax(0, 7em); }
+}
 `;
 
 export const APP_JS = String.raw`'use strict';
@@ -102,20 +183,80 @@ const $ = (id) => document.getElementById(id);
 const usd = (v) => (v === null || v === undefined ? 'unknown' : '$' + v.toFixed(6));
 const pct = (v) => (v === null ? 'n/a' : (v * 100).toFixed(0) + '%');
 const short = (m) => (m === null ? 'no model' : m.split('/').pop());
-let shown = null;
+const DASH = '—';
 let timer = null;
 let lastOverview = null;
+let lastRunId = null;
 
-function block(title, lines, wide) {
-  const s = document.createElement('section');
-  s.className = 'block' + (wide ? ' wide' : '');
-  const h = document.createElement('h2');
-  h.textContent = '== ' + title + ' ==';
-  const p = document.createElement('pre');
-  p.textContent = lines.length > 0 ? lines.join('\n') : '(none)';
-  s.append(h, p);
-  return s;
+// ---- Pure helpers (tested in ui.test.ts) -------------------------------------------------
+
+// Hash route: '' | '#' | '#/' → overview; '#/prompts' → list; '#/prompts/<runId>' → detail.
+// An old-style '#<runId>' link still opens that prompt. Anything else is the overview.
+function parseRoute(hash) {
+  const h = String(hash || '').replace(/^#/, '');
+  if (h === '' || h === '/') return { view: 'overview' };
+  const m = /^\/prompts\/?(.*)$/.exec(h);
+  if (m) {
+    const rest = m[1].replace(/\/+$/, '');
+    if (rest === '') return { view: 'prompts' };
+    let id = rest;
+    try { id = decodeURIComponent(rest); } catch (e) { id = rest; }
+    return { view: 'prompt', runId: id };
+  }
+  if (h.charAt(0) !== '/') {
+    try { return { view: 'prompt', runId: decodeURIComponent(h) }; } catch (e) { return { view: 'prompt', runId: h }; }
+  }
+  return { view: 'overview' };
 }
+const promptHref = (runId) => '#/prompts/' + encodeURIComponent(runId);
+
+// Keep a tag short; the full string goes in its title.
+function truncate(s, max) {
+  const t = String(s === null || s === undefined ? '' : s);
+  return t.length <= max ? t : t.slice(0, Math.max(max - 1, 1)) + '…';
+}
+
+// Local date and time ("Nov 12, 10:41 PM"); locale and zone only for tests. Bad input → null.
+function fmtDate(iso, locale, timeZone) {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return null;
+  const opts = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+  if (timeZone) opts.timeZone = timeZone;
+  return new Date(ms).toLocaleString(locale, opts);
+}
+const fmtInt = (n) => (n === null || n === undefined ? DASH : Number(n).toLocaleString('en-US'));
+
+// One model → style map for the canvas, every chart and the prompt detail. Order is the
+// models' names sorted by code point, so the same set always gets the same styles.
+const MODEL_COLORS = ['#ff7a1a', '#e8dcc8', '#4fc3b5', '#7aa7ff', '#c79bff', '#b5d957', '#ff6f91', '#ffd166'];
+const MODEL_PATTERNS = ['solid', 'hatch', 'dots', 'checker', 'hstripe', 'vstripe'];
+const NO_MODEL_STYLE = { color: '#5a524b', pattern: 'solid', index: -1 };
+const isNoModel = (m) => m === null || m === undefined || m === '' || m === '(no model)' || m === '(model unknown)';
+const styleAt = (i) => ({ color: MODEL_COLORS[i % MODEL_COLORS.length], pattern: MODEL_PATTERNS[i % MODEL_PATTERNS.length], index: i });
+function buildModelStyles(names) {
+  const uniq = [];
+  for (const n of names) if (!isNoModel(n) && uniq.indexOf(n) === -1) uniq.push(n);
+  uniq.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const map = {};
+  uniq.forEach((n, i) => { map[n] = styleAt(i); });
+  return map;
+}
+let MODEL_STYLES = {};
+function useModels(names) {
+  MODEL_STYLES = buildModelStyles(names);
+}
+// A model outside the known set (should not happen: the set is every recorded model) gets a
+// style from a fixed string hash, so it is still stable.
+function modelStyle(name) {
+  if (isNoModel(name)) return NO_MODEL_STYLE;
+  if (MODEL_STYLES[name]) return MODEL_STYLES[name];
+  let h = 5381;
+  for (let i = 0; i < name.length; i++) h = ((h * 33) ^ name.charCodeAt(i)) >>> 0;
+  return styleAt(h % (MODEL_COLORS.length * MODEL_PATTERNS.length));
+}
+
+// ---- DOM pieces ---------------------------------------------------------------------------
 
 function el(tag, cls, txt) {
   const e = document.createElement(tag);
@@ -124,8 +265,51 @@ function el(tag, cls, txt) {
   return e;
 }
 
+function block(title, lines, wide) {
+  const s = section(title, wide);
+  s.append(el('pre', '', lines.length > 0 ? lines.join('\n') : '(none)'));
+  return s;
+}
+
+function section(title, wide) {
+  const s = el('section', 'block' + (wide ? ' wide' : ''));
+  s.append(el('h2', '', title));
+  return s;
+}
+
+function swatch(model) {
+  const st = modelStyle(model);
+  const s = el('span', 'sw' + (st.pattern === 'solid' ? '' : ' pat-' + st.pattern));
+  s.style.backgroundColor = st.color;
+  s.title = (isNoModel(model) ? 'no model' : model) + ' · ' + st.pattern;
+  return s;
+}
+
+// Swatch + model name, for every place a model appears.
+function modelLabel(model, text) {
+  const w = el('span', 'model');
+  w.append(swatch(model), el('span', '', text === undefined ? (isNoModel(model) ? 'no model' : model) : text));
+  w.title = isNoModel(model) ? 'no model' : model;
+  return w;
+}
+
+function tag(text, max, cls) {
+  const t = el('span', 'tag' + (cls ? ' ' + cls : ''), truncate(text, max || 28));
+  t.title = String(text);
+  return t;
+}
+const stateTag = (state) => tag(state, 16, 'state state-' + state);
+
+function timeEl(iso) {
+  const shown = fmtDate(iso);
+  const t = el('time', '', shown || 'date unknown');
+  if (shown) { t.dateTime = iso; t.title = iso; }
+  return t;
+}
+
 // One horizontal bar chart. kind 'est' (hatched) or 'act' (solid) never share a chart.
-// A null value is written as "unknown", never drawn as a zero bar.
+// A null value is written as "unknown", never drawn as a zero bar. A row with a model
+// key gets that model's swatch beside its label.
 function chart(title, kind, rows, fmt) {
   const c = el('div', 'chart');
   c.append(el('h3', '', title));
@@ -134,7 +318,10 @@ function chart(title, kind, rows, fmt) {
   if (rows.length === 0) c.append(el('div', 'unknown', '(no data)'));
   for (const r of rows) {
     const row = el('div', 'row');
-    row.append(el('span', 'label', r.label));
+    const label = el('span', 'label');
+    if ('model' in r) label.append(swatch(r.model));
+    label.append(el('span', '', r.label));
+    row.append(label);
     const track = el('div', 'track');
     if (r.value === null) {
       row.append(el('span', 'unknown', 'unknown'));
@@ -152,15 +339,16 @@ function chart(title, kind, rows, fmt) {
 }
 
 const tokensOf = (side) => (side.inputTokens === null || side.outputTokens === null ? null : side.inputTokens + side.outputTokens);
-const tok = (v) => v + ' tok';
+const tok = (v) => fmtInt(v) + ' tok';
 
 // Slice colours: actuals in the orange family, estimates in the cream family, outcomes by kind.
+// Usage-by-model donuts use the model styles instead, so a model looks the same everywhere.
 const ACT_SHADES = ['#ff7a1a', '#c25510', '#ffa25c', '#8a3a08', '#ffc79a'];
 const EST_SHADES = ['#e8dcc8', '#b8ab96', '#8c8278', '#f5efe4', '#6e665c'];
 const OUTCOME_COLORS = { succeeded: '#ff7a1a', failed: '#ff4d2e', cancelled: '#8c8278', skipped: '#b8ab96', unfinished: '#3a3430' };
-const FLOW_COLORS = ['#ff7a1a', '#c25510', '#e8dcc8', '#8c8278', '#ffa25c', '#b8ab96'];
 const CELL = 8;
 
+// slices: { label, value, color } or { label, value, model } (model style: colour + pattern).
 function donut(title, slices, fmt) {
   const c = el('div', 'chart share-chart');
   c.append(el('h3', '', title));
@@ -170,6 +358,15 @@ function donut(title, slices, fmt) {
     c.append(el('div', 'unknown', '(nothing to show)'));
     return c;
   }
+  const paint = (node, x) => {
+    if ('model' in x) {
+      const st = modelStyle(x.model);
+      if (st.pattern !== 'solid') node.className += ' pat-' + st.pattern;
+      node.style.backgroundColor = st.color;
+    } else {
+      node.style.background = x.color;
+    }
+  };
   const wrap = el('div', 'share');
   const grid = el('div', 'donut');
   const N = 11, mid = (N - 1) / 2;
@@ -185,7 +382,7 @@ function donut(title, slices, fmt) {
           if (turn < acc) { k = i; break; }
         }
         cell.className = 'px k-' + k;
-        cell.style.background = shown[k].color;
+        paint(cell, shown[k]);
       }
       grid.append(cell);
     }
@@ -194,7 +391,7 @@ function donut(title, slices, fmt) {
   for (const x of shown) {
     const item = el('div', 'item');
     const sw = el('span', 'sw');
-    sw.style.background = x.color;
+    paint(sw, x);
     item.append(sw, el('span', '', x.label + ' ' + fmt(x.value) + ' (' + Math.round((x.value / total) * 100) + '%)'));
     legend.append(item);
   }
@@ -221,9 +418,11 @@ function meter(title, rate) {
   return c;
 }
 
-function stacked(title, kind, parts, fmt, why) {
+function stacked(title, kind, parts, fmt, why, model) {
   const c = el('div', 'chart');
-  c.append(el('h3', '', title));
+  const h = el('h3', '');
+  if (model !== undefined) h.append(modelLabel(model, title)); else h.textContent = title;
+  c.append(h);
   const row = el('div', 'row long');
   row.append(el('span', 'label', parts.map((p) => p.label).join(' / ')));
   const known = parts.every((p) => p.value !== null);
@@ -244,25 +443,27 @@ function stacked(title, kind, parts, fmt, why) {
   return c;
 }
 
-function section(title, wide) {
-  const s = el('section', 'block' + (wide ? ' wide' : ''));
-  s.append(el('h2', '', '== ' + title + ' =='));
-  return s;
-}
-
-function usageBlock(title, rows, note) {
+// rows: UsageRow[]; opts.byModel → rows are models (swatches, model-styled share donuts).
+function usageBlock(title, rows, note, opts) {
+  const byModel = !!(opts && opts.byModel);
   const s = section(title, true);
   if (rows.length === 0) {
     s.append(el('pre', 'unknown', note));
     return s;
   }
-  const pick = (f, why) => rows.map((r) => ({ label: r.label + ' (' + r.attempts + 'x)', value: f(r), why: why(r) }));
-  s.append(
+  const pick = (f, why) => rows.map((r) => {
+    const row = { label: r.label + ' (' + r.attempts + 'x)', value: f(r), why: why(r) };
+    if (byModel) row.model = r.label;
+    return row;
+  });
+  const grid = el('div', 'sub-grid');
+  grid.append(
     chart('estimated USD (router, not spent)', 'est', pick((r) => r.estimated.usd, () => 'unpriced'), usd),
     chart('actual USD (reported by the runner)', 'act', pick((r) => r.actual.usd, () => 'unknown'), usd),
     chart('estimated tokens (planner)', 'est', pick((r) => tokensOf(r.estimated), () => 'unknown'), tok),
     chart('actual tokens (reported)', 'act', pick((r) => tokensOf(r.actual), () => 'not reported'), tok),
   );
+  s.append(grid);
   const pair = el('div', 'pair');
   const share = (t, side, shades) => {
     const unknown = rows.filter((r) => r[side].usd === null).length;
@@ -271,7 +472,7 @@ function usageBlock(title, rows, note) {
       c.append(el('h3', '', t), el('div', 'unknown', 'unknown (' + unknown + ' of ' + rows.length + ' without a known amount)'));
       return c;
     }
-    return donut(t, rows.map((r, i) => ({ label: r.label, value: r[side].usd, color: shades[i % shades.length] })), usd);
+    return donut(t, rows.map((r, i) => (byModel ? { label: r.label, value: r[side].usd, model: r.label } : { label: r.label, value: r[side].usd, color: shades[i % shades.length] })), usd);
   };
   pair.append(share('estimated USD share', 'estimated', EST_SHADES), share('actual USD share', 'actual', ACT_SHADES));
   s.append(pair);
@@ -280,13 +481,26 @@ function usageBlock(title, rows, note) {
   return s;
 }
 
-function outcomesBlock(r) {
+function outcomesBlock(r, title) {
   const o = r.outcomes;
-  const s = section('Success and failure', false);
+  const s = section(title || 'Success and failure', false);
   s.append(donut('task outcomes (' + r.taskCount + ' tasks)', ['succeeded', 'failed', 'cancelled', 'skipped', 'unfinished'].map((k) => ({ label: k, value: o[k], color: OUTCOME_COLORS[k] })), String));
   s.append(meter('success rate', o.successRate));
-  s.append(el('pre', '', 'succeeded ' + o.succeeded + ' · failed ' + o.failed + ' · cancelled ' + o.cancelled + ' · skipped ' + o.skipped + ' · unfinished ' + o.unfinished + '\nsuccess rate ' + pct(o.successRate) + ' · failure rate ' + pct(o.failureRate) + ' · soot-verified complete ' + o.complete + '/' + r.taskCount));
+  s.append(el('pre', 'note', 'succeeded ' + o.succeeded + ' · failed ' + o.failed + ' · cancelled ' + o.cancelled + ' · skipped ' + o.skipped + ' · unfinished ' + o.unfinished + '\nsuccess rate ' + pct(o.successRate) + ' · failure rate ' + pct(o.failureRate) + ' · soot-verified complete ' + o.complete + '/' + r.taskCount));
   return s;
+}
+
+function perModelTokens(s, rows) {
+  for (const row of rows) {
+    s.append(stacked(
+      short(row.label) + ' reported in / out',
+      'act',
+      [{ label: 'in', value: row.actual.inputTokens }, { label: 'out', value: row.actual.outputTokens }],
+      tok,
+      'not reported',
+      row.label,
+    ));
+  }
 }
 
 function tokensBlock(r) {
@@ -295,17 +509,7 @@ function tokensBlock(r) {
   s.append(stacked('planned (planner estimate)', 'est', [{ label: 'in', value: e ? e.inputTokens : null }, { label: 'out', value: e ? e.outputTokens : null }], tok, 'no plan data'));
   s.append(stacked('reported (runner usage)', 'act', [{ label: 'in', value: a ? a.inputTokens : null }, { label: 'out', value: a ? a.outputTokens : null }], tok, 'not reported'));
   if (a && a.unreportedAttempts > 0) s.append(el('div', 'unknown', a.unreportedAttempts + ' attempt(s) reported nothing (not in the reported bar)'));
-  if (r.usage.byModel.length > 0) {
-    for (const row of r.usage.byModel) {
-      s.append(stacked(
-        short(row.label) + ' reported in / out',
-        'act',
-        [{ label: 'in', value: row.actual.inputTokens }, { label: 'out', value: row.actual.outputTokens }],
-        tok,
-        'not reported',
-      ));
-    }
-  }
+  perModelTokens(s, r.usage.byModel);
   return s;
 }
 
@@ -346,7 +550,10 @@ function timelineBlock(r) {
   if (attempts.length === 0) s.append(el('div', 'unknown', 'no attempts yet'));
   for (const x of attempts) {
     const row = el('div', 'row');
-    row.append(el('span', 'label', x.t.id + ' #' + x.a.attempt + ' ' + short(x.a.model)));
+    const label = el('span', 'label');
+    label.append(swatch(x.a.model), el('span', '', x.t.id + ' #' + x.a.attempt + ' ' + short(x.a.model)));
+    label.title = x.t.id + ' #' + x.a.attempt + ' ' + (x.a.model || 'no model');
+    row.append(label);
     if (Number.isNaN(x.start) || Number.isNaN(base)) {
       row.append(el('span', 'unknown', 'not started'), el('span', 'value unknown', 'start unknown'));
     } else if (Number.isNaN(x.end)) {
@@ -371,26 +578,26 @@ function timelineBlock(r) {
 
 const statusKind = (st) => (st === 'passed' ? 'pass' : st === 'failed' ? 'fail' : 'other');
 
-function statusBar(title, checks) {
+// counts: { status: n } or null when none were recorded.
+function statusCountBar(title, counts) {
   const c = el('div', 'chart');
   c.append(el('h3', '', title));
   const row = el('div', 'row');
-  if (checks === null) {
+  if (counts === null) {
     row.append(el('span', 'label', ''), el('span', 'unknown', 'none recorded'), el('span', 'value unknown', 'n/a'));
     c.append(row);
     return c;
   }
-  const counts = {};
-  for (const ch of checks) counts[ch.status] = (counts[ch.status] || 0) + 1;
   const keys = Object.keys(counts).sort();
-  row.append(el('span', 'label', checks.length + ' check(s)'));
-  if (checks.length === 0) {
+  const n = keys.reduce((m, k) => m + counts[k], 0);
+  row.append(el('span', 'label', n + ' check(s)'));
+  if (n === 0) {
     row.append(el('span', 'unknown', 'none'), el('span', 'value', '0'));
   } else {
     const track = el('div', 'track');
     for (const k of keys) {
       const seg = el('div', 'bar ' + statusKind(k));
-      seg.style.width = (counts[k] / checks.length) * 100 + '%';
+      seg.style.width = (counts[k] / n) * 100 + '%';
       seg.title = k + ' ' + counts[k];
       track.append(seg);
     }
@@ -399,6 +606,14 @@ function statusBar(title, checks) {
   c.append(row);
   return c;
 }
+
+function countStatuses(checks) {
+  if (checks === null) return null;
+  const counts = {};
+  for (const ch of checks) counts[ch.status] = (counts[ch.status] || 0) + 1;
+  return counts;
+}
+const statusBar = (title, checks) => statusCountBar(title, countStatuses(checks));
 
 function validationBlock(r) {
   const s = section('Validation', false);
@@ -410,7 +625,7 @@ function validationBlock(r) {
     ...(r.validation.final === null ? ['final validation: none recorded'] : r.validation.final.map((c) => 'final · ' + c.kind + ' ' + c.name + ': ' + c.status + (c.required ? ' (required)' : ''))),
     ...r.validation.problems.map((p) => 'problem: ' + p),
   ];
-  s.append(el('pre', '', lines.join('\n')));
+  s.append(el('pre', 'note', lines.join('\n')));
   return s;
 }
 
@@ -419,16 +634,17 @@ function transitionsBlock(r) {
   const counts = {};
   for (const e of r.transitions) counts[e.type] = (counts[e.type] || 0) + 1;
   if (r.transitions.length > 0) s.append(chart('count by type', 'cnt', Object.keys(counts).sort().map((k) => ({ label: k, value: counts[k], why: '' })), String));
-  s.append(el('pre', '', r.transitions.length > 0 ? r.transitions.map((e) => e.type.toUpperCase() + ' ' + e.taskId + ' #' + e.attempt + ' → ' + (e.model || '-') + ': ' + e.reason).join('\n') : '(none)'));
+  s.append(el('pre', 'note', r.transitions.length > 0 ? r.transitions.map((e) => e.type.toUpperCase() + ' ' + e.taskId + ' #' + e.attempt + ' → ' + (e.model || '-') + ': ' + e.reason).join('\n') : '(none)'));
   return s;
 }
 
 function assignmentBlock(r) {
   const a = r.assignment;
-  const s = el('section', 'block wide');
-  s.append(el('h2', '', '== Assignment: prompt → tasks → models =='));
+  const s = section('Assignment: prompt → tasks → models', true);
   s.append(el('div', 'prompt', a.prompt));
-  s.append(el('div', 'split', '│ split by the planner into ' + a.tasks.length + ' task(s); runner: ' + (r.agent.label || 'unknown (no saved report yet)')));
+  const split = el('div', 'split tags');
+  split.append(el('span', '', '│ split by the planner into ' + a.tasks.length + ' task(s); runner:'), r.agent.label ? tag(r.agent.label, 32) : el('span', 'unknown', 'unknown (no saved report yet)'));
+  s.append(split);
   for (const ids of r.graph.layers) {
     const layer = el('div', 'layer');
     for (const id of ids) {
@@ -442,7 +658,8 @@ function assignmentBlock(r) {
       if (t.attempts.length === 0) chips.append(el('span', 'unknown', 'not started'));
       t.attempts.forEach((x, i) => {
         if (i > 0) chips.append(el('span', 'via', '⇒ ' + (x.via || '?').toUpperCase()));
-        const chip = el('span', 'chip', '#' + x.attempt + ' ' + (x.routedModel || 'no model') + ' [' + x.state + ']');
+        const chip = el('span', 'chip');
+        chip.append(swatch(x.routedModel), el('span', '', '#' + x.attempt + ' ' + (x.routedModel || 'no model') + ' [' + x.state + ']'));
         chip.title = (x.reason || '') + (x.reportedModel && x.reportedModel !== x.routedModel ? ' · runner reported ' + x.reportedModel : '');
         chips.append(chip);
         if (x.reportedModel && x.reportedModel !== x.routedModel) chips.append(el('span', 'unknown', '(ran ' + x.reportedModel + ')'));
@@ -459,13 +676,18 @@ function identBlock(r) {
   const s = section('Prompt', true);
   s.append(el('div', 'prompt', r.prompt));
   const duration = r.duration.ms === null ? (r.running ? 'running' : 'unknown') : (r.duration.ms / 1000).toFixed(1) + ' s';
-  s.append(el('pre', '', r.runId + '  ·  ' + r.state + (r.running ? ' (running)' : '') + '  ·  ' + (r.createdAt || 'date unknown') + '  ·  ' + duration));
+  const meta = el('div', 'tags');
+  meta.append(stateTag(r.state + (r.running ? ' (running)' : '')), timeEl(r.createdAt), el('span', 'note', duration), tag(r.runId, 40));
+  s.append(meta);
   return s;
 }
 
 function taskBreakdownBlock(r) {
   const s = section('Tasks in this prompt', true);
-  s.append(el('div', 'note', 'Runner is recorded per run, not per task: ' + (r.agent.label || 'unknown (no saved report yet)') + (r.agent.kind ? '  [' + r.agent.kind + ']' : '')));
+  const head = el('div', 'note tags');
+  head.append(el('span', '', 'Runner is recorded per run, not per task:'), r.agent.label ? tag(r.agent.label, 96) : el('span', 'unknown', 'unknown (no saved report yet)'));
+  if (r.agent.kind) head.append(tag(r.agent.kind, 24));
+  s.append(head);
   if (r.taskBreakdown.length === 0) {
     s.append(el('div', 'unknown', '(no tasks)'));
     return s;
@@ -473,16 +695,28 @@ function taskBreakdownBlock(r) {
   for (const t of r.taskBreakdown) {
     const row = el('div', 'task-row');
     const left = el('div', '');
-    left.append(el('div', 't', t.id + '  [' + t.state + ']'));
+    const idLine = el('div', 'tags');
+    idLine.append(el('span', 't', t.id), stateTag(t.state));
+    left.append(idLine);
     if (t.title) left.append(el('div', '', t.title));
     const mid = el('div', '');
-    mid.append(el('div', '', 'runner: ' + (t.runner || 'unknown')));
-    mid.append(el('div', '', 'model: ' + (t.models.length ? t.models.map((m) => m || 'no model').join(' → ') : 'not started') + '  ·  ' + t.attempts + ' attempt(s)'));
-    const right = el('div', '');
+    const chain = el('div', 'model-chain');
+    chain.append(el('span', 'note', 'model:'));
+    if (t.models.length === 0) chain.append(el('span', 'unknown', 'not started'));
+    t.models.forEach((m, i) => {
+      if (i > 0) chain.append(el('span', 'via', '→'));
+      chain.append(modelLabel(m));
+    });
+    chain.append(el('span', 'note', '· ' + t.attempts + ' attempt(s)'));
+    mid.append(chain);
+    const runner = el('div', 'tags');
+    runner.append(el('span', 'note', 'runner:'), t.runner ? tag(t.runner, 28) : el('span', 'unknown', 'unknown'));
+    mid.append(runner);
+    const right = el('div', 'r');
     if (t.tokens === null) {
       right.append(el('div', 'unknown', t.tokensUnknown || 'tokens unknown'));
     } else {
-      right.append(el('div', '', t.tokens.inputTokens + ' in / ' + t.tokens.outputTokens + ' out / ' + t.tokens.total + ' total tok'));
+      right.append(el('div', '', fmtInt(t.tokens.total) + ' tok'), el('div', 'note', fmtInt(t.tokens.inputTokens) + ' in / ' + fmtInt(t.tokens.outputTokens) + ' out'));
     }
     if (t.costUsd === null) {
       right.append(el('div', 'unknown', t.costUnknown || 'cost unknown'));
@@ -492,15 +726,114 @@ function taskBreakdownBlock(r) {
     row.append(left, mid, right);
     s.append(row);
   }
-  const tok = r.tokens.actual;
-  const tokLine = tok === null
+  const tk = r.tokens.actual;
+  const tokLine = tk === null
     ? 'total tokens unknown (no cost data)'
-    : 'total tokens  ' + (tok.inputTokens + tok.outputTokens) + '  (' + tok.inputTokens + ' in / ' + tok.outputTokens + ' out)' + (tok.unreportedAttempts > 0 ? '; ' + tok.unreportedAttempts + ' attempt(s) unreported' : '');
+    : 'total tokens  ' + fmtInt(tk.inputTokens + tk.outputTokens) + '  (' + fmtInt(tk.inputTokens) + ' in / ' + fmtInt(tk.outputTokens) + ' out)' + (tk.unreportedAttempts > 0 ? '; ' + tk.unreportedAttempts + ' attempt(s) unreported' : '');
   const costLine = r.cost.actualUsd === null
     ? (r.cost.unpricedAttempts ? 'total cost unknown (' + r.cost.unpricedAttempts + ' unpriced attempt(s))' : 'total cost unknown')
     : 'total cost  ' + usd(r.cost.actualUsd);
   s.append(el('pre', 'note', tokLine + '\n' + costLine));
   return s;
+}
+
+// ---- Overview (aggregates across every prompt; nothing here is about one prompt) -----------
+
+const coverage = (c, of) => c.runs + '/' + of + ' runs';
+
+function tile(label, value, sub, title) {
+  const t = el('div', 'tile');
+  const n = el('div', 'num', value);
+  if (title) n.title = title;
+  t.append(n, el('div', 'lbl', label), el('div', 'sub', sub));
+  return t;
+}
+
+// Only computed values; unknown is an em dash.
+function tilesFor(ov) {
+  const ag = ov.aggregate;
+  const runs = ov.promptCount;
+  const out = [
+    tile('Prompts', runs > 0 ? fmtInt(runs) : DASH, 'recorded runs'),
+    tile('Tasks', runs > 0 ? fmtInt(ov.taskCount) : DASH, 'planned, across all prompts'),
+  ];
+  const at = ag ? ag.tokens.actual : { value: null, runs: 0 };
+  if (at.value === null) out.push(tile('Tokens', DASH, 'not reported'));
+  else out.push(tile('Tokens', fmtInt(at.value.inputTokens + at.value.outputTokens), 'reported · ' + coverage(at, runs) + (at.value.unreportedAttempts > 0 ? ' · ' + at.value.unreportedAttempts + ' attempt(s) unreported' : '')));
+  const ac = ag ? ag.cost.actualUsd : { value: null, runs: 0 };
+  const unpriced = ag && ag.cost.unpricedAttempts > 0 ? ' · ' + ag.cost.unpricedAttempts + ' unpriced attempt(s)' : '';
+  if (ac.value === null) out.push(tile('Cost', DASH, 'actual not reported' + unpriced));
+  else out.push(tile('Cost', '$' + ac.value.toFixed(4), 'reported actual · ' + coverage(ac, runs) + unpriced, usd(ac.value)));
+  return out;
+}
+
+function aggCostBlock(ov) {
+  const c = ov.aggregate.cost, n = ov.promptCount;
+  const s = section('Cost · all prompts', false);
+  s.append(chart('estimates (not spent)', 'est', [
+    { label: 'planner · ' + coverage(c.estimatedUsd, n), value: c.estimatedUsd.value, why: 'unpriced' },
+    { label: 'router · ' + coverage(c.routedEstimateUsd, n), value: c.routedEstimateUsd.value, why: 'unpriced' },
+  ], usd));
+  s.append(chart('actual (reported)', 'act', [
+    { label: 'reported · ' + coverage(c.actualUsd, n), value: c.actualUsd.value, why: c.unpricedAttempts ? c.unpricedAttempts + ' unpriced attempt(s)' : 'unknown' },
+  ], usd));
+  s.append(el('pre', 'note', 'Sums only what each run reported; the run count says how many runs are in each sum. Estimates are never shown as actuals. Mock runs report fictional amounts.'));
+  return s;
+}
+
+function aggTokensBlock(ov) {
+  const t = ov.aggregate.tokens, n = ov.promptCount;
+  const s = section('Token usage · all prompts', false);
+  const e = t.estimated.value, a = t.actual.value;
+  s.append(stacked('planned (planner estimate) · ' + coverage(t.estimated, n), 'est', [{ label: 'in', value: e ? e.inputTokens : null }, { label: 'out', value: e ? e.outputTokens : null }], tok, 'no plan data'));
+  s.append(stacked('reported (runner usage) · ' + coverage(t.actual, n), 'act', [{ label: 'in', value: a ? a.inputTokens : null }, { label: 'out', value: a ? a.outputTokens : null }], tok, 'not reported'));
+  if (a && a.unreportedAttempts > 0) s.append(el('div', 'unknown', a.unreportedAttempts + ' attempt(s) reported nothing (not in the reported bar)'));
+  perModelTokens(s, ov.aggregate.usageByModel);
+  return s;
+}
+
+function aggValidationBlock(ov) {
+  const v = ov.aggregate.validation;
+  const s = section('Validation · all prompts', false);
+  s.append(statusCountBar('task checks (soot-run)', v.taskChecks));
+  s.append(statusCountBar('final validation · ' + v.runsWithFinal + ' of ' + ov.promptCount + ' run(s) recorded one', v.runsWithFinal === 0 ? null : v.final));
+  return s;
+}
+
+function aggTransitionsBlock(ov) {
+  const t = ov.aggregate.transitions;
+  const keys = Object.keys(t).sort();
+  const s = section('Model transitions · all prompts', false);
+  if (keys.length === 0) s.append(el('pre', 'note', '(none)'));
+  else s.append(chart('count by type', 'cnt', keys.map((k) => ({ label: k, value: t[k], why: '' })), String));
+  return s;
+}
+
+const AGG_BLOCKS = [
+  (ov) => usageBlock('Usage by model · all prompts', ov.aggregate.usageByModel, ov.aggregate.usageNote, { byModel: true }),
+  (ov) => outcomesBlock({ outcomes: ov.aggregate.outcomes, taskCount: ov.taskCount }, 'Success and failure · all prompts'),
+  (ov) => aggCostBlock(ov),
+  (ov) => aggTokensBlock(ov),
+  (ov) => aggValidationBlock(ov),
+  (ov) => aggTransitionsBlock(ov),
+  (ov) => usageBlock('Usage by runner (agent/bot) · all prompts', ov.aggregate.usageByAgent, 'Runner unknown until a run has a saved report. Runner is recorded per run, not per task.'),
+  (ov) => block('How to read the charts', [ov.aggregate.usageNote, 'Hatched cream = estimate, solid orange = reported actual; they never share a chart or a donut. Each magnitude chart is scaled to its own largest known value. Unknown is written as unknown, with no bar or slice. Each model keeps one colour and one pattern on every view.', ov.aggregate.savingsNote], true),
+];
+
+function renderLegend(ov) {
+  const lg = $('legend');
+  lg.replaceChildren();
+  for (const m of ov.byModel) {
+    const item = el('div', 'item');
+    item.append(modelLabel(m.model), el('span', 'n', m.tasks + ' task(s)'));
+    lg.append(item);
+  }
+}
+
+function renderOverview(ov) {
+  $('tiles').replaceChildren(...tilesFor(ov));
+  renderLegend(ov);
+  $('agg').replaceChildren(...(ov.aggregate && ov.promptCount > 0 ? AGG_BLOCKS.map((b) => b(ov)) : []));
 }
 
 function snap(v) {
@@ -516,6 +849,31 @@ function clipText(ctx, text, max) {
   return s + ell;
 }
 
+// Is the 4px pixel (i, j) inked for a pattern? Same patterns as the CSS .pat-* swatches.
+function patternInk(pattern, i, j) {
+  if (pattern === 'hatch') return (i + j) % 3 === 0;
+  if (pattern === 'dots') return i % 2 === 0 && j % 2 === 0;
+  if (pattern === 'checker') return (i + j) % 2 === 0;
+  if (pattern === 'hstripe') return j % 2 === 0;
+  if (pattern === 'vstripe') return i % 2 === 0;
+  return false;
+}
+
+// A model-styled block: its colour, then its pattern in 4px pixels on a page-coloured ink.
+function paintModel(ctx, model, x, y, w, h) {
+  const st = modelStyle(model);
+  ctx.fillStyle = st.color;
+  ctx.fillRect(x, y, w, h);
+  if (st.pattern === 'solid') return;
+  ctx.fillStyle = 'rgba(10, 10, 10, 0.62)';
+  const P = 4;
+  for (let py = Math.ceil(y / P) * P; py < y + h; py += P) {
+    for (let px = Math.ceil(x / P) * P; px < x + w; px += P) {
+      if (patternInk(st.pattern, px / P, py / P)) ctx.fillRect(px, py, Math.min(P, x + w - px), Math.min(P, y + h - py));
+    }
+  }
+}
+
 // Pixel flow: prompts on the left, models on the right, 8px-grid pipes between them.
 // Prompt strings are drawn with fillText only (never interpreted as HTML).
 function drawFlow(canvas, overview) {
@@ -527,7 +885,7 @@ function drawFlow(canvas, overview) {
   const models = overview && overview.byModel ? overview.byModel : [];
   const flows = overview && overview.flows ? overview.flows : [];
   const rows = Math.max(prompts.length, models.length, 1);
-  const height = Math.max(240, 56 + rows * 32 + 24);
+  const height = Math.max(240, 56 + rows * 40 + 24);
   canvas.width = cssW;
   canvas.height = height;
   ctx.imageSmoothingEnabled = false;
@@ -564,14 +922,14 @@ function drawFlow(canvas, overview) {
   const midL = leftBarX + barW + CELL;
   const midR = cssW - pad - rightW - barW - CELL;
   const rightBarX = midR + CELL;
-  const top = 36;
+  const top = 40;
   const bottom = height - 16;
   const usable = bottom - top;
-  ctx.fillStyle = '#ff7a1a';
+  ctx.fillStyle = '#8c8278';
   ctx.textAlign = 'left';
-  ctx.fillText('prompts', pad, 16);
+  ctx.fillText('PROMPTS', pad, 16);
   ctx.textAlign = 'right';
-  ctx.fillText('models  (' + overview.taskCount + ' tasks, ' + overview.promptCount + ' prompts)', cssW - pad, 16);
+  ctx.fillText('MODELS  (' + overview.taskCount + ' tasks, ' + overview.promptCount + ' prompts)', cssW - pad, 16);
   ctx.textAlign = 'left';
   const stack = (items, weightOf) => {
     const total = items.reduce((n, it) => n + Math.max(weightOf(it), 1), 0);
@@ -590,8 +948,6 @@ function drawFlow(canvas, overview) {
   const promptWeight = (p) => p.taskCountsByModel.reduce((n, m) => n + m.tasks, 0);
   const pSlots = stack(prompts, promptWeight);
   const mSlots = stack(models, (m) => m.tasks);
-  const modelColor = {};
-  for (let i = 0; i < models.length; i++) modelColor[models[i].model] = FLOW_COLORS[i % FLOW_COLORS.length];
   const pUsed = pSlots.map(() => 0);
   const mUsed = mSlots.map(() => 0);
   const pIndex = {};
@@ -611,11 +967,10 @@ function drawFlow(canvas, overview) {
     pUsed[pi] += thick;
     mUsed[mi] += thick;
     const mid = snap((midL + midR) / 2);
-    ctx.fillStyle = modelColor[flow.model];
-    ctx.fillRect(snap(leftBarX + barW), y1, Math.max(CELL, snap(mid - (leftBarX + barW))), thick);
+    paintModel(ctx, flow.model, snap(leftBarX + barW), y1, Math.max(CELL, snap(mid - (leftBarX + barW))), thick);
     const topY = Math.min(y1, y2);
-    ctx.fillRect(snap(mid), topY, CELL, Math.max(CELL, Math.max(y1, y2) - topY + thick));
-    ctx.fillRect(snap(mid), y2, Math.max(CELL, snap(rightBarX - mid)), thick);
+    paintModel(ctx, flow.model, snap(mid), topY, CELL, Math.max(CELL, Math.max(y1, y2) - topY + thick));
+    paintModel(ctx, flow.model, snap(mid), y2, Math.max(CELL, snap(rightBarX - mid)), thick);
   }
   for (const s of pSlots) {
     ctx.fillStyle = '#2e2a27';
@@ -626,51 +981,76 @@ function drawFlow(canvas, overview) {
   }
   for (let i = 0; i < mSlots.length; i++) {
     const s = mSlots[i];
-    ctx.fillStyle = modelColor[s.item.model];
-    ctx.fillRect(snap(rightBarX), snap(s.y), barW, Math.max(CELL, snap(s.h)));
+    paintModel(ctx, s.item.model, snap(rightBarX), snap(s.y), barW, Math.max(CELL, snap(s.h)));
     if (i === 0) {
       ctx.fillStyle = '#e8dcc8';
-      ctx.fillRect(snap(rightBarX) - 2, snap(s.y), 2, Math.max(CELL, snap(s.h)));
-      ctx.fillRect(snap(rightBarX) + barW, snap(s.y), 2, Math.max(CELL, snap(s.h)));
+      ctx.fillRect(snap(rightBarX) - 4, snap(s.y), 2, Math.max(CELL, snap(s.h)));
+      ctx.fillRect(snap(rightBarX) + barW + 2, snap(s.y), 2, Math.max(CELL, snap(s.h)));
     }
-    ctx.fillStyle = i === 0 ? '#ff7a1a' : '#d6ccbd';
+    ctx.fillStyle = i === 0 ? '#ff7a1a' : '#e8dcc8';
     ctx.textAlign = 'left';
     const name = s.item.model.split('/').pop() || s.item.model;
-    ctx.fillText(clipText(ctx, name + '  ' + s.item.tasks, rightW - 4), rightBarX + barW + 6, s.y + s.h / 2);
+    ctx.fillText(clipText(ctx, name + '  ' + s.item.tasks, rightW - 8), rightBarX + barW + 10, s.y + s.h / 2);
   }
   ctx.textAlign = 'left';
+}
+
+// ---- Prompts list ----------------------------------------------------------------------------
+
+function promptRow(p) {
+  const a = el('a', 'prompt-row' + (p.runId === lastRunId ? ' current' : ''));
+  a.href = promptHref(p.runId);
+  a.dataset.run = p.runId;
+  if (p.runId === lastRunId) a.setAttribute('aria-current', 'true');
+  const when = el('div', 'prompt-when');
+  when.append(stateTag(p.state), timeEl(p.createdAt));
+  const main = el('div', '');
+  main.append(el('div', 'prompt-text', p.prompt));
+  const models = el('div', 'prompt-models');
+  for (const m of p.taskCountsByModel) {
+    const item = el('span', 'item');
+    item.append(modelLabel(m.model, short(m.model) + ' ×' + m.tasks));
+    models.append(item);
+  }
+  if (p.agent.label) models.append(tag(p.agent.label, 24));
+  main.append(models);
+  const stats = el('div', 'prompt-stats');
+  const tk = p.tokens === null
+    ? 'tokens unknown'
+    : fmtInt(p.tokens.inputTokens + p.tokens.outputTokens) + ' tok' + (p.tokens.unreportedAttempts > 0 ? ' (' + p.tokens.unreportedAttempts + ' unreported)' : '');
+  const cost = p.cost.actualUsd === null
+    ? (p.cost.unpricedAttempts ? p.cost.unpricedAttempts + ' unpriced attempt(s)' : 'cost unknown')
+    : usd(p.cost.actualUsd);
+  stats.append(el('div', '', tk), el('div', '', cost), el('div', 'sub', p.taskCount + ' task(s)'));
+  if (p.tokens !== null) stats.title = p.tokens.inputTokens + ' in / ' + p.tokens.outputTokens + ' out';
+  a.append(when, main, stats);
+  a.title = p.prompt;
+  return a;
 }
 
 function renderPrompts(prompts) {
   const nav = $('prompts');
   nav.replaceChildren();
-  nav.append(el('h2', '', '== Previous prompts =='));
+  nav.append(el('h2', '', 'Previous prompts · ' + prompts.length));
   if (prompts.length === 0) {
     nav.append(el('div', 'unknown', 'No runs in this state directory yet (start one with soot run).'));
-    $('run').replaceChildren();
     return;
   }
   const list = el('div', 'prompt-list');
-  for (const p of prompts) {
-    const b = el('button', 'prompt-row');
-    b.dataset.run = p.runId;
-    b.append(
-      el('div', 'prompt-head', '[' + p.state + ']  ' + (p.createdAt || 'date unknown')),
-      el('div', 'prompt-text', p.prompt),
-    );
-    const tok = p.tokens === null
-      ? 'tokens unknown'
-      : (p.tokens.inputTokens + p.tokens.outputTokens) + ' tok (' + p.tokens.inputTokens + ' in / ' + p.tokens.outputTokens + ' out)' + (p.tokens.unreportedAttempts > 0 ? '; ' + p.tokens.unreportedAttempts + ' unreported' : '');
-    const cost = p.cost.actualUsd === null
-      ? (p.cost.unpricedAttempts ? p.cost.unpricedAttempts + ' unpriced attempt(s)' : 'cost unknown')
-      : usd(p.cost.actualUsd);
-    b.append(el('div', 'note', p.taskCount + ' task(s) · ' + tok + ' · ' + cost + (p.agent.label ? ' · ' + p.agent.label : '')));
-    b.title = p.prompt;
-    b.addEventListener('click', () => { location.hash = encodeURIComponent(p.runId); });
-    list.append(b);
-  }
+  list.setAttribute('role', 'list');
+  const rows = prompts.map(promptRow);
+  // Arrow keys move between prompts; Enter opens one (native link).
+  list.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+    const i = rows.indexOf(document.activeElement);
+    const next = rows[Math.min(Math.max(i + (ev.key === 'ArrowDown' ? 1 : -1), 0), rows.length - 1)];
+    if (next) { ev.preventDefault(); next.focus(); }
+  });
+  list.append(...rows);
   nav.append(list);
 }
+
+// ---- Prompt detail ----------------------------------------------------------------------------
 
 async function getJson(path) {
   const r = await fetch(path, { cache: 'no-store' });
@@ -683,7 +1063,7 @@ const BLOCKS = [
   (r) => identBlock(r),
   (r) => taskBreakdownBlock(r),
   (r) => assignmentBlock(r),
-  (r) => usageBlock('Usage by model (also the cost-by-model numbers)', r.usage.byModel, r.usage.note),
+  (r) => usageBlock('Usage by model (also the cost-by-model numbers)', r.usage.byModel, r.usage.note, { byModel: true }),
   (r) => block('How to read the charts', [r.usage.note, 'Hatched cream = estimate, solid orange = reported actual; they never share a chart or a donut. Each magnitude chart is scaled to its own largest known value. Unknown is written as unknown, with no bar or slice.', r.savings.note]),
   (r) => outcomesBlock(r),
   (r) => costBlock(r),
@@ -707,7 +1087,7 @@ const BLOCKS = [
   (r) => block('Run details', [
     'id       ' + r.runId,
     'state    ' + r.state + (r.running ? ' (running)' : ''),
-    'started  ' + (r.duration.startedAt || 'unknown'),
+    'started  ' + (fmtDate(r.duration.startedAt) || 'unknown') + (r.duration.startedAt ? '  (' + r.duration.startedAt + ')' : ''),
     'duration ' + (r.duration.ms === null ? (r.running ? 'running' : 'unknown') : (r.duration.ms / 1000).toFixed(1) + ' s') + '  (' + r.duration.basis + ')',
     '',
     'Prompt:',
@@ -716,40 +1096,93 @@ const BLOCKS = [
   (r) => block('Savings', [r.savings.note]),
 ];
 
+function notFoundBlock(runId) {
+  const s = section('Prompt not found', true);
+  s.append(el('p', 'note', 'No recorded prompt has the id "' + runId + '".'));
+  const back = el('a', 'back', '← All prompts');
+  back.href = '#/prompts';
+  s.append(back);
+  return s;
+}
+
+// Returns whether the shown run is still running (so the page keeps polling).
 async function showRun(runId) {
-  clearTimeout(timer);
   const main = $('run');
+  lastRunId = runId;
+  if (lastOverview && !lastOverview.prompts.some((p) => p.runId === runId)) {
+    main.replaceChildren(notFoundBlock(runId));
+    return false;
+  }
   try {
     const { run } = await getJson('/api/runs/' + encodeURIComponent(runId));
-    shown = runId;
     main.replaceChildren(...BLOCKS.map((b) => b(run)));
-    for (const b of document.querySelectorAll('#prompts button')) b.classList.toggle('current', b.dataset.run === runId);
-    if (run.running) timer = setTimeout(() => { void refresh(); }, 1500);
+    return !!run.running;
   } catch (e) {
-    const p = document.createElement('p');
-    p.className = 'error';
-    p.textContent = 'Could not load run ' + runId + ': ' + e.message;
-    main.replaceChildren(p);
+    if (/not found|404/i.test(e.message)) {
+      main.replaceChildren(notFoundBlock(runId));
+    } else {
+      const p = el('p', 'error wide', 'Could not load run ' + runId + ': ' + e.message);
+      main.replaceChildren(p);
+    }
+    return false;
   }
+}
+
+// ---- Router -------------------------------------------------------------------------------------
+
+function setTab(active) {
+  for (const name of ['overview', 'prompts']) {
+    const t = $('tab-' + name);
+    if (!t) continue;
+    t.className = 'tab' + (name === active ? ' active' : '');
+    if (name === active) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
+  }
+}
+
+async function route() {
+  const r = parseRoute(location.hash);
+  setTab(r.view === 'overview' ? 'overview' : 'prompts');
+  $('view-overview').hidden = r.view !== 'overview';
+  $('view-prompts').hidden = r.view !== 'prompts';
+  $('view-prompt').hidden = r.view !== 'prompt';
+  if (r.view === 'overview') {
+    if (lastOverview) drawFlow($('flow'), lastOverview);
+    return false;
+  }
+  if (r.view === 'prompts') {
+    if (lastOverview) renderPrompts(lastOverview.prompts);
+    return false;
+  }
+  return showRun(r.runId);
+}
+
+function renderMeta(ov) {
+  const meta = $('meta');
+  const now = new Date();
+  const t = el('time', '', fmtDate(now.toISOString()) || '');
+  t.dateTime = now.toISOString();
+  t.title = now.toISOString();
+  meta.replaceChildren(el('span', '', ov.promptCount + ' run(s) · read-only · 127.0.0.1 only · updated '), t);
 }
 
 async function refresh() {
-  const nav = $('prompts');
+  clearTimeout(timer);
   try {
     const data = await getJson('/api/runs');
-    const overview = data.overview || { prompts: [], flows: [], byModel: [], promptCount: 0, taskCount: 0 };
+    const overview = data.overview || { prompts: [], flows: [], byModel: [], promptCount: 0, taskCount: 0, aggregate: null };
     lastOverview = overview;
-    drawFlow($('flow'), overview);
+    useModels(overview.byModel.map((m) => m.model).concat(overview.aggregate ? overview.aggregate.usageByModel.map((m) => m.label) : []));
+    renderMeta(overview);
+    renderOverview(overview);
     renderPrompts(overview.prompts);
-    if (overview.prompts.length === 0) return;
-    const wanted = decodeURIComponent(location.hash.slice(1)) || shown || overview.prompts[0].runId;
-    await showRun(wanted);
+    const runningRun = await route();
+    if (runningRun || overview.prompts.some((p) => p.state === 'running')) timer = setTimeout(() => { void refresh(); }, 1500);
   } catch (e) {
-    nav.textContent = 'Could not reach the soot dashboard API: ' + e.message;
+    $('meta').textContent = 'Could not reach the soot dashboard API: ' + e.message;
   }
 }
 
-window.addEventListener('hashchange', () => { void showRun(decodeURIComponent(location.hash.slice(1))); });
-window.addEventListener('resize', () => { if (lastOverview) drawFlow($('flow'), lastOverview); });
+window.addEventListener('hashchange', () => { void route(); });
+window.addEventListener('resize', () => { if (lastOverview && parseRoute(location.hash).view === 'overview') drawFlow($('flow'), lastOverview); });
 void refresh();
 `;
