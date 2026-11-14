@@ -30,7 +30,8 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 - `docs/media/soot-real-run.mp4` (67 s, sped-up waits labeled), a real-time-only GIF and a
   poster, linked near the top of the README: one prompt in the dashboard, 3 of 3 tasks verified
-  with DeepSeek and Grok for $0.0092 in total, Grok retried once after failing soot's check.
+  with DeepSeek and Grok, $0.0092 counted (Grok's reasoning tokens weren't recorded then, so the
+  true cost is somewhat higher), Grok retried once after failing soot's check.
 
 ### Added (real model execution: `--agent api`, `--apply`, ADR-039)
 

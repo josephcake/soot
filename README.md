@@ -26,7 +26,8 @@ _Named after the soot sprites, the black dust bunnies from Studio Ghibli. Former
 [![A real soot run in the dashboard: one prompt, three tasks on DeepSeek and Grok, all verified](docs/media/soot-real-run.gif)](docs/media/soot-real-run.mp4)
 
 _A real run (soot a90063a, `soot dashboard --agent api --apply`): 3 of 3 tasks verified with
-DeepSeek and Grok for $0.0092 in total; Grok retried once after its first test failed soot's
+DeepSeek and Grok, $0.0092 counted (Grok's reasoning tokens weren't recorded then, so the true
+cost is somewhat higher); Grok retried once after its first test failed soot's
 check. The GIF shows only the real-time parts; click it for the full
 [67-second video](docs/media/soot-real-run.mp4), where the wait is sped up and labeled._
 
