@@ -121,7 +121,11 @@ describe('generateWithFallback', () => {
     });
     await generateWithFallback([client, ok], ask, health);
     const selection = registry.select({ capabilities: ['tools'] }, health);
-    expect(selection.candidates.map((m) => m.ref)).toEqual(['openai/test-gpt']);
+    expect(selection.candidates.map((m) => m.ref)).toEqual([
+      'openai/test-gpt',
+      'gemini/test-gemini',
+      'openrouter/anthropic/claude-x',
+    ]);
     expect(selection.excluded.find((x) => x.ref === 'anthropic/test-claude')?.reasons).toContain(
       'provider-unavailable',
     );

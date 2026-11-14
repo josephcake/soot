@@ -30,6 +30,18 @@ describe('tierFromPrice', () => {
 });
 
 describe('KNOWN_PROVIDERS', () => {
+  it('does not include google or openrouter, even when every key is set (ADR-049, T-OPT-1)', () => {
+    expect(KNOWN_PROVIDERS.map((k) => k.provider.kind)).not.toContain('google');
+    expect(KNOWN_PROVIDERS.map((k) => k.provider.kind)).not.toContain('openrouter');
+    expect(KNOWN_PROVIDERS.map((k) => k.provider.apiKeyEnv)).not.toContain('GEMINI_API_KEY');
+    expect(KNOWN_PROVIDERS.map((k) => k.provider.apiKeyEnv)).not.toContain('OPENROUTER_API_KEY');
+    const r = addAutoModels(EMPTY_REGISTRY_CONFIG, { keyIsSet: () => true, today: DAY });
+    expect(r.config.providers.map((p) => p.id)).toEqual(['anthropic', 'openai', 'xai', 'deepseek']);
+    expect(r.config.providers.some((p) => p.kind === 'google' || p.kind === 'openrouter')).toBe(
+      false,
+    );
+  });
+
   it('name a key variable and a host the price catalog covers', () => {
     for (const { provider } of KNOWN_PROVIDERS) {
       expect(provider.apiKeyEnv).toMatch(/^[A-Z][A-Z0-9_]*_API_KEY$/);

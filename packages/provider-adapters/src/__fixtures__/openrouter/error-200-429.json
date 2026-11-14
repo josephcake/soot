@@ -1,0 +1,10 @@
+{
+  "source": "https://openrouter.ai/docs/api_reference/errors-and-debugging",
+  "note": "Doc-derived HTTP 200 error body after a provider has accepted the request (ADR-011).",
+  "id": "gen-2",
+  "error": {
+    "code": 429,
+    "message": "Rate limit exceeded",
+    "metadata": { "error_type": "rate_limit_exceeded" }
+  }
+}

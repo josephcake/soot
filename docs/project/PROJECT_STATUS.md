@@ -138,6 +138,7 @@ Node 26 (M0-11 Completed).
 - [x] M2-05 Discovery, unavailable-provider handling, fallback (simulated outages)
 - [x] M2-06 Sourced and dated pricing; capability metadata; unknown stays unknown
 - [x] M2-08 Credential isolation, asserted by leak tests and a repo boundary guard
+- [x] M2-09 Gemini (`google`) and OpenRouter (`openrouter`) provider kinds, opt-in only (ADR-049, issue #9); mocked HTTP only, not live
 - [x] Milestone 3 — Intelligent Model Routing (M3-01…M3-06), `@soot/model-router`:
   - M3-01 heuristic complexity and capability evaluation, with reasons
   - M3-02 capability filter, tested per dimension (tools, structured output, vision, reasoning, streaming, context window, max output, availability, listed-only providers)
@@ -165,7 +166,7 @@ Node 26 (M0-11 Completed).
 
 ## In Progress
 
-- [ ] Milestone 2. M2-03 (local endpoint) is Implemented: covered by mocked HTTP, but the live test skipped because no Ollama or LM Studio was running. M2-07 is Blocked.
+- [ ] Milestone 2. M2-03 (local endpoint) is Implemented: covered by mocked HTTP, but the live test skipped because no Ollama or LM Studio was running. M2-09 (Gemini and OpenRouter, ADR-049) is Implemented against mocked HTTP and fake keys; neither is auto-detected and no live call has been made. M2-07 is Blocked.
 - [ ] Milestone 6. M6-01, M6-03 and M6-09 (generic ACP driver, mock ACP agent only) Completed; M6-02 and M6-06 Implemented; M6-04 and M6-05 Implemented (simulated only, ADR-047; a real-product run is still needed); M6-08 Not Started; M6-07 Blocked on M2-07. Exit criteria not met.
 
 - [ ] Milestone 7. M7-01 (VS Code extension), M7-05 (graph), M7-07 (cost) and M7-08 (cancellation, on/off after the ADR-041 fix) Verified in a real VS Code (2026-11-14, mock agent); M7-06 (models, escalation events) Implemented; M7-02…M7-04 (Cursor, Windsurf, Kilo Code) Not Started. Exit criteria not met.

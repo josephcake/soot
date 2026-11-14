@@ -1,0 +1,18 @@
+{
+  "source": "https://ai.google.dev/api/generate-content#UsageMetadata",
+  "note": "Doc-derived, not recorded from a live call (ADR-011).",
+  "candidates": [
+    {
+      "content": { "role": "model", "parts": [{ "text": "hello" }] },
+      "finishReason": "STOP"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 100,
+    "cachedContentTokenCount": 40,
+    "candidatesTokenCount": 10,
+    "thoughtsTokenCount": 25,
+    "totalTokenCount": 135
+  },
+  "modelVersion": "gemini-3.5-flash-lite"
+}

@@ -1,0 +1,15 @@
+{
+  "source": "https://ai.google.dev/gemini-api/docs/troubleshooting",
+  "note": "Doc-derived Google RPC envelope as parsed by @ai-sdk/google (ADR-011).",
+  "error": {
+    "code": 429,
+    "message": "Resource has been exhausted",
+    "status": "RESOURCE_EXHAUSTED",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.RetryInfo",
+        "retryDelay": "17s"
+      }
+    ]
+  }
+}

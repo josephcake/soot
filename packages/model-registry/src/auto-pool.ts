@@ -32,9 +32,10 @@ const known = (provider: Record<string, unknown>, verified: string): KnownProvid
   Object.freeze({ provider: ProviderConfigSchema.parse(provider), verified });
 
 /**
- * Only vendors whose API soot has exercised end to end. Others (Gemini, Mistral, FreeLLMAPI)
- * still work through a models file. Keyless local runtimes are probed separately (ADR-045,
- * `local-pool.ts`).
+ * Only vendors whose API soot has exercised end to end. Gemini and OpenRouter are
+ * opt-in only (ADR-049): never add them here, even when GEMINI_API_KEY or
+ * OPENROUTER_API_KEY is set. Others (Mistral, FreeLLMAPI) still work through a models file.
+ * Keyless local runtimes are probed separately (ADR-045, `local-pool.ts`).
  */
 export const KNOWN_PROVIDERS: readonly KnownProvider[] = Object.freeze([
   known(

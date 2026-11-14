@@ -6,7 +6,7 @@ export type ProviderErrorKind =
   /** 5xx, 529 overloaded, network failure. Retryable; may trigger fallback. */
   | 'unavailable'
   | 'timeout'
-  /** 401/403 or missing key. Not retryable; falls back to another provider. */
+  /** 401/403, missing key, or 402 (credits exhausted). Not retryable; falls back. */
   | 'auth'
   /** 400/404/422: the request itself is wrong. Not retryable, no fallback. */
   | 'invalid-request'
@@ -82,9 +82,15 @@ function retryAfterMs(
   return Number.isNaN(date) ? null : Math.max(0, date - now());
 }
 
-function kindForStatus(status: number): ProviderErrorKind {
+/**
+ * Map an HTTP status to a `ProviderErrorKind`.
+ * 402 (payment required / credits exhausted) is `auth` so soot falls back to
+ * another provider instead of crash-retrying (ADR-049). A 402 that also carries
+ * `Retry-After` is remapped to `rate-limited` in `toProviderError`.
+ */
+export function kindForStatus(status: number): ProviderErrorKind {
   if (status === 429) return 'rate-limited';
-  if (status === 401 || status === 403) return 'auth';
+  if (status === 401 || status === 403 || status === 402) return 'auth';
   if (status === 408) return 'timeout';
   if (status >= 500) return 'unavailable'; // includes Anthropic 529 overloaded
   if (status >= 400) return 'invalid-request';
@@ -102,13 +108,26 @@ export function toProviderError(
   const scrub = (s: string) => redact(s, secrets);
   if (APICallError.isInstance(error)) {
     const status = error.statusCode ?? null;
+    const retryAfter = retryAfterMs(error.responseHeaders, now);
+    // OpenRouter may send 402 with Retry-After for an in-flight spend budget
+    // (wait and retry). A 402 without the header is exhausted credits: fall back.
+    const kind =
+      status === 402 && retryAfter !== null
+        ? 'rate-limited'
+        : status === null
+          ? 'unavailable'
+          : kindForStatus(status);
+    const detail =
+      status === 402 && retryAfter === null
+        ? 'payment required / credits exhausted: this key cannot pay; fall back'
+        : error.message;
     return new ProviderError({
-      kind: status === null ? 'unavailable' : kindForStatus(status),
+      kind,
       provider,
       status,
-      retryAfterMs: retryAfterMs(error.responseHeaders, now),
+      retryAfterMs: retryAfter,
       message: scrub(
-        status === null ? `request failed: ${error.message}` : `HTTP ${status}: ${error.message}`,
+        status === null ? `request failed: ${error.message}` : `HTTP ${status}: ${detail}`,
       ),
     });
   }

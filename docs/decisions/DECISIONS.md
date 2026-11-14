@@ -1287,3 +1287,49 @@ the old one.
   escalation and `apiEditFormat: "whole"` bound that. Deletes still are not possible from
   `--agent api`. Per-model edit formats and files over 256 KiB are left for later.
 - **Reversible:** Yes (`apiEditFormat: "whole"`, or revert; no state schema change).
+
+## ADR-049: Gemini (`google`) and OpenRouter (`openrouter`) provider kinds, opt-in only
+
+- **Date:** 2026-11-14
+- **Status:** Accepted at merge. Implemented; verified with mocked HTTP and fake keys only.
+  Renumbered from ADR-061 to ADR-049 at merge so ADRs stay sequential on main. Covers GitHub
+  issue #9.
+- **Context:** Issue #9. `GEMINI_API_KEY` and `OPENROUTER_API_KEY` were reserved in
+  `.env.example`, and users had to hand-configure them as `openai-compatible`. Gemini's
+  OpenAI-compatible endpoint is marked beta by Google. OpenRouter returns some errors as
+  HTTP 200 with an `error` body, which soot classified as `unknown` (crash). Both vendors
+  use HTTP 402 for exhausted credits, which soot classified as `invalid-request` (crash).
+- **Decision:**
+  1. Add provider kind `google`, built on `@ai-sdk/google` (exact pin 4.0.118, which shares
+     `@ai-sdk/provider` / `provider-utils` with soot's existing pins). The key is always
+     passed explicitly from `apiKeyEnv` (ADR-022); the SDK's own `GOOGLE_GENERATIVE_AI_API_KEY`
+     env fallback is never relied on (test U-G11). `DEFAULT_HOST.google =
+generativelanguage.googleapis.com`, so the existing Gemini catalog prices apply.
+  2. Add provider kind `openrouter`, built on the existing `@ai-sdk/openai-compatible` client
+     with default base URL `https://openrouter.ai/api/v1` and a fetch wrapper that (a)
+     rewrites HTTP-200 `{error}` bodies to the error's status code, (b) adds the optional
+     `routing` preferences as the request's `provider` object, and (c) sends attribution
+     headers only when configured. No new OpenRouter SDK dependency.
+  3. Map HTTP 402 to `auth` for every provider (fallback, no retry). A 402 that carries
+     `Retry-After` maps to `rate-limited`.
+  4. **Opt-in only.** Neither kind is added to the auto pool (ADR-043 `KNOWN_PROVIDERS`). A
+     set key does nothing until a provider of that kind is declared in the models file.
+     `soot config` only hints that a key is set but unused, and never prints the value.
+  5. Tests use fake HTTP and fake keys only. Live tests are not added; they remain blocked
+     on BYOK (ADR-011). Discovery for both kinds is library-only and never runs automatically.
+  6. `Usage.reportedCostUsd` from OpenRouter `usage.cost` is deferred: 1 credit = 1 USD is
+     not confirmed. Mid-stream OpenRouter SSE errors are deferred; the API runner only uses
+     non-streaming `generate` today. `routing.dataCollection` is recommended as `"deny"` in
+     docs, not forced in code.
+- **Alternatives:** a hand-written Gemini REST client (maintenance); `@openrouter/ai-sdk-provider`
+  (same 200-error gap, and it bundles a second `provider-utils` copy); auto-detecting either
+  key (violates opt-in); shipping only the docs-only OpenRouter minimum (the issue's floor,
+  included as a documented `openai-compatible` path and test U-O10, but the dedicated kind
+  is what this ADR chooses).
+- **Consequences:**
+  - One new runtime dependency (`@ai-sdk/google`).
+  - OpenRouter models are unpriced unless the user sets `pricing` (no catalog rows; prices
+    vary by routed provider).
+  - The 402 → `auth` change is vendor-neutral and affects every provider.
+  - Not live-verified against Gemini or OpenRouter; fixtures are doc-derived.
+- **Reversible:** Yes. Remove the two kinds, the 402 mapping, and the dependency pin.

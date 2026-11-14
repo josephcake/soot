@@ -1,0 +1,24 @@
+{
+  "source": "https://openrouter.ai/docs/cookbook/administration/usage-accounting",
+  "note": "Doc-derived, not recorded from a live call (ADR-011).",
+  "id": "gen-1",
+  "object": "chat.completion",
+  "created": 1,
+  "model": "anthropic/claude-x",
+  "provider": "Anthropic",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "yo" },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 50,
+    "completion_tokens": 8,
+    "total_tokens": 58,
+    "cost": 0.00042,
+    "prompt_tokens_details": { "cached_tokens": 10 },
+    "completion_tokens_details": { "reasoning_tokens": 0 }
+  }
+}

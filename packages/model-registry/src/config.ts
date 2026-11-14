@@ -16,10 +16,19 @@ const slug = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/, 'must be a lowercase 
 
 /**
  * `anthropic` / `openai`: native APIs via the Vercel AI SDK (ADR-017, ADR-019).
- * `openai-compatible`: any OpenAI-compatible endpoint (Ollama, LM Studio, an optional LiteLLM
- * proxy, ...). `listed-only`: metadata only; soot never calls it.
+ * `google`: Gemini API via `@ai-sdk/google` (ADR-049). `openrouter`: OpenRouter via the
+ * existing OpenAI-compatible client plus a fetch wrapper (ADR-049). `openai-compatible`:
+ * any OpenAI-compatible endpoint (Ollama, LM Studio, an optional LiteLLM proxy, ...).
+ * `listed-only`: metadata only; soot never calls it.
  */
-export const PROVIDER_KINDS = ['anthropic', 'openai', 'openai-compatible', 'listed-only'] as const;
+export const PROVIDER_KINDS = [
+  'anthropic',
+  'openai',
+  'google',
+  'openrouter',
+  'openai-compatible',
+  'listed-only',
+] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
 /**
@@ -32,6 +41,33 @@ export const STRUCTURED_OUTPUT_MODES = ['json_schema', 'json_object'] as const;
 export type StructuredOutputMode = (typeof STRUCTURED_OUTPUT_MODES)[number];
 export const StructuredOutputModeSchema = z.enum(STRUCTURED_OUTPUT_MODES);
 export const DEFAULT_STRUCTURED_OUTPUT_MODE: StructuredOutputMode = 'json_schema';
+
+/**
+ * OpenRouter provider routing preferences (ADR-049). CamelCase in config; the adapter
+ * sends the snake_case `provider` object OpenRouter documents. All fields optional.
+ * soot does not default `dataCollection` to `"deny"` (OpenRouter's own default is
+ * `"allow"`); the docs recommend `"deny"`.
+ */
+export const OpenRouterRoutingSchema = z
+  .object({
+    order: z.array(z.string().min(1).max(200)).max(50).optional(),
+    only: z.array(z.string().min(1).max(200)).max(50).optional(),
+    ignore: z.array(z.string().min(1).max(200)).max(50).optional(),
+    allowFallbacks: z.boolean().optional(),
+    requireParameters: z.boolean().optional(),
+    dataCollection: z.enum(['allow', 'deny']).optional(),
+    zdr: z.boolean().optional(),
+    sort: z.enum(['price', 'throughput', 'latency']).optional(),
+  })
+  .strict();
+
+/** Optional OpenRouter app-attribution headers. Sent only when configured (ADR-049). */
+export const OpenRouterAttributionSchema = z
+  .object({
+    referer: z.url().optional(),
+    title: z.string().min(1).max(200).optional(),
+  })
+  .strict();
 
 export const ProviderConfigSchema = z
   .object({
@@ -48,11 +84,54 @@ export const ProviderConfigSchema = z
     local: z.boolean().default(false),
     /** Default structured-output wire format for this provider's models, unless a model overrides it. */
     structuredOutputMode: StructuredOutputModeSchema.optional(),
+    /** OpenRouter routing preferences; only valid when `kind` is `openrouter` (ADR-049). */
+    routing: OpenRouterRoutingSchema.optional(),
+    /** OpenRouter attribution headers; only valid when `kind` is `openrouter` (ADR-049). */
+    attribution: OpenRouterAttributionSchema.optional(),
   })
   .strict()
-  .refine((p) => p.kind !== 'openai-compatible' || p.baseURL !== undefined, {
-    message: 'openai-compatible providers need a baseURL',
-    path: ['baseURL'],
+  .superRefine((p, ctx) => {
+    if (p.kind === 'openai-compatible' && p.baseURL === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'openai-compatible providers need a baseURL',
+        path: ['baseURL'],
+      });
+    }
+    if (p.kind !== 'openrouter') {
+      if (p.routing !== undefined)
+        ctx.addIssue({
+          code: 'custom',
+          message: 'routing is only valid on openrouter providers',
+          path: ['routing'],
+        });
+      if (p.attribution !== undefined)
+        ctx.addIssue({
+          code: 'custom',
+          message: 'attribution is only valid on openrouter providers',
+          path: ['attribution'],
+        });
+    }
+    if (p.kind === 'google' || p.kind === 'openrouter') {
+      if (p.apiKeyEnv === undefined)
+        ctx.addIssue({
+          code: 'custom',
+          message: `${p.kind} providers need an apiKeyEnv`,
+          path: ['apiKeyEnv'],
+        });
+      if (p.local)
+        ctx.addIssue({
+          code: 'custom',
+          message: `${p.kind} providers cannot be local`,
+          path: ['local'],
+        });
+    }
+    if (p.kind === 'google' && p.structuredOutputMode === 'json_object')
+      ctx.addIssue({
+        code: 'custom',
+        message: 'google providers do not support structuredOutputMode json_object',
+        path: ['structuredOutputMode'],
+      });
   });
 
 /** `true` / `false` when known; `null` when unknown. Unknown is never treated as `true`. */
@@ -223,10 +302,19 @@ export const RegistryConfigSchema = z
           path: ['models', i, 'modelId'],
         });
       refs.add(ref);
+      const provider = config.providers.find((p) => p.id === m.provider);
+      if (provider?.kind === 'google' && structuredOutputMode(provider, m) === 'json_object')
+        ctx.addIssue({
+          code: 'custom',
+          message: 'google providers do not support structuredOutputMode json_object',
+          path: ['models', i, 'structuredOutputMode'],
+        });
     });
   });
 
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
+export type OpenRouterRouting = z.infer<typeof OpenRouterRoutingSchema>;
+export type OpenRouterAttribution = z.infer<typeof OpenRouterAttributionSchema>;
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 
 /**
