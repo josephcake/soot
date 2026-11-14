@@ -1,10 +1,10 @@
 # Project Status
 
-Last Updated: 2026-11-12
+Last Updated: 2026-11-14
 
 ## Current Phase
 
-Milestone 6 — Universal Skill and CLI (in progress, partial: CLI, MCP server, skill and docs against fixtures and a scripted mock agent; exit criteria not met); Milestone 7 — IDE Extensions (started, partial: a thin VS Code extension tested with a fake editor API and the mock agent, not run in a real editor); Milestone 2 In Progress (partial; M2-07 Blocked)
+Milestone 6 — Universal Skill and CLI (in progress, partial: CLI, MCP server, skill and docs against fixtures and a scripted mock agent; exit criteria not met); Milestone 7 — IDE Extensions (started, partial: a thin VS Code extension, run in a real VS Code with the mock agent (M7-01 Verified); Cursor and other editors not run); Milestone 2 In Progress (partial; M2-07 Blocked)
 
 ## Overall Progress
 
@@ -32,10 +32,16 @@ Milestone 7 is In Progress (partial, ADR-029). `apps/vscode-extension` is a thin
 Cursor extension with no runtime dependencies that runs the soot CLI and shows the run as text
 blocks: orchestration on/off, task graph by layer, active agents, per-attempt models, escalation
 and retry events, failures, estimate vs actual cost, cancel task and stop run. The engine gained
-`soot stop <run> --task <id>` (also MCP), a live events file and per-attempt status. Tested only
-with a fake `vscode` module and the real CLI with `--agent mock`; a `.vsix` builds locally and is
-not published. It has **not been run in VS Code or Cursor**, so the M7 exit criteria are not met,
-and no other editor (Windsurf, Kilo Code, Copilot) is claimed.
+`soot stop <run> --task <id>` (also MCP), a live events file and per-attempt status. A `.vsix`
+builds locally and is not published. On 2026-11-14 it was **loaded and used in VS Code 1.144.0**
+on macOS (M7-01 Verified) with `--agent mock` on `examples/demo-app`: run a prompt, the tree,
+the task board, cancel task and stop run worked, and the tree, board and cost matched `soot
+status` and `soot cost` (M7-05, M7-07 Verified). That run found that `soot: Enable
+orchestration` wrote `.vscode/settings.json`, which dirtied the repository so soot refused the
+next run; ADR-041 moves on/off to VS Code's workspace storage (unit-tested, not yet re-run in
+the editor, so M7-08 stays Implemented). Escalation events were not exercised in the editor
+(M7-06 Implemented). Cursor, Windsurf, Kilo Code and Copilot are not run or claimed, so M7 stays
+In Progress.
 
 Engine hardening (ADR-030, mocks only, no milestone status change): `SOOT_DATA_DIR` and
 `SOOT_LOG_LEVEL` are honoured by the real CLI and `soot mcp`; provider cooldowns and
@@ -159,7 +165,7 @@ Node 26 (M0-11 Completed).
 - [ ] Milestone 2. M2-03 (local endpoint) is Implemented: covered by mocked HTTP, but the live test skipped because no Ollama or LM Studio was running. M2-07 is Blocked.
 - [ ] Milestone 6. M6-01, M6-03 and M6-09 (generic ACP driver, mock ACP agent only) Completed; M6-02 and M6-06 Implemented; M6-04, M6-05, M6-08 Not Started; M6-07 Blocked on M2-07. Exit criteria not met.
 
-- [ ] Milestone 7. M7-01 (VS Code extension) Implemented, not run in a real editor; M7-05…M7-08 (graph, models, cost, cancellation) Implemented with local tests; M7-02…M7-04 (Cursor, Windsurf, Kilo Code) Not Started. Exit criteria not met.
+- [ ] Milestone 7. M7-01 (VS Code extension), M7-05 (graph) and M7-07 (cost) Verified in a real VS Code (2026-11-14, mock agent); M7-06 (models, escalation events) and M7-08 (cancellation, on/off; ADR-041 fix not yet re-run in the editor) Implemented; M7-02…M7-04 (Cursor, Windsurf, Kilo Code) Not Started. Exit criteria not met.
 
 ## Not Started
 

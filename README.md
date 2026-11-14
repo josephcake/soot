@@ -111,9 +111,9 @@ command you configure (one generic driver, tested only with soot's own mock ACP 
 
 `apps/vscode-extension` is a thin, unpublished VS Code / Cursor extension that runs the soot CLI
 and shows the task graph, active agents, models, escalations, failures and cost as text blocks,
-with cancel-task and stop-run. It is tested with a fake editor API and the mock agent only and
-**has not been run in VS Code or Cursor**. Windsurf, Kilo Code and Copilot are not claimed. No
-compatibility is claimed until tested.
+with cancel-task and stop-run. It **has been run in VS Code** (1.144.0, macOS, mock agent only,
+M7-01) and **not in Cursor**. Windsurf, Kilo Code and Copilot are not claimed. No compatibility
+is claimed until tested.
 
 ### Local dashboard (optional)
 

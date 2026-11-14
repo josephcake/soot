@@ -2,7 +2,7 @@
 
 A thin editor view onto a local soot engine. It runs the `soot` CLI and shows what the engine reports, as stacked text blocks:
 
-- **Orchestration: on/off** (`soot: Enable orchestration` / `soot: Disable orchestration`, workspace setting `soot.enabled`, off by default)
+- **Orchestration: on/off** (`soot: Enable orchestration` / `soot: Disable orchestration`, off by default). The commands keep on/off in VS Code's own workspace storage, never in `.vscode/settings.json`, so switching it never dirties your repository (soot refuses to run on a dirty working tree). A committed `soot.enabled` setting is the default until you use the commands (ADR-041).
 - **Task graph**: tasks by dependency layer (`L0 [■ task · claude-haiku-5-5→gpt-6.1-terra · 2x]`, `└▶ task ← deps`)
 - **Tasks**: per-task state, verdict, and each attempt's model, escalation level and failure
 - **Active agents**: what is running now, on which model
@@ -11,20 +11,22 @@ A thin editor view onto a local soot engine. It runs the `soot` CLI and shows wh
 - **Cost**: the estimate and the actual cost that runners reported (mock runs report fictional amounts)
 - **Cancel task** (right-click a running task) and **Stop run** (right-click a running run)
 
-`soot: Show board` opens the same information as one plain-text document.
+`soot: Show task board` opens the same information as one plain-text document.
 
 ## Status: honest version
 
-- **Not run in VS Code or Cursor yet.** It is tested against a fake `vscode` module and the real soot CLI with `--agent mock`. Until someone loads it in a real editor, do not treat it as a working editor integration.
+- **Run in VS Code, not in Cursor.** Loaded and used in VS Code 1.144.0 on macOS on 2026-11-14 (M7-01) with `--agent mock` against `examples/demo-app`: enable, run a prompt, the tree, the task board, cancel task and stop run all worked, and the tree, board and cost matched `soot status` and `soot cost`. That run found that `soot: Enable orchestration` dirtied the repository and blocked the next run; fixed by ADR-041 (unit-tested; not yet re-run in the editor). Escalation and retry events were not exercised (the mock runs had none). Unit tests use a fake `vscode` module and the real soot CLI with `--agent mock`.
+- **No `api` agent yet.** `soot.agent` offers `none`, `mock` and `acp`, so runs from the editor cannot use real models (`--agent api`, ADR-039) yet.
 - **Not published** to the VS Code Marketplace or Open VSX. You can build a `.vsix` locally (`pnpm --filter soot-vscode package:vsix`) and install it with `code --install-extension`.
 - Windsurf, Kilo Code and GitHub Copilot compatibility is **not claimed** and has not been tested.
 
-## Sideloading the local build (unverified)
+## Sideloading the local build
 
-> **Not verified.** This `.vsix` has not been run in a real editor: nobody has installed or run it in VS Code or Cursor yet. The steps
-> below are the editors' standard ways to install a local `.vsix`; they are written from the
-> editors' documentation, not from a recorded run. Expect problems, and treat a first try as the
-> verification run (M7-01 for VS Code, M7-02 for Cursor), not as something already known to work.
+> **VS Code: verified** on 2026-11-14 (VS Code 1.144.0, macOS): steps 1–3 below, with
+> `code --install-extension`, were followed as written.
+> **Cursor: not verified.** Nobody has installed or run it in Cursor yet; its steps come from
+> Cursor's documentation, not from a recorded run. Treat a first try in Cursor as the
+> verification run (M7-02), not as something already known to work.
 
 1. Build it in your soot checkout: `pnpm build && pnpm --filter soot-vscode package:vsix`. This
    writes `apps/vscode-extension/dist/soot-vscode-0.0.0.vsix`. Nothing is published.
@@ -46,13 +48,13 @@ A thin editor view onto a local soot engine. It runs the `soot` CLI and shows wh
 
 ## Settings
 
-| Setting           | Default           | Meaning                                                        |
-| ----------------- | ----------------- | -------------------------------------------------------------- |
-| `soot.enabled`    | `false`           | Allow `soot: Run a prompt` in this workspace                   |
-| `soot.cliPath`    | (empty)           | Absolute path to your soot checkout's `apps/cli/dist/bin.js`   |
-| `soot.nodePath`   | `node`            | Node.js 24+ used to run the CLI                                |
-| `soot.agent`      | `none`            | `none` (recorded results only), `mock` (test double), or `acp` |
-| `soot.mockScript` | `mock-agent.json` | Mock script, relative to the workspace, for `soot.agent: mock` |
-| `soot.dataDir`    | (empty)           | `SOOT_DATA_DIR` for the CLI; empty uses soot's default         |
+| Setting           | Default           | Meaning                                                         |
+| ----------------- | ----------------- | --------------------------------------------------------------- |
+| `soot.enabled`    | `false`           | Default on/off; the Enable/Disable commands override it locally |
+| `soot.cliPath`    | (empty)           | Absolute path to your soot checkout's `apps/cli/dist/bin.js`    |
+| `soot.nodePath`   | `node`            | Node.js 24+ used to run the CLI                                 |
+| `soot.agent`      | `none`            | `none` (recorded results only), `mock` (test double), or `acp`  |
+| `soot.mockScript` | `mock-agent.json` | Mock script, relative to the workspace, for `soot.agent: mock`  |
+| `soot.dataDir`    | (empty)           | `SOOT_DATA_DIR` for the CLI; empty uses soot's default          |
 
 `acp` runs the ACP agent command configured in `soot.config.json`. Like the rest of soot, it has only been tested with soot's scripted mock ACP agent.
