@@ -12,7 +12,7 @@ every exit criterion is verified from real runs. Dates are recorded only when ve
 | M4        | Adaptive Execution                | Completed (verified locally with mock agents)      | 2026-11-12      |
 | M5        | Codebase Integration and Safety   | Completed (verified locally; fixture repos, mocks) | 2026-11-12      |
 | M6        | Universal Skill and CLI           | In Progress (partial)                              | —               |
-| M7        | IDE Extensions                    | In Progress (partial; not run in a real editor)    | —               |
+| M7        | IDE Extensions                    | In Progress (partial; run in VS Code only)         | —               |
 
 Engine hardening (ADR-030: env-driven runtime, persisted provider health and spend, audited
 routing, default attempt timeout) is tracked in `docs/project/TASKS.md` (H-01…H-05) and changes no milestone
@@ -103,5 +103,5 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Deliverables:** VS Code extension; Cursor, Windsurf, Kilo Code compatibility; task visualization; model assignment visibility; cost reporting.
 - **Dependencies:** M6.
 - **Acceptance / exit criteria:** at least one functional IDE extension; additional integrations verified individually; core orchestration remains independent of IDE implementation.
-- **Status:** In Progress (partial, ADR-029). A thin VS Code extension (`apps/vscode-extension`) exists and is tested against a fake `vscode` module and the real CLI with `--agent mock`; a `.vsix` builds locally and is not published. Exit criteria not met: it has not been run in VS Code or Cursor, and no other editor is verified. Core independence holds by construction (the extension only runs the CLI) and is checked by a test.
+- **Status:** In Progress (partial, ADR-029, ADR-041). A thin VS Code extension (`apps/vscode-extension`) exists, is tested against a fake `vscode` module and the real CLI with `--agent mock`, and was loaded and used in VS Code 1.144.0 on macOS on 2026-11-14 (M7-01 Verified, mock agent only); a `.vsix` builds locally and is not published. Exit criteria not met: the on/off fix that run prompted (ADR-041) is not yet re-run in the editor, and no other editor (Cursor, Windsurf, Kilo Code) is verified. Core independence holds by construction (the extension only runs the CLI) and is checked by a test.
 - **Completion date:** —

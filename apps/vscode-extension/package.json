@@ -58,7 +58,7 @@
         "soot.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Orchestration on/off for this workspace. Off by default."
+          "description": "Default orchestration on/off for this workspace (off by default), for teams that commit it. soot: Enable/Disable orchestration override it in VS Code's own workspace storage and never edit settings files."
         },
         "soot.cliPath": {
           "type": "string",

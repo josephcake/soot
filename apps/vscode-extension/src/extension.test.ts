@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { COMMANDS, SootNode, activate, treeFor } from './extension.js';
 import { toRunView } from './core/view-model.js';
-import { commands, fake } from './test-support/fake-vscode.js';
+import { commands, extensionContext, fake } from './test-support/fake-vscode.js';
 
 /*
  * Extension glue against a FAKE `vscode` module (src/test-support/fake-vscode.ts). This checks
@@ -23,7 +23,7 @@ const pkg = JSON.parse(readFileSync(join(PKG_DIR, 'package.json'), 'utf8')) as {
   };
 };
 
-const context = () => ({ subscriptions: [] as unknown[] }) as never;
+const context = () => extensionContext() as never;
 
 beforeEach(() => {
   fake.reset();
@@ -62,14 +62,29 @@ describe('package.json contract', () => {
 });
 
 describe('commands without a soot engine', () => {
-  it('enable/disable flip the workspace setting and the tree root', async () => {
+  it('enable/disable flip the tree root without writing a settings file (ADR-041)', async () => {
     const controller = activate(context());
     expect(controller.tree.getChildren()[0]?.label).toBe('Orchestration: off');
     await commands.executeCommand('soot.enable');
-    expect(fake.settings.get('soot.enabled')).toBe(true);
+    expect(fake.workspaceState.get('soot.enabled')).toBe(true);
+    expect(controller.tree.getChildren()[0]?.label).toBe('Orchestration: on');
+    await commands.executeCommand('soot.disable');
+    expect(fake.workspaceState.get('soot.enabled')).toBe(false);
+    expect(controller.tree.getChildren()[0]?.label).toBe('Orchestration: off');
+    // A Workspace settings write lands in .vscode/settings.json, which dirties the repository;
+    // soot then refuses the next run (seen in the first real VS Code run, M7-01).
+    expect(fake.settingWrites).toEqual([]);
+  });
+  it('a committed soot.enabled setting is the default, and Disable overrides it locally', async () => {
+    fake.settings.set('soot.enabled', true);
+    const controller = activate(context());
     expect(controller.tree.getChildren()[0]?.label).toBe('Orchestration: on');
     await commands.executeCommand('soot.disable');
     expect(controller.tree.getChildren()[0]?.label).toBe('Orchestration: off');
+    await commands.executeCommand('soot.run');
+    expect(fake.messages.at(-1)?.text).toMatch(/orchestration is off/);
+    expect(fake.settings.get('soot.enabled')).toBe(true);
+    expect(fake.settingWrites).toEqual([]);
   });
   it('refuses to run while orchestration is off, and asks for a CLI path when on', async () => {
     activate(context());

@@ -194,14 +194,14 @@ soot run "<recorded prompt>" --agent acp --interactive
   (`packages/harness-adapters/dist/acp/mock-agent-bin.js <script.json>`). Whether any vendor
   harness works this way is untested.
 
-## VS Code / Cursor extension (local build, not run in an editor yet)
+## VS Code / Cursor extension (local build; run in VS Code, not in Cursor)
 
 > Sideloading steps for VS Code and Cursor are in
-> [`apps/vscode-extension/README.md`](../../apps/vscode-extension/README.md#sideloading-the-local-build-unverified).
-> They are **unverified**: the `.vsix` has not been run in a real editor.
+> [`apps/vscode-extension/README.md`](../../apps/vscode-extension/README.md#sideloading-the-local-build).
+> They were followed in VS Code 1.144.0 on macOS (M7-01, 2026-11-14); Cursor is **unverified**.
 
-`apps/vscode-extension` is a thin view onto the CLI (ADR-029). It is unpublished and has only
-been tested with a fake editor API, so treat it as experimental.
+`apps/vscode-extension` is a thin view onto the CLI (ADR-029). It is unpublished and has been
+run in one real editor (VS Code, mock agent only), so treat it as experimental.
 
 ```sh
 pnpm build

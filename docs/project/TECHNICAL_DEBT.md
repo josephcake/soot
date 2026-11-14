@@ -224,10 +224,27 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 
 ## IDE extension (Milestone 7)
 
-- **[Blocked] The VS Code extension has not been run in a real editor** (M7-01). It is tested
-  with a fake `vscode` module and the real CLI with `--agent mock`. Cursor, Windsurf, Kilo Code
-  and GitHub Copilot are unverified and not claimed. Running it needs an editor on a machine
-  where Mochi agrees to it.
+- **[Resolved 2026-11-14] The VS Code extension has been run in a real editor** (M7-01): VS
+  Code 1.144.0 on macOS, mock agent only. Cursor, Windsurf, Kilo Code and GitHub Copilot are
+  still unverified and not claimed.
+- **[Resolved 2026-11-14] Enable dirtied the repository** (ADR-041). `soot: Enable
+orchestration` wrote `.vscode/settings.json`; where that file is tracked, soot then refused
+  the next run. The commands now use VS Code's workspace storage. Unit-tested; not yet re-run in
+  the editor.
+- **[Defect] A run refused before it starts looks interrupted.** When soot refuses a run on a
+  dirty working tree, `soot status` (and so the extension's tree) shows it as `interrupted` with
+  its tasks `pending` and an actual cost of $0, not as failed with the refusal reason. Only the
+  editor's error message gives the reason. Seen as run `ide-20261114-081416-bda4`.
+- **[Defect] Cancel and stop are not in the audit log.** `AUDIT_EVENT_TYPES`
+  (`packages/observability/src/audit.ts`) has no cancel or stop event, so a stopped run's audit
+  log shows `run-started`, `attempt-started` and `run-finished` with no record of who stopped
+  what. The reason is only in `soot status` (`cancelled by request` / `run cancelled`).
+- **[Defect] The extension cannot use real models.** `soot.agent` offers `none`, `mock` and
+  `acp`; `--agent api` (ADR-039) came later and was never added, so editor runs cannot reach a
+  model.
+- **[Defect] Small editor rough edges.** The `(no run yet: soot: Run a prompt)` hint is not
+  clickable, and `soot: Show task board` opens an unsaved Untitled document, so closing it asks
+  to save.
 - **[Intentional] IDE runs are unattended.** Approval-needing work is refused and results wait
   on `soot/<run>/integration`; approving needs `soot run` in a terminal. No in-editor approval
   UI yet.
