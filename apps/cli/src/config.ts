@@ -177,6 +177,11 @@ export const ProjectConfigSchema = z
      * and the adapter's transient retries) or one planner call. Default 120000 (ADR-040).
      */
     modelCallTimeoutMs: z.number().int().min(100).max(3_600_000).optional(),
+    /**
+     * What `--agent api` models may reply with (ADR-048): `auto` = targeted "replace" edits,
+     * new files, or whole files; `whole` = ADR-039 whole-file replies only. Default `auto`.
+     */
+    apiEditFormat: z.enum(['auto', 'whole']).default('auto'),
     /** Escalation limits and budgets (`@soot/escalation` EscalationConfig fields). */
     escalation: z.record(z.string(), z.unknown()).optional(),
     /** Extra recorded decompositions (JSON array of {id, prompt, tasks}), relative to this file. */

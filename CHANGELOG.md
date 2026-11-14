@@ -5,6 +5,31 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (targeted edits for `--agent api`, ADR-048, issue #4)
+
+- `--agent api` models can now return targeted edits instead of whole files:
+  `{"op": "replace", "path", "old", "new"}` replaces exactly one occurrence of `old`, and
+  `{"op": "create", "path", "content"}` makes a new file. The ADR-039 whole-file form still
+  works. Files a task may change are sent up to 256 KiB (was 64 KiB), so larger source files
+  can be edited.
+- Edits are checked before anything is written: the path rules from ADR-039, the task's write
+  lease, an exact single match for `old` (CRLF files, a BOM and trailing spaces handled; no
+  other fuzzy matching), no overlapping edits, and size limits on the edit payload. Then all
+  files are written together, and if one write fails every file is put back.
+- An edit that does not apply gets one repair round that names the problem ("matches 3 places;
+  include more surrounding lines") and may fall back to a whole file. After that the attempt
+  fails with those findings and soot retries or escalates as for any failed attempt.
+- `"apiEditFormat": "whole"` in soot.config.json keeps the ADR-039 whole-file replies only;
+  `soot config` shows the setting.
+
+### Fixed (`--agent api`, ADR-048)
+
+- A failed file write no longer leaves earlier files of the same reply written (and no longer
+  throws out of the runner); the try ends `failed` with the files restored.
+- A whole-file reply can no longer overwrite a file the model was not shown in full.
+- An edit outside the task's write lease is refused before writing, with a clear message,
+  instead of only being caught by the post-commit scope check.
+
 ### Added (Claude Code and Codex runners, simulated only, ADR-047)
 
 - `soot run --agent claude-code` and `--agent codex` (the flag is also accepted by `soot mcp`

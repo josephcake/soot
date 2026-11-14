@@ -20,7 +20,13 @@ import type { AgentTaskInput } from '@soot/agent-runtime';
 import { ModelRegistry, actualCostFromUsage, parseRegistryConfig } from '@soot/model-registry';
 import { createModelClient } from '@soot/provider-adapters';
 import { parseAgentResult, type Task } from '@soot/task-graph';
-import { ApiAgentRunner, checkEditPath, parseEditsReply } from '../apps/cli/src/api-runner.js';
+import {
+  ApiAgentRunner,
+  SYSTEM_EDITS,
+  SYSTEM_WHOLE,
+  checkEditPath,
+  parseEditsReply,
+} from '../apps/cli/src/api-runner.js';
 import { startFakeOpenAi, type FakeOpenAi, type FakeReply } from './helpers/fake-openai.js';
 
 const FAKE_KEY = 'fake-test-key-not-a-secret-0001';
@@ -69,11 +75,18 @@ const TASK: Task = {
 async function setup(
   replies: (index: number) => FakeReply,
   env: Record<string, string> = { FAKE_KEY },
-  opts: { tryTimeoutMs?: number; retries?: number } = {},
+  opts: {
+    tryTimeoutMs?: number;
+    retries?: number;
+    editFormat?: 'auto' | 'whole';
+    task?: Partial<Task>;
+    files?: Record<string, string>;
+  } = {},
 ) {
   server = await startFakeOpenAi((_r, i) => replies(i));
   root = realpathSync(mkdtempSync(join(tmpdir(), 'soot-api-runner-')));
   writeFileSync(join(root, 'styles.css'), '.cta {\n  background: blue;\n}\n');
+  for (const [p, c] of Object.entries(opts.files ?? {})) writeFileSync(join(root, p), c);
   const registry = registryFor(server.baseURL);
   const runner = new ApiAgentRunner({
     clientFor: (ref) => {
@@ -91,13 +104,15 @@ async function setup(
       return c === null ? null : Number(c);
     },
     tryTimeoutMs: opts.tryTimeoutMs ?? 500,
+    ...(opts.editFormat === undefined ? {} : { editFormat: opts.editFormat }),
   });
+  const task = { ...TASK, ...opts.task };
   const input: AgentTaskInput = {
-    task: TASK,
+    task,
     attempt: 1,
     dependencyResults: [],
     assignment: { model: 'fake/coder', reason: 'test', escalationLevel: 0, estimatedCostUsd: null },
-    workspace: { root, writeScope: ['styles.css'] },
+    workspace: { root, writeScope: task.files.write },
   };
   return { runner, input, root };
 }
@@ -296,6 +311,158 @@ describe('ApiAgentRunner', () => {
     await expect(runner.run(input, new AbortController().signal)).rejects.toMatchObject({
       kind: 'rate-limited',
     });
+  });
+});
+
+const replace = (path: string, old: string, n: string) =>
+  JSON.stringify({ summary: 'targeted', edits: [{ op: 'replace', path, old, new: n }] });
+const systemOf = (i: number) =>
+  server?.requests[i]?.body.messages.find((m) => m.role === 'system')?.content ?? '';
+const userOf = (i: number) =>
+  server?.requests[i]?.body.messages.find((m) => m.role === 'user')?.content ?? '';
+
+describe('ApiAgentRunner targeted edits (ADR-048)', () => {
+  it('R1 applies a replace edit; the request uses the edits prompt', async () => {
+    const { runner, input, root } = await setup(() => ({
+      content: replace('styles.css', 'background: blue;', 'background: orange;'),
+      promptTokens: 300,
+      completionTokens: 30,
+    }));
+    const result = parseAgentResult(await runner.run(input, new AbortController().signal));
+    expect(result.status).toBe('succeeded');
+    expect(result.summary).toMatch(/targeted \(replaced 1 block in styles\.css\)/);
+    expect(readFileSync(join(root, 'styles.css'), 'utf8')).toBe(
+      '.cta {\n  background: orange;\n}\n',
+    );
+    expect(systemOf(0)).toBe(SYSTEM_EDITS);
+    expect(result.usage).toMatchObject({ inputTokens: 300, outputTokens: 30 });
+    expect(result.usage.costUsd).toBeCloseTo((300 * 2 + 30 * 6) / 1e6, 12);
+  });
+
+  it('R2 an ambiguous edit gets one repair round that names the problem, then applies', async () => {
+    const { runner, input, root } = await setup((i) =>
+      i === 0
+        ? { content: replace('styles.css', 'b', 'x'), promptTokens: 100, completionTokens: 10 }
+        : {
+            content: replace('styles.css', 'background: blue;', 'background: orange;'),
+            promptTokens: 150,
+            completionTokens: 20,
+          },
+    );
+    const result = parseAgentResult(await runner.run(input, new AbortController().signal));
+    expect(result.status).toBe('succeeded');
+    expect(server?.requests).toHaveLength(2);
+    const repair = server?.requests[1]?.body.messages.at(-1)?.content ?? '';
+    expect(repair).toMatch(/could not be applied, and nothing was written/);
+    expect(repair).toMatch(/\(ambiguous\): "old" text matches 2 places in styles\.css/);
+    expect(result.usage).toMatchObject({ inputTokens: 250, outputTokens: 30 });
+    expect(readFileSync(join(root, 'styles.css'), 'utf8')).toContain('orange');
+  });
+
+  it('R3 a not-found edit on a file sent in full can fall back to the whole file', async () => {
+    const { runner, input, root } = await setup((i) =>
+      i === 0
+        ? { content: replace('styles.css', 'background: red;', 'background: orange;') }
+        : { content: edits('styles.css', '.cta {\n  background: orange;\n}\n') },
+    );
+    const result = parseAgentResult(await runner.run(input, new AbortController().signal));
+    expect(server?.requests[1]?.body.messages.at(-1)?.content).toMatch(
+      /For styles\.css you may instead send the complete file/,
+    );
+    expect(result.status).toBe('succeeded');
+    expect(result.summary).toMatch(/wrote styles\.css/);
+    expect(readFileSync(join(root, 'styles.css'), 'utf8')).toContain('orange');
+  });
+
+  it('R4 two rounds of edits that do not apply: failed with findings, nothing written, no throw', async () => {
+    const { runner, input, root } = await setup(() => ({
+      content: JSON.stringify({
+        summary: 's',
+        edits: [
+          { op: 'replace', path: 'styles.css', old: 'nope', new: 'x' },
+          { op: 'create', path: 'styles.css', content: 'x' },
+        ],
+      }),
+    }));
+    const before = readFileSync(join(root, 'styles.css'));
+    const result = parseAgentResult(await runner.run(input, new AbortController().signal));
+    expect(result.status).toBe('failed');
+    expect(result.summary).toMatch(/^\[api\] edits from fake\/coder did not apply: /);
+    expect(result.findings.map((f) => f.message).join('\n')).toMatch(/\(mixed-ops\)/);
+    expect(server?.requests).toHaveLength(2);
+    expect(readFileSync(join(root, 'styles.css')).equals(before)).toBe(true);
+  });
+
+  it('R5 a 100 KiB writable file is sent in full in auto mode, and not sent in whole mode', async () => {
+    const big = `/* big */\n${'.x { color: red; }\n'.repeat(5600)}`;
+    const task = { files: { read: [], write: ['styles.css', 'big.css'] } };
+    for (const editFormat of ['auto', 'whole'] as const) {
+      await server?.close();
+      const { runner, input, root } = await setup(
+        () => ({ content: replace('big.css', '/* big */', '/* bigger */') }),
+        { FAKE_KEY },
+        { editFormat, task, files: { 'big.css': big } },
+      );
+      const result = parseAgentResult(await runner.run(input, new AbortController().signal));
+      if (editFormat === 'auto') {
+        expect(userOf(0)).toMatch(
+          /=== big\.css \(\d+ KiB, edit with "replace" only\) ===\n\/\* big \*\//,
+        );
+        expect(result.status).toBe('succeeded');
+        expect(readFileSync(join(root, 'big.css'), 'utf8').startsWith('/* bigger */')).toBe(true);
+      } else {
+        expect(userOf(0)).toMatch(
+          /=== big\.css \(not sent \(\d+ bytes, over the size limit\)\) ===/,
+        );
+        expect(result.status).toBe('failed'); // a replace reply is a schema error in whole mode
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('R6 whole mode sends the ADR-039 prompt verbatim and refuses replace edits', async () => {
+    const { runner, input, root } = await setup(
+      () => ({ content: replace('styles.css', 'blue', 'orange') }),
+      { FAKE_KEY },
+      { editFormat: 'whole' },
+    );
+    const result = parseAgentResult(await runner.run(input, new AbortController().signal));
+    expect(systemOf(0)).toBe(SYSTEM_WHOLE);
+    expect(SYSTEM_WHOLE).toMatch(/"content" is the whole file after your change \(not a diff\)/);
+    expect(result.status).toBe('failed');
+    expect(result.summary).toMatch(/unusable reply.*schema/);
+    expect(readFileSync(join(root, 'styles.css'), 'utf8')).toContain('blue');
+  });
+
+  it('R7 an edit outside the write lease is refused before anything is written', async () => {
+    const { runner, input, root } = await setup(() => ({
+      content: JSON.stringify({
+        summary: 's',
+        edits: [
+          { op: 'replace', path: 'styles.css', old: 'blue', new: 'orange' },
+          { op: 'create', path: 'other.css', content: 'x' },
+        ],
+      }),
+    }));
+    const result = parseAgentResult(await runner.run(input, new AbortController().signal));
+    expect(result.status).toBe('failed');
+    expect(result.summary).toMatch(/other\.css is outside this task's write lease \(styles\.css\)/);
+    expect(existsSync(join(root, 'other.css'))).toBe(false);
+    expect(readFileSync(join(root, 'styles.css'), 'utf8')).toContain('blue');
+  });
+
+  it('a whole-file reply cannot overwrite a file the model was not shown', async () => {
+    const huge = 'y'.repeat(300 * 1024);
+    const { runner, input, root } = await setup(
+      () => ({ content: edits('huge.txt', 'tiny') }),
+      { FAKE_KEY },
+      { task: { files: { read: [], write: ['huge.txt'] } }, files: { 'huge.txt': huge } },
+    );
+    const result = parseAgentResult(await runner.run(input, new AbortController().signal));
+    expect(userOf(0)).toMatch(/huge\.txt \(not sent .*cannot be edited by this runner\)/);
+    expect(result.status).toBe('failed');
+    expect(result.findings.map((f) => f.message).join('\n')).toMatch(/\(not-seen\)/);
+    expect(readFileSync(join(root, 'huge.txt'), 'utf8')).toBe(huge);
   });
 });
 

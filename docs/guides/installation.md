@@ -109,8 +109,8 @@ soot run "<prompt>" --agent api            # result left on soot/<run>/integrati
 soot run "<prompt>" --agent api --apply    # also fast-forward your branch once everything verified
 ```
 
-Each task's routed model receives the task and its files and returns whole-file contents; soot
-validates the paths, commits in the task's worktree, runs your checks, merges, and reports the
+Each task's routed model receives the task and its files and returns targeted edits or whole
+files; soot checks every edit (paths, write lease, an exact match), writes them all or none, commits in the task's worktree, runs your checks, merges, and reports the
 provider's reported tokens and the cost at list price. `--apply` approves only landing a fully
 verified result on a clean working tree; nothing else is approved for you.
 

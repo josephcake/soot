@@ -482,6 +482,7 @@ export class SootEngine implements OrchestrationService {
           return costUsd === null ? null : Number(costUsd);
         },
         tryTimeoutMs: cfg.config.modelCallTimeoutMs ?? DEFAULT_MODEL_CALL_TIMEOUT_MS,
+        editFormat: cfg.config.apiEditFormat,
       });
     }
     if (agent.kind === 'acp' && agent.harness !== undefined) {
@@ -535,7 +536,9 @@ export class SootEngine implements OrchestrationService {
     }
     if (agent.kind === 'mock') return 'mock-test-double (test double, no model is called)';
     if (agent.kind === 'api')
-      return 'api (direct model calls: each task goes to its routed model; the model returns whole-file edits)';
+      return cfg.config.apiEditFormat === 'whole'
+        ? 'api (direct model calls: each task goes to its routed model; the model returns whole-file edits; "apiEditFormat": "whole")'
+        : 'api (direct model calls: each task goes to its routed model; the model returns targeted edits or whole files)';
     return agent.kind;
   }
 
@@ -1435,6 +1438,7 @@ export class SootEngine implements OrchestrationService {
       modelCallTimeoutMs: cfg.config.modelCallTimeoutMs ?? null,
       effectiveModelCallTimeoutMs: cfg.config.modelCallTimeoutMs ?? DEFAULT_MODEL_CALL_TIMEOUT_MS,
       agent: this.#o.agent.kind,
+      apiEditFormat: cfg.config.apiEditFormat,
       acpAgent: cfg.config.acpAgent === undefined ? null : json(cfg.config.acpAgent),
       harness: this.#o.agent.kind === 'acp' ? (this.#o.agent.harness ?? null) : null,
       harnesses: json(
@@ -1478,6 +1482,7 @@ export class SootEngine implements OrchestrationService {
       `Attempt timeout: ${String(data.effectiveAttemptTimeoutMs)} ms${cfg.config.attemptTimeoutMs === undefined ? ' (default; set "attemptTimeoutMs" to change)' : ''}`,
       `Model call limit: ${formatLimit(data.effectiveModelCallTimeoutMs)} per --agent api try and per planner call${cfg.config.modelCallTimeoutMs === undefined ? ' (default; set "modelCallTimeoutMs" to change)' : ''}`,
       `Agent: ${this.#o.agent.kind === 'none' ? 'none (run refuses: pick --agent api, --agent mock, --agent acp, --agent claude-code or --agent codex)' : this.#agentLabel(cfg)}`,
+      `API edit format: ${cfg.config.apiEditFormat}${cfg.config.apiEditFormat === 'auto' ? ' (targeted "replace" edits or whole files; set "apiEditFormat": "whole" for whole files only)' : ' (whole-file replies only, ADR-039)'}`,
       `ACP agent command: ${cfg.config.acpAgent === undefined ? 'not configured' : describeCommand(cfg.config.acpAgent)}`,
       `Harness runners (simulated-only, ADR-047): claude-code ${cfg.config.harnesses?.['claude-code'] === undefined ? 'not configured' : describeCommand(cfg.config.harnesses['claude-code'])}; codex ${cfg.config.harnesses?.codex === undefined ? 'not configured' : describeCommand(cfg.config.harnesses.codex)}`,
       `Decomposition: ${describeDecomposerModel(decomposer)}`,

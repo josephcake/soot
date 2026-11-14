@@ -1209,3 +1209,81 @@ the old one.
   inside the worktree, and there is still no OS sandbox outside it.
 - **Reversible:** Yes. The profiles are one module and one optional config key; removing them
   leaves `--agent acp` as before (the mode guard, startup limit and argument guard can stay).
+
+## ADR-048: `--agent api` accepts targeted `replace` edits; whole-file replies still work
+
+- **Date:** 2026-11-14
+- **Status:** Accepted (issue #4; Joseph: "lets start solving for each of these"). Designed by
+  Lumen (propose-only research), built by Mochi. Implemented; verified with unit, runner and
+  end-to-end tests against a fake OpenAI-compatible server. Amends ADR-039 (reply format and
+  per-file send cap). Renumbered from ADR-060 to ADR-048 at merge so ADRs stay sequential
+  on main.
+- **Context:** ADR-039 asks the routed model for the complete new contents of every file it
+  changes. Files over 64 KiB are not sent, so they cannot be edited, and the reply (and output
+  tokens) grows with the file, not the change. Reading the runner also showed three gaps: it
+  never checked the write lease before writing (only the post-commit scope check caught it),
+  a failing write after earlier ones left those files written and threw out of `run()`, and a
+  whole-file reply could overwrite a file the model was never shown. Aider's published
+  benchmarks show partial-edit formats are well formed less often than whole files on weaker
+  models, and unified diffs only work with fuzzy patching (aider.chat/docs/unified-diffs.html,
+  /docs/leaderboards). Anthropic's text editor tool and OpenAI's GPT-4.1 guide both describe
+  exact old-text/new-text edits without line numbers as the reliable pattern.
+- **Decision:**
+  - The reply envelope is unchanged (`{summary, edits, notes?}`). An edit is one of
+    `{"op":"replace","path","old","new"}` (replace exactly one occurrence of `old`),
+    `{"op":"create","path","content"}` (file must not exist), or the ADR-039
+    `{"path","content"}` whole-file form (`"op":"write"` optional). No deletes, no diffs, no
+    line numbers.
+  - Every path passes ADR-039's `checkEditPath` (now also refusing a path below a file)
+    **and** must be inside the task's write lease before anything is written. The post-commit
+    scope and protected-path checks are unchanged and stay the authority.
+  - `old` must occur exactly once in the current file (overlapping occurrences count).
+    Matching is exact, except that CRLF files are matched with line endings normalised (and
+    written back as CRLF), a UTF-8 BOM is kept and ignored for matching, and one line-aligned
+    trailing-whitespace-insensitive pass is tried when there is no exact match (still exactly
+    once). Mixed-EOL files match raw bytes only. No other fuzzy matching. Replace ops on one
+    file may not overlap (adjacent is fine) and are located against the original text;
+    `old === new` is refused as a model mistake. A whole-file write to an existing file the
+    model was not shown in full is refused, in both formats. Binary or non-UTF-8 files cannot
+    take `replace` edits.
+  - All edits are planned in memory first and every failure is reported (up to 20). Then
+    files are written with temp file + rename (keeping the file mode); if any write fails,
+    every written file is restored, temp files and new directories are removed, and the try
+    ends `failed` instead of throwing. A file that changed on disk between planning and
+    writing aborts with nothing written.
+  - A reply that does not apply gets the existing single repair round (the round budget
+    stays two calls per try, under `modelCallTimeoutMs`) with the exact failures, and, for
+    failed files the model saw in full and that are at most 64 KiB, the option to send the
+    whole file. After that the attempt is `failed` (retryable via escalation) with the failures
+    as findings. soot never falls back to a fuzzy apply or an implicit whole-file rewrite.
+  - Limits apply to the edit payload: 60 edits, `old` ≤ 32 KiB, `new` ≤ 64 KiB, whole/create
+    content ≤ 512 KiB, ≤ 512 KiB per reply, ≤ 1 MiB per resulting file. A file the task may
+    write is sent up to 256 KiB (was 64 KiB; read-only files keep 64 KiB; the 256 KiB total
+    budget is unchanged) with the header note `edit with "replace" only` when over 64 KiB.
+  - `apiEditFormat` in soot.config.json: `"auto"` (default) as above; `"whole"` restores the
+    ADR-039 prompt, reply schema and 64 KiB per-file cap. The lease pre-check, the not-seen
+    rule, all-or-nothing writes and the repair round for edits that do not apply hold in both.
+- **Verification:** `tests/api-edits.test.ts` (planner and applier: unique, ambiguous,
+  missing, trailing whitespace, indentation drift refused, CRLF, mixed EOL, BOM, reverse
+  order, overlap, adjacent, no-op, create/exists, missing file, not-seen, mixed ops, delete
+  refused, path escape, symlinks, outside lease, binary, size limits, all failures reported,
+  rollback on a failing write, file changed after planning, file mode kept);
+  `tests/api-runner.test.ts` (replace applied with the new prompt, repair round fixes an
+  ambiguous edit, whole-file fallback in the repair round, two bad rounds → failed with
+  findings and nothing written, 100 KiB writable file sent in `auto` but not in `whole`,
+  `whole` sends the ADR-039 prompt verbatim and refuses `replace`, out-of-lease edit refused,
+  unseen file not overwritten); `tests/api-run-end-to-end.test.ts` (`soot run --agent api
+--apply` replaces one line in a ~80 KiB stylesheet; the landed diff is 1 line). No live
+  provider call in CI.
+- **Alternatives:** unified diffs (need fuzzy hunk application, line numbers unreliable);
+  OpenAI V4A (trained-in for OpenAI models, unproven across soot's other providers, larger
+  parser); text SEARCH/REPLACE blocks (best-documented, but a second non-JSON envelope; kept
+  as the next step if JSON escaping drives failures); provider-native editor tools (multi-round
+  tool loop, per-vendor code; ADR-039 already declined a tool loop); fuzzy/first-match apply
+  like Aider (silent misapplies conflict with "fail clearly").
+- **Consequences:** Tasks can edit files up to 256 KiB and replies scale with the change.
+  More of a writable file may be sent to the provider than before. Weaker models may produce
+  more unusable replies than with whole files; the repair round, whole-file fallback,
+  escalation and `apiEditFormat: "whole"` bound that. Deletes still are not possible from
+  `--agent api`. Per-model edit formats and files over 256 KiB are left for later.
+- **Reversible:** Yes (`apiEditFormat: "whole"`, or revert; no state schema change).

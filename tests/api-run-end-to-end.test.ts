@@ -33,25 +33,33 @@ const FILES: Record<string, { path: string; content: (old: string) => string }> 
   },
 };
 
-async function setup(): Promise<DemoRepo> {
+async function setup(
+  reply?: Parameters<typeof startFakeOpenAi>[0],
+  prepare?: (r: DemoRepo) => void,
+): Promise<DemoRepo> {
   const r = (repo = createDemoRepo());
-  server = await startFakeOpenAi((req) => {
-    const id = taskIdOf(req);
-    const spec = FILES[id];
-    if (spec === undefined) return { status: 400, error: `unexpected task ${id}` };
-    const user = req.body.messages.find((m) => m.role === 'user')?.content ?? '';
-    const old =
-      new RegExp(`=== ${spec.path} ===\\n([\\s\\S]*?)=== end ${spec.path} ===`).exec(user)?.[1] ??
-      '';
-    return {
-      content: JSON.stringify({
-        summary: `did ${id}`,
-        edits: [{ path: spec.path, content: spec.content(old) }],
+  prepare?.(r);
+  server = await startFakeOpenAi(
+    reply ??
+      ((req) => {
+        const id = taskIdOf(req);
+        const spec = FILES[id];
+        if (spec === undefined) return { status: 400, error: `unexpected task ${id}` };
+        const user = req.body.messages.find((m) => m.role === 'user')?.content ?? '';
+        const old =
+          new RegExp(`=== ${spec.path} ===\\n([\\s\\S]*?)=== end ${spec.path} ===`).exec(
+            user,
+          )?.[1] ?? '';
+        return {
+          content: JSON.stringify({
+            summary: `did ${id}`,
+            edits: [{ path: spec.path, content: spec.content(old) }],
+          }),
+          promptTokens: id === 'update-page-title' ? 900 : 700,
+          completionTokens: 120,
+        };
       }),
-      promptTokens: id === 'update-page-title' ? 900 : 700,
-      completionTokens: 120,
-    };
-  });
+  );
   r.write(
     'models.json',
     JSON.stringify({
@@ -145,6 +153,67 @@ describe('soot run --agent api', () => {
       }),
     ]);
     expect(readFileSync(join(r.dataDir, 'reports', 'api-1.json'), 'utf8')).not.toContain(FAKE_KEY);
+  });
+
+  it('ADR-048: a targeted replace edits a source file over 64 KiB; the diff touches only that line', async () => {
+    const padding = Array.from(
+      { length: 2800 },
+      (_, i) => `.pad-${String(i)} {\n  margin: ${String(i % 7)}px;\n}\n`,
+    ).join('\n');
+    const r = await setup(
+      (req) => {
+        const id = taskIdOf(req);
+        const edit =
+          id === 'update-button-color'
+            ? {
+                op: 'replace',
+                path: 'src/styles/button.css',
+                old: '.btn-primary {\n  background: blue;',
+                new: '.btn-primary {\n  background: purple;',
+              }
+            : // The title task (a small file sent in full) keeps the ADR-039 whole-file form.
+              {
+                path: 'src/pages/index.html',
+                content: (
+                  /=== src\/pages\/index\.html ===\n([\s\S]*?)=== end src\/pages\/index\.html ===/.exec(
+                    req.body.messages.find((m) => m.role === 'user')?.content ?? '',
+                  )?.[1] ?? ''
+                ).replaceAll('>Demo<', '>HELLO WORLD<'),
+              };
+        return { content: JSON.stringify({ summary: `did ${id}`, edits: [edit] }) };
+      },
+      (demo) => {
+        demo.write('src/styles/button.css', `${demo.read('src/styles/button.css')}\n${padding}`);
+        demo.commitAll('a large stylesheet');
+      },
+    );
+    const size = Buffer.byteLength(r.read('src/styles/button.css'));
+    expect(size).toBeGreaterThan(64 * 1024);
+    const out = await engineFor(r, true).run({ prompt: TEST_1, runId: 'api-e1' });
+    const saved = JSON.parse(
+      readFileSync(join(r.dataDir, 'reports', 'api-e1.json'), 'utf8'),
+    ) as Saved;
+    const buttonPrompt =
+      server?.requests
+        .find((q) => taskIdOf(q) === 'update-button-color')
+        ?.body.messages.find((m) => m.role === 'user')?.content ?? '';
+    expect(buttonPrompt).toMatch(
+      /=== src\/styles\/button\.css \(\d+ KiB, edit with "replace" only\) ===/,
+    );
+    expect(out.ok).toBe(true);
+    expect(saved.report.problems).toEqual([]);
+    expect(saved.report.status).toBe('complete');
+    expect(r.read('src/pages/index.html')).toContain('<title>HELLO WORLD</title>');
+    expect(r.read('src/styles/button.css')).toMatch(/\.btn-primary \{\n {2}background: purple;/);
+    const diff = r.git(
+      'diff',
+      '--numstat',
+      ':/a large stylesheet',
+      'HEAD',
+      '--',
+      'src/styles/button.css',
+    );
+    expect(diff).toMatch(/^1\t1\tsrc\/styles\/button\.css$/);
   });
 
   it('without --apply the verified result stays on soot/<run>/integration and the run says why', async () => {
