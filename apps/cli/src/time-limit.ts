@@ -7,6 +7,18 @@
 /** Default limit for one model call: one api-runner try, or one planner call. */
 export const DEFAULT_MODEL_CALL_TIMEOUT_MS = 120_000;
 
+/**
+ * How much later than the limit a per-request timeout from `requestTimeout()` comes due.
+ * Without it, the adapter's `AbortSignal.timeout(time left)` and the limit's own timer came due
+ * in the same millisecond (the time left is measured with `Date.now()`, the timers run on
+ * Node's own millisecond clock), and the adapter's sometimes fired first: the caller then got
+ * the adapter's generic "operation was aborted" timeout instead of `onTimeout()` — about 1–4%
+ * of hung calls in a local stress run on Node 26, and flaky ADR-040 tests in CI. With the
+ * margin the limit always fires first; the per-request timeout stays as a backstop for a
+ * request that ignores the abort.
+ */
+export const REQUEST_TIMEOUT_MARGIN_MS = 1000;
+
 /** "120s", "1.5s", "300 ms": short, human, exact enough for history and the dashboard. */
 export function formatLimit(ms: number): string {
   if (ms < 1000) return `${String(ms)} ms`;
@@ -27,12 +39,13 @@ export class TimeLimitError extends Error {
 /**
  * Run `fn` with a signal that aborts when `signal` does or when `limitMs` passes. On expiry
  * the result rejects with `onTimeout()` even if `fn` ignores the abort, so a hung request can
- * never hold the caller past the limit. `remaining()` is the time left, for per-request limits.
+ * never hold the caller past the limit. `requestTimeout()` is a per-request timeout to hand to
+ * an adapter: the time left plus `REQUEST_TIMEOUT_MARGIN_MS`, so it never fires before the limit.
  */
 export async function withTimeLimit<T>(
   limitMs: number,
   signal: AbortSignal | undefined,
-  fn: (signal: AbortSignal, remaining: () => number) => Promise<T>,
+  fn: (signal: AbortSignal, requestTimeout: () => number) => Promise<T>,
   onTimeout: () => Error,
 ): Promise<T> {
   const deadline = Date.now() + limitMs;
@@ -48,7 +61,8 @@ export async function withTimeLimit<T>(
   // Swallow the rejection when fn settles first; the race below still sees it otherwise.
   expired.catch(() => undefined);
   try {
-    return await Promise.race([fn(combined, () => Math.max(1, deadline - Date.now())), expired]);
+    const requestTimeout = () => Math.max(1, deadline - Date.now()) + REQUEST_TIMEOUT_MARGIN_MS;
+    return await Promise.race([fn(combined, requestTimeout), expired]);
   } catch (error) {
     if (expiry.signal.aborted && signal?.aborted !== true) throw onTimeout();
     throw error;

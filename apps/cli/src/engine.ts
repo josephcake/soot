@@ -483,11 +483,11 @@ export class SootEngine implements OrchestrationService {
       decomposition = await withTimeLimit(
         planLimitMs,
         signal,
-        (planSignal, remaining) =>
+        (planSignal, requestTimeout) =>
           createDecomposer({
             fixtures: [...SPEC_FIXTURES, ...fixtures],
             model: decomposerModel.status === 'usable' ? decomposerModel.client : null,
-            timeoutMs: remaining(),
+            timeoutMs: requestTimeout(),
           }).decompose(intake, planSignal),
         () =>
           new TimeLimitError(
