@@ -206,9 +206,18 @@ models in your registry file:
 - `soot config` (and `--json`, field `decomposer`) shows the setting and whether it is usable,
   without printing any key. Checking builds a client but makes no request.
 - Only decomposition uses this model. Execution needs `--agent api` (each task on its routed
-  model, ADR-039), `--agent mock` or `--agent acp`; routing is unchanged. Decomposition tokens
-  are recorded in the run report (`decomposition.usage`, priced) but are not yet counted in the
-  cost report or run budget.
+  model, ADR-039), `--agent mock` or `--agent acp`; routing is unchanged.
+- **Planning cost (ADR-045).** The planning call's tokens and price are a line of their own in
+  `soot cost`, the run report and the dashboard ("Planning (decomposition, not a task)"), and
+  the run total includes them (`cost.totals.run`). An unpriced model or unreported usage stays
+  `unknown`, never $0. Priced planning counts against `escalation.runBudgetUsd` before any
+  task starts: if planning alone is over the budget, the run stops with that reason and no
+  task starts; otherwise the tasks share what is left. Unknown planning cost is not counted
+  (soot logs a warning when a run budget is set).
+- **Provider cooldowns (ADR-045).** The planner call is skipped while its provider is in a
+  cooldown recorded by an earlier task attempt or planner call (the model is reported as not
+  usable, with the time it ends), and an outage, rate limit, timeout or auth failure of the
+  planner call records a cooldown the same way a task attempt does.
 - **Status:** implemented, verified with mock model clients, and run live with
   `deepseek/deepseek-flash` (2026-11-13).
 

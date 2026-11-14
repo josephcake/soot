@@ -109,6 +109,28 @@ describe('AdaptiveSupervisor', () => {
     }
   });
 
+  it('counts priced planning spend against the run budget (ADR-045)', () => {
+    // The first attempt's estimate ($0.000875) fits a $0.001 run budget on its own.
+    const alone = new AdaptiveSupervisor({
+      registry,
+      policy: 'balanced',
+      config: { runBudgetUsd: 0.001 },
+    });
+    expect(alone.plan(ctx())).toMatchObject({ action: 'run' });
+    const withPlanning = new AdaptiveSupervisor({
+      registry,
+      policy: 'balanced',
+      config: { runBudgetUsd: 0.001 },
+      planningSpendUsd: 0.0005,
+    });
+    expect(withPlanning.runSpent()).toBeCloseTo(0.0005, 12);
+    const d = withPlanning.plan(ctx());
+    expect(d).toMatchObject({ action: 'stop' });
+    expect(reasonOf(d)).toMatch(
+      /^run budget exhausted: spent \$0\.000500 \(planning \$0\.000500\) \+ next attempt \$0\.000875 > \$0\.001000/,
+    );
+  });
+
   it('never assigns a listed-only model even when it is the most reliable listed model', () => {
     const s = new AdaptiveSupervisor({ registry, policy: 'quality' });
     const history = [1, 2, 3, 4].map((n) => failed(n, 'beta/test-frontier', 'reported-failure', 2));

@@ -1056,3 +1056,56 @@ the old one.
   skip local models.
 - **Reversible:** Yes. `"localModels": false` or `SOOT_LOCAL_MODELS=off` per project or
   shell; removing the merge call in the CLI removes it everywhere.
+
+## ADR-045: The planning call counts in the cost report, the run budget and provider cooldowns
+
+- **Date:** 2026-11-14
+- **Status:** Accepted (Mochi, on Joseph's "lets start solving for each of these"; resolves
+  GitHub issue #5). Implemented; verified with unit tests, mock model clients and the mock
+  agent only. Amends ADR-034 and ADR-037 (planning cost was saved on the run but left out of
+  the cost report and budget) and ADR-030 (cooldowns were recorded by task attempts only).
+- **Context:** A model-decomposed run priced its planning call (`decomposition.costUsd`) but
+  `soot cost`, the consolidated report and the run budget ignored it, so a run looked cheaper
+  than it was and a tight budget could be exceeded before any task started. The planner call
+  also ignored provider cooldowns.
+- **Decision:**
+  - **Cost report.** `buildCostReport(tasks, planning?)` (`@soot/observability`) takes the
+    planning call and returns it as `planning` (label `planning (decomposition)`, model,
+    reported tokens, `actualUsd`, `priced`), never inside a task or `byModel`. `totals.actual`
+    stays the tasks' actuals; new `totals.run` = planning + tasks (`null` when either is
+    unknown) with `planningUsd`. The text adds a "Planning (decomposition, not a task)" line
+    and "Total actual with planning". Fixture plans have `planning: null` and unchanged totals.
+  - **Persistence.** `soot.sqlite` gets a `run_planning` table (created on open; no schema
+    version change), written right after the run is created, so `soot cost` shows planning
+    for runs in progress too. Older runs have none.
+  - **Budget.** After planning, if its priced cost alone exceeds `escalation.runBudgetUsd`,
+    `plan()` fails with `decompositionFailure: "run-budget"` and the amounts; no run, worktree
+    or task is created (the dashboard code is `planning_over_budget`). Otherwise
+    `AdaptiveSupervisor` gets `planningSpendUsd`, which `runSpent()` includes, so every task's
+    run-budget check sees it and the stop reason names it. Unknown planning cost (unpriced
+    model, unreported usage) is not counted and soot warns when a run budget is set: the
+    money is already spent, so refusing to continue would not protect the budget, and soot
+    never invents a number.
+  - **Cooldowns.** Before a planner call, soot reads the cooldowns in `soot.sqlite`; a
+    provider in cooldown makes the decomposer `unusable` with the reason and end time (recorded
+    prompts still run from fixtures). A planner call that fails with a provider error of kind
+    `unavailable`, `rate-limited` (honouring retry-after), `timeout` or `auth` marks the
+    provider unavailable through `ProviderHealth`, as task attempts and `generateWithFallback`
+    do; the failure output names the cooldown. `ModelDecompositionError` now carries the
+    provider error's kind and retry-after for this.
+- **Verification:** unit tests (planning line, run totals, unpriced, fixture; supervisor run
+  budget with planning); engine tests with mock clients: priced planning in `soot cost` and the
+  run report, unpriced planning stays unknown with the warning, planning alone over the budget
+  stops before any task (no branch, no run recorded), planning plus a task over a budget the
+  task alone fits stops the task with the planning amount in the reason, an outage records a
+  cooldown that makes the next planner call skip the provider, HTTP 400 records none, fixture
+  plans unchanged.
+- **Alternatives:** folding planning into `totals.actual` (would change a field existing views
+  read as task spend); recording planning as a pseudo-task in `attempt_spend` (would leak into
+  task views and history); refusing to run when planning is unpriced and a budget is set
+  (blocks work after the money is spent, without protecting anything).
+- **Consequences:** budgets are honest for priced planners; a budget smaller than the planning
+  call now fails the run before tasks. Tokens spent on an answer that fails validation are
+  still not counted (the error carries no usage).
+- **Reversible:** Yes. Drop the `planning` argument and the supervisor option; the table is
+  additive.

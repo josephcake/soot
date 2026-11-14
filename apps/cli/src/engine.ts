@@ -51,6 +51,7 @@ import {
   type LocalRuntimeReport,
   loadRegistryConfigFile,
   type AutoProviderReport,
+  type UnavailableReason,
   unpricedModels,
   unpricedWarning,
   type ModelEntry,
@@ -67,6 +68,7 @@ import {
   costRecordsFromAttempts,
   renderCostReport,
   summarizeCosts,
+  type PlanningCostInput,
 } from '@soot/observability';
 import {
   ModelDecompositionError,
@@ -595,7 +597,14 @@ export class SootEngine implements OrchestrationService {
     const intake = createPromptIntake({ prompt: request.prompt });
     // Fixtures first; the configured decomposer model only for prompts no fixture matches, and
     // only when a client could be built (ADR-034). No client: fixture-only, no network.
-    const decomposerModel = this.#decomposerModel(cfg, registry);
+    let decomposerModel = this.#decomposerModel(cfg, registry);
+    // The planner call honours provider cooldowns recorded by earlier calls (issue #5, ADR-045).
+    if (decomposerModel.status === 'usable') {
+      const cooling = this.#cooldownOf(decomposerModel.client.provider);
+      if (cooling !== null) {
+        decomposerModel = { status: 'unusable', ref: decomposerModel.ref, reason: cooling };
+      }
+    }
     if (decomposerModel.status === 'unusable') {
       log.warn(
         `soot: decomposer model ${decomposerModel.ref} is not usable (${decomposerModel.reason}); only recorded prompts can be decomposed`,
@@ -655,14 +664,31 @@ export class SootEngine implements OrchestrationService {
         );
       }
       if (error instanceof ModelDecompositionError) {
+        // A provider failure puts the provider in cooldown, as a task attempt would (ADR-045).
+        const cooldown =
+          decomposerModel.status === 'usable'
+            ? this.#recordPlannerFailure(decomposerModel.client.provider, error)
+            : null;
         // Reported as is: soot never falls back to a guess or a similar fixture.
         return failed(
-          fail([error.message, ...error.issues.map((i) => `- ${i}`)].join('\n'), {
-            promptSha256: error.promptSha256,
-            decomposerModel: error.modelRef,
-            decompositionFailure: error.reason,
-            issues: [...error.issues],
-          }),
+          fail(
+            [
+              error.message,
+              ...error.issues.map((i) => `- ${i}`),
+              ...(cooldown === null
+                ? []
+                : [
+                    `Provider ${cooldown.provider} is now in cooldown (${cooldown.reason})${cooldown.until === null ? ' for this session' : ` until ${new Date(cooldown.until).toISOString()}`}; routing and planning skip it until then.`,
+                  ]),
+            ].join('\n'),
+            {
+              promptSha256: error.promptSha256,
+              decomposerModel: error.modelRef,
+              decompositionFailure: error.reason,
+              issues: [...error.issues],
+              ...(cooldown === null ? {} : { providerCooldown: json(cooldown) }),
+            },
+          ),
         );
       }
       return failed(fail((error as Error).message));
@@ -670,6 +696,35 @@ export class SootEngine implements OrchestrationService {
     const { graph } = decomposition;
     const source = decomposition.decomposer;
     const planning = planningCost(registry, source);
+    // Planning spend counts against the run budget before any task starts (issue #5, ADR-045).
+    if (source.kind === 'model') {
+      let runBudgetUsd: number | null;
+      try {
+        runBudgetUsd = escalationConfig(cfg.config.escalation ?? {}).runBudgetUsd;
+      } catch (error) {
+        return failed(fail((error as Error).message));
+      }
+      const spent = planning.costUsd ?? null;
+      if (runBudgetUsd !== null && spent !== null && spent > runBudgetUsd) {
+        return failed(
+          fail(
+            `Planning alone cost $${spent.toFixed(6)} (${source.modelRef}), more than the run budget of $${String(runBudgetUsd)} ("escalation.runBudgetUsd" in ${CONFIG_FILE}). No task was started.`,
+            {
+              promptSha256: intake.promptSha256,
+              decomposerModel: source.modelRef,
+              decompositionFailure: 'run-budget',
+              planningCostUsd: spent,
+              runBudgetUsd,
+            },
+          ),
+        );
+      }
+      if (runBudgetUsd !== null && spent === null) {
+        log.warn(
+          `soot: the planning call's cost is unknown (${planning.priceBasis === null || planning.priceBasis === undefined ? `${source.modelRef} has no price` : 'usage not reported'}); it is not counted against the run budget`,
+        );
+      }
+    }
     const fixtureId = source.kind === 'fixture' ? source.fixtureId : null;
     const planLabel =
       source.kind === 'fixture'
@@ -786,8 +841,18 @@ export class SootEngine implements OrchestrationService {
       store.close();
       return fail((error as Error).message);
     }
+    const planningLine = planningCostInput(source, planning);
     try {
       store.createRun({ runId, intake, graph });
+      if (planningLine !== null) {
+        store.savePlanningCost(runId, {
+          model: planningLine.model,
+          inputTokens: planningLine.inputTokens,
+          outputTokens: planningLine.outputTokens,
+          usd: planningLine.costUsd,
+          priced: planningLine.priced,
+        });
+      }
       const runAudit = new AuditLog({ runId, file: auditLogPath(this.#o.dataDir, runId) });
       plan.acp.audit = runAudit;
       hooks.onRunStarted?.(runId);
@@ -818,6 +883,8 @@ export class SootEngine implements OrchestrationService {
         health,
         // Run-budget spend is kept per attempt in soot.sqlite and reloaded on restart (ADR-030).
         spend: store.spendLedger(runId),
+        // Priced planning counts against the run budget (ADR-045); unknown is never guessed.
+        ...(planningLine?.costUsd == null ? {} : { planningSpendUsd: planningLine.costUsd }),
         ...(cfg.config.escalation === undefined ? {} : { config: cfg.config.escalation }),
         onEvent: (e) => {
           progress(`soot: ${eventLine(e).slice(2)}`);
@@ -877,6 +944,7 @@ export class SootEngine implements OrchestrationService {
           },
         },
         prompt: request.prompt,
+        planning: planningLine,
         ...(this.#o.gitEnv === undefined ? {} : { gitEnv: this.#o.gitEnv }),
       });
       const { report } = result;
@@ -938,6 +1006,48 @@ export class SootEngine implements OrchestrationService {
       return fail(`run ${runId} failed: ${(error as Error).message}`, { runId });
     } finally {
       control.release();
+      store.close();
+    }
+  }
+
+  /**
+   * Why a provider may not be called now (a cooldown recorded in soot.sqlite by an earlier task
+   * attempt or planner call), or `null` when it may (ADR-045).
+   */
+  #cooldownOf(provider: string): string | null {
+    const store = this.#store();
+    try {
+      const status = new ProviderHealth({ store }).status(provider);
+      if (status.available || status.until === null) return null;
+      return `provider "${provider}" is in cooldown until ${new Date(status.until).toISOString()} (${String(status.reason)}${status.detail === null ? '' : `: ${status.detail}`}), recorded by an earlier call`;
+    } finally {
+      store.close();
+    }
+  }
+
+  /**
+   * Record a cooldown for the planner's provider when its call failed the way a task attempt's
+   * would (outage, rate limit, auth, timeout). Returns what was recorded, or `null`.
+   */
+  #recordPlannerFailure(
+    provider: string,
+    error: ModelDecompositionError,
+  ): { provider: string; reason: UnavailableReason; until: number | null } | null {
+    const kind = error.providerError?.kind;
+    const reason: UnavailableReason | undefined =
+      kind === undefined ? undefined : PLANNER_COOLDOWN_REASON[kind];
+    if (reason === undefined || error.reason !== 'model-call-failed') return null;
+    const store = this.#store();
+    try {
+      const health = new ProviderHealth({ store });
+      const retryAfter = error.providerError?.retryAfterMs ?? null;
+      health.markUnavailable(provider, reason, {
+        detail: `planner call: ${error.message}`.slice(0, 500),
+        ...(retryAfter === null ? {} : { cooldownMs: retryAfter }),
+      });
+      const until = health.status(provider).until;
+      return { provider, reason, until: until !== null && Number.isFinite(until) ? until : null };
+    } finally {
       store.close();
     }
   }
@@ -1114,6 +1224,7 @@ export class SootEngine implements OrchestrationService {
               result: a.result === null ? null : { status: a.result.status, usage: a.result.usage },
             })),
         })),
+        planningFromStore(store.planningCost(id)),
       );
       const costRecords = this.#costRecords(store, id);
       const summary = summarizeCosts(costRecords);
@@ -1372,6 +1483,49 @@ export function planningCost(registry: ModelRegistry, source: DecompositionSourc
     cacheWriteTokens: null,
   });
   return { costUsd: costUsd === null ? null : Number(costUsd), priceBasis: basis };
+}
+
+/** Provider error kinds that put the planner's provider in cooldown, as for task attempts. */
+const PLANNER_COOLDOWN_REASON: Readonly<Record<string, UnavailableReason>> = {
+  unavailable: 'outage',
+  'rate-limited': 'rate-limited',
+  timeout: 'timeout',
+  auth: 'auth',
+};
+
+/** The cost report's planning line for a model plan; `null` for a fixture plan (ADR-045). */
+export function planningCostInput(
+  source: DecompositionSource,
+  cost: PlanningCost,
+): PlanningCostInput | null {
+  if (source.kind !== 'model') return null;
+  return {
+    model: source.modelRef,
+    inputTokens: source.usage.inputTokens,
+    outputTokens: source.usage.outputTokens,
+    costUsd: cost.costUsd ?? null,
+    priced: cost.priceBasis !== null && cost.priceBasis !== undefined,
+  };
+}
+
+function planningFromStore(
+  p: {
+    model: string;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    usd: number | null;
+    priced: boolean;
+  } | null,
+): PlanningCostInput | null {
+  return p === null
+    ? null
+    : {
+        model: p.model,
+        inputTokens: p.inputTokens,
+        outputTokens: p.outputTokens,
+        costUsd: p.usd,
+        priced: p.priced,
+      };
 }
 
 function describePlanningCost(source: ModelDecompositionSource, cost: PlanningCost): string {

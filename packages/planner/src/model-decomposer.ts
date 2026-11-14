@@ -48,6 +48,12 @@ export class ModelDecompositionError extends Error {
   readonly modelRef: string;
   /** Validation problems, one per line, when the output was rejected. */
   readonly issues: readonly string[];
+  /**
+   * For `model-call-failed`: the provider error's kind (`unavailable`, `rate-limited`, `auth`,
+   * `timeout`, ...) and its retry-after, so the caller can record a provider cooldown
+   * (ADR-045). `null` when the failure carried no kind.
+   */
+  readonly providerError: { readonly kind: string; readonly retryAfterMs: number | null } | null;
 
   constructor(init: {
     reason: ModelDecompositionFailure;
@@ -55,6 +61,7 @@ export class ModelDecompositionError extends Error {
     modelRef: string;
     message: string;
     issues?: readonly string[];
+    providerError?: { readonly kind: string; readonly retryAfterMs: number | null } | null;
   }) {
     super(`Model decomposition by ${init.modelRef} failed (${init.reason}): ${init.message}`);
     this.name = 'ModelDecompositionError';
@@ -62,6 +69,7 @@ export class ModelDecompositionError extends Error {
     this.promptSha256 = init.promptSha256;
     this.modelRef = init.modelRef;
     this.issues = init.issues ?? [];
+    this.providerError = init.providerError ?? null;
   }
 }
 
@@ -182,11 +190,19 @@ export class ModelDecomposer implements Decomposer {
         signal,
       );
     } catch (error) {
-      const kind = (error as { kind?: unknown } | null)?.kind;
-      throw fail(
-        kind === 'invalid-output' ? 'invalid-output' : 'model-call-failed',
-        errorText(error),
-      );
+      const e = error as { kind?: unknown; retryAfterMs?: unknown } | null;
+      const kind = e?.kind;
+      if (kind === 'invalid-output') throw fail('invalid-output', errorText(error));
+      throw new ModelDecompositionError({
+        reason: 'model-call-failed',
+        promptSha256: intake.promptSha256,
+        modelRef: this.#model.ref,
+        message: errorText(error),
+        providerError:
+          typeof kind === 'string'
+            ? { kind, retryAfterMs: typeof e?.retryAfterMs === 'number' ? e.retryAfterMs : null }
+            : null,
+      });
     }
 
     // Re-validate on our side: the ModelClient interface does not promise validation.

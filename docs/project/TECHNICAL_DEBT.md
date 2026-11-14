@@ -32,11 +32,13 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   configured DeepSeek provider is callable through the `openai-compatible` adapter, but no live
   DeepSeek request has been made: wire behaviour, structured output and decomposition quality
   are unknown. Verify together with M2-07.
-- **[Deferred] Decomposer model spend and health (ADR-034).** The decomposition call's tokens are
-  saved in the run report (`decomposition.usage`) but are not priced into the cost report or
-  counted against the run budget, and the call does not consult or update provider cooldowns.
-  Fix together with real-provider verification (M2-07). Fixture token estimates are
-  placeholders, not measurements; model estimates are the model's guesses.
+- **[Resolved, ADR-045] Decomposer model spend and health (ADR-034).** The planning call is a
+  labelled line in the cost report, `soot cost` and the run total; priced planning counts
+  against the run budget before any task starts; the call honours and records provider
+  cooldowns. Still open: an answer that fails validation spent tokens that no report counts
+  (the failure carries no usage), and unknown (unpriced) planning is not counted against the
+  budget. Fixture token estimates are placeholders, not measurements; model estimates are the
+  model's guesses.
 - **[Intentional] Agents are mocks.** `MockAgentRunner` and the generic ACP runner
   (`AcpAgentRunner`, ADR-027) are the only runners, and the ACP runner has only driven soot's own
   mock ACP agent. In Milestone 5 the mock writes scripted files into the worktree it is given. Since M5, "complete" means soot ran the

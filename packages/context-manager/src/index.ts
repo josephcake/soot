@@ -21,6 +21,7 @@ export {
   openExecutionStore,
   type AttemptSpend,
   type AttemptSpendLedger,
+  type RunPlanningCost,
   type CreateRunInput,
   type ModelOutcome,
   type OpenExecutionStoreOptions,
