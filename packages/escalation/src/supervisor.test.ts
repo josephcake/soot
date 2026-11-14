@@ -109,7 +109,7 @@ describe('AdaptiveSupervisor', () => {
     }
   });
 
-  it('counts priced planning spend against the run budget (ADR-045)', () => {
+  it('counts priced planning spend against the run budget (ADR-046)', () => {
     // The first attempt's estimate ($0.000875) fits a $0.001 run budget on its own.
     const alone = new AdaptiveSupervisor({
       registry,

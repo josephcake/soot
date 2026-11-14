@@ -99,7 +99,7 @@ export const ProjectConfigSchema = z
      */
     autoModels: z.boolean().default(true),
     /**
-     * Probe local runtimes (Ollama, LM Studio) for keyless models (ADR-044). Default true:
+     * Probe local runtimes (Ollama, LM Studio) for keyless models (ADR-045). Default true:
      * probe the default ports. `false`: never probe. `{"urls": [...]}`: probe these
      * OpenAI-compatible base URLs instead (`SOOT_LOCAL_MODEL_URLS` overrides);
      * `{"contextWindow": N}`: the window to assume for local models (default 4096). Off when

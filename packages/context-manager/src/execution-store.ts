@@ -40,7 +40,7 @@ export interface AttemptSpend {
   readonly source: 'actual' | 'estimate';
 }
 
-/** A run's planning model call (`run_planning`, ADR-045). `usd: null` = unknown, never 0. */
+/** A run's planning model call (`run_planning`, ADR-046). `usd: null` = unknown, never 0. */
 export interface RunPlanningCost {
   readonly model: string;
   readonly inputTokens: number | null;
@@ -347,7 +347,7 @@ export class ExecutionStore {
   }
 
   /**
-   * Record the run's planning (decomposition) model call (issue #5, ADR-045): reported tokens
+   * Record the run's planning (decomposition) model call (issue #5, ADR-046): reported tokens
    * and USD (`null` = unknown: unpriced model or no usage reported). Fixture plans record none.
    */
   savePlanningCost(runId: string, planning: RunPlanningCost): void {
@@ -372,7 +372,7 @@ export class ExecutionStore {
       );
   }
 
-  /** The run's planning call, or `null` for a fixture plan or a run from before ADR-045. */
+  /** The run's planning call, or `null` for a fixture plan or a run from before ADR-046. */
   planningCost(runId: string): RunPlanningCost | null {
     const row = this.#db
       .prepare(

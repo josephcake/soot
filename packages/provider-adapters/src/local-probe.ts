@@ -8,7 +8,7 @@ import { discoverModelIds } from './discovery.js';
 import { ProviderError } from './errors.js';
 
 /*
- * Probe local runtimes (ADR-044): `GET <baseURL>/models` on each, in parallel, with a short
+ * Probe local runtimes (ADR-045): `GET <baseURL>/models` on each, in parallel, with a short
  * limit and no key. Never throws: a runtime that is not running is `unreachable`.
  */
 

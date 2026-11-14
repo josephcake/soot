@@ -54,7 +54,7 @@ to `deepseek/deepseek-flash`, a medium React task to `xai/grok-4.3`, a hard debu
 `contextWindow` is assumed to take 32,000 tokens (`HOSTED_CONTEXT_FLOOR`), so ordinary tasks
 can route to it; local endpoints and larger tasks need the window configured (ADR-039).
 
-Local runtimes (ADR-044): models soot finds on Ollama or LM Studio are free and tier `low`
+Local runtimes (ADR-045): models soot finds on Ollama or LM Studio are free and tier `low`
 with an assumed 4096-token window, so with Ollama running next to those two keys the CSS
 change goes to the local model instead, and the medium and hard tasks route as above. A task
 bigger than the local window skips the local model.

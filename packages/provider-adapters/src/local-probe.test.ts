@@ -1,5 +1,5 @@
 /**
- * ADR-044: probing local runtimes. Fake HTTP servers on 127.0.0.1 only; no real runtime and
+ * ADR-045: probing local runtimes. Fake HTTP servers on 127.0.0.1 only; no real runtime and
  * no remote host is contacted.
  */
 import { createServer, type Server } from 'node:http';

@@ -58,7 +58,7 @@ export interface CodebaseWorkflowOptions {
   /** Where soot-verified model outcomes are stored for routing feedback (M5-07). */
   readonly outcomes?: OutcomeSink;
   readonly prompt?: string;
-  /** The planning model call, shown on its own line in the report's cost (ADR-045). */
+  /** The planning model call, shown on its own line in the report's cost (ADR-046). */
   readonly planning?: PlanningCostInput | null;
   readonly identity?: GitIdentity;
   readonly gitEnv?: NodeJS.ProcessEnv;

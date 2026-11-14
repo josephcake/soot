@@ -64,7 +64,7 @@ export interface ModelCostLine {
 }
 
 /**
- * The planning (decomposition) model call (issue #5, ADR-045). Its own line, never mixed into a
+ * The planning (decomposition) model call (issue #5, ADR-046). Its own line, never mixed into a
  * task. `costUsd` is reported usage × list price; `null` when the model has no price or the
  * call reported no usage (never read as 0).
  */

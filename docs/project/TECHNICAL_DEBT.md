@@ -32,7 +32,7 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   configured DeepSeek provider is callable through the `openai-compatible` adapter, but no live
   DeepSeek request has been made: wire behaviour, structured output and decomposition quality
   are unknown. Verify together with M2-07.
-- **[Resolved, ADR-045] Decomposer model spend and health (ADR-034).** The planning call is a
+- **[Resolved, ADR-046] Decomposer model spend and health (ADR-034).** The planning call is a
   labelled line in the cost report, `soot cost` and the run total; priced planning counts
   against the run budget before any task starts; the call honours and records provider
   cooldowns. Still open: an answer that fails validation spent tokens that no report counts

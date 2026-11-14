@@ -51,7 +51,7 @@ export class ModelDecompositionError extends Error {
   /**
    * For `model-call-failed`: the provider error's kind (`unavailable`, `rate-limited`, `auth`,
    * `timeout`, ...) and its retry-after, so the caller can record a provider cooldown
-   * (ADR-045). `null` when the failure carried no kind.
+   * (ADR-046). `null` when the failure carried no kind.
    */
   readonly providerError: { readonly kind: string; readonly retryAfterMs: number | null } | null;
 

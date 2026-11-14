@@ -158,7 +158,7 @@ export interface EngineOptions {
   /** Day (YYYY-MM-DD) used to pick dated catalog prices (ADR-037). Default: today (UTC). */
   readonly priceDate?: string;
   /**
-   * Probes local runtimes for keyless models (ADR-044). Default `probeLocalRuntimes`
+   * Probes local runtimes for keyless models (ADR-045). Default `probeLocalRuntimes`
    * (`GET <baseURL>/models`, short limit, no key). Tests pass one bound to a fake server.
    */
   readonly localProbe?: (runtimes: readonly LocalRuntime[]) => Promise<LocalRuntimeProbe[]>;
@@ -178,13 +178,13 @@ interface PricedRegistry {
   readonly auto: readonly AutoProviderReport[];
   /** Refs added from keys and from local runtimes (`origin: 'auto'`). */
   readonly autoRefs: readonly string[];
-  /** One row per local runtime (ADR-044): added, not running, configured, off, ... */
+  /** One row per local runtime (ADR-045): added, not running, configured, off, ... */
   readonly local: readonly LocalRuntimeReport[];
   readonly localRefs: readonly string[];
   readonly localSettings: LocalProbeSettings;
 }
 
-/** Local probe settings for a loaded config (ADR-044). Throws on a bad URL. */
+/** Local probe settings for a loaded config (ADR-045). Throws on a bad URL. */
 function localSettingsFor(
   cfg: LoadedConfig,
   env: Readonly<Record<string, string | undefined>>,
@@ -378,7 +378,7 @@ const USED_PLANS = new WeakSet<EnginePlan>();
 export class SootEngine implements OrchestrationService {
   readonly #o: EngineOptions;
 
-  /** Local runtime probes from this engine's async commands, by runtime list (ADR-044). */
+  /** Local runtime probes from this engine's async commands, by runtime list (ADR-045). */
   readonly #probed = new Map<string, readonly LocalRuntimeProbe[]>();
 
   constructor(options: EngineOptions) {
@@ -386,7 +386,7 @@ export class SootEngine implements OrchestrationService {
   }
 
   /**
-   * Probe the local runtimes the project's config and environment name (ADR-044), so the
+   * Probe the local runtimes the project's config and environment name (ADR-045), so the
    * next registry load includes their models. `plan`/`run` and `models` call it; call it before
    * the synchronous `config()` to see local models there. Never throws: a config error is
    * reported by the command itself, and a runtime that is not running is just not running.
@@ -598,7 +598,7 @@ export class SootEngine implements OrchestrationService {
     // Fixtures first; the configured decomposer model only for prompts no fixture matches, and
     // only when a client could be built (ADR-034). No client: fixture-only, no network.
     let decomposerModel = this.#decomposerModel(cfg, registry);
-    // The planner call honours provider cooldowns recorded by earlier calls (issue #5, ADR-045).
+    // The planner call honours provider cooldowns recorded by earlier calls (issue #5, ADR-046).
     if (decomposerModel.status === 'usable') {
       const cooling = this.#cooldownOf(decomposerModel.client.provider);
       if (cooling !== null) {
@@ -664,7 +664,7 @@ export class SootEngine implements OrchestrationService {
         );
       }
       if (error instanceof ModelDecompositionError) {
-        // A provider failure puts the provider in cooldown, as a task attempt would (ADR-045).
+        // A provider failure puts the provider in cooldown, as a task attempt would (ADR-046).
         const cooldown =
           decomposerModel.status === 'usable'
             ? this.#recordPlannerFailure(decomposerModel.client.provider, error)
@@ -696,7 +696,7 @@ export class SootEngine implements OrchestrationService {
     const { graph } = decomposition;
     const source = decomposition.decomposer;
     const planning = planningCost(registry, source);
-    // Planning spend counts against the run budget before any task starts (issue #5, ADR-045).
+    // Planning spend counts against the run budget before any task starts (issue #5, ADR-046).
     if (source.kind === 'model') {
       let runBudgetUsd: number | null;
       try {
@@ -883,7 +883,7 @@ export class SootEngine implements OrchestrationService {
         health,
         // Run-budget spend is kept per attempt in soot.sqlite and reloaded on restart (ADR-030).
         spend: store.spendLedger(runId),
-        // Priced planning counts against the run budget (ADR-045); unknown is never guessed.
+        // Priced planning counts against the run budget (ADR-046); unknown is never guessed.
         ...(planningLine?.costUsd == null ? {} : { planningSpendUsd: planningLine.costUsd }),
         ...(cfg.config.escalation === undefined ? {} : { config: cfg.config.escalation }),
         onEvent: (e) => {
@@ -1012,7 +1012,7 @@ export class SootEngine implements OrchestrationService {
 
   /**
    * Why a provider may not be called now (a cooldown recorded in soot.sqlite by an earlier task
-   * attempt or planner call), or `null` when it may (ADR-045).
+   * attempt or planner call), or `null` when it may (ADR-046).
    */
   #cooldownOf(provider: string): string | null {
     const store = this.#store();
@@ -1493,7 +1493,7 @@ const PLANNER_COOLDOWN_REASON: Readonly<Record<string, UnavailableReason>> = {
   auth: 'auth',
 };
 
-/** The cost report's planning line for a model plan; `null` for a fixture plan (ADR-045). */
+/** The cost report's planning line for a model plan; `null` for a fixture plan (ADR-046). */
 export function planningCostInput(
   source: DecompositionSource,
   cost: PlanningCost,

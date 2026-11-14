@@ -1,4 +1,4 @@
-/** ADR-044: keyless local models (pure: the caller hands in probe results). */
+/** ADR-045: keyless local models (pure: the caller hands in probe results). */
 import { describe, expect, it } from 'vitest';
 import { parseRegistryConfig } from './config.js';
 import {

@@ -999,7 +999,8 @@ the old one.
     with `pnpm dlx`.
 - **Reversible:** Yes. The colors, metadata and sections are additive. The floor stays where
   it was.
-## ADR-044: Keyless local models are probed and added at $0, tier low
+
+## ADR-045: Keyless local models are probed and added at $0, tier low
 
 - **Date:** 2026-11-14
 - **Status:** Accepted (Mochi, on Joseph's request: "for local llms sometimes there are no
@@ -1057,7 +1058,7 @@ the old one.
 - **Reversible:** Yes. `"localModels": false` or `SOOT_LOCAL_MODELS=off` per project or
   shell; removing the merge call in the CLI removes it everywhere.
 
-## ADR-045: The planning call counts in the cost report, the run budget and provider cooldowns
+## ADR-046: The planning call counts in the cost report, the run budget and provider cooldowns
 
 - **Date:** 2026-11-14
 - **Status:** Accepted (Mochi, on Joseph's "lets start solving for each of these"; resolves

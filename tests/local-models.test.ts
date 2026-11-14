@@ -1,5 +1,5 @@
 /**
- * ADR-044: keyless local models through the CLI and engine. The "local runtime" is a fake
+ * ADR-045: keyless local models through the CLI and engine. The "local runtime" is a fake
  * OpenAI-compatible server on 127.0.0.1 named with SOOT_LOCAL_MODEL_URLS; no real runtime and
  * no remote provider is contacted (mock agent, fake key strings only).
  */

@@ -81,7 +81,7 @@ export interface ReportInput {
   readonly workingTree: WorkingTreeUpdate;
   readonly diffOverlaps: readonly DiffOverlap[];
   readonly cancelled: boolean;
-  /** The planning model call, for the cost report's own planning line (ADR-045). */
+  /** The planning model call, for the cost report's own planning line (ADR-046). */
   readonly planning?: PlanningCostInput | null;
 }
 

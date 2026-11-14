@@ -15,7 +15,7 @@ shell yourself (for example `set -a; . ./.env; set +a`).
 | `SOOT_LOG_LEVEL` | `info`    | `silent`, `error`, `warn`, `info`, `debug` (case-insensitive) | Log lines on stderr (see below). Invalid values fail the command with `SOOT_LOG_LEVEL: expected …`.   |
 | `SOOT_DATA_DIR`  | `~/.soot` | absolute or relative path (relative resolves against cwd)     | Local-first state: `soot.sqlite` (execution state, M1); `worktrees/<run>/`, `audit/<run>.jsonl` (M5). |
 
-Local model probing ([below](#keyless-local-models-adr-044)) reads two more variables, from the
+Local model probing ([below](#keyless-local-models-adr-045)) reads two more variables, from the
 environment soot starts in: `SOOT_LOCAL_MODELS` (`off`, `0` or `false` turns probing off) and
 `SOOT_LOCAL_MODEL_URLS` (comma-separated OpenAI-compatible base URLs to probe instead of the
 defaults).
@@ -164,7 +164,7 @@ task edits. Unknown keys are rejected.
 | -------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `models`             | none       | Model registry file (above), relative to the config file. Optional: without it, models come from your keys (`autoModels`).      |
 | `autoModels`         | `true`     | Add models for well-known vendor keys that are set (see [Auto models](#auto-models-from-your-keys-adr-043)). `false` = off.     |
-| `localModels`        | `true`     | Probe local runtimes for keyless models ([below](#keyless-local-models-adr-044)). `false` = off; `{ "urls", "contextWindow" }`. |
+| `localModels`        | `true`     | Probe local runtimes for keyless models ([below](#keyless-local-models-adr-045)). `false` = off; `{ "urls", "contextWindow" }`. |
 | `policy`             | `balanced` | `economy`, `balanced` or `quality` ([routing](model-routing.md)).                                                               |
 | `checks`             | `[]`       | Project checks run on every task that changes files, and on the merged result.                                                  |
 | `acceptance`         | `{}`       | Extra commands per task id; also run for read-only tasks (their only way to be verified).                                       |
@@ -207,14 +207,14 @@ models in your registry file:
   without printing any key. Checking builds a client but makes no request.
 - Only decomposition uses this model. Execution needs `--agent api` (each task on its routed
   model, ADR-039), `--agent mock` or `--agent acp`; routing is unchanged.
-- **Planning cost (ADR-045).** The planning call's tokens and price are a line of their own in
+- **Planning cost (ADR-046).** The planning call's tokens and price are a line of their own in
   `soot cost`, the run report and the dashboard ("Planning (decomposition, not a task)"), and
   the run total includes them (`cost.totals.run`). An unpriced model or unreported usage stays
   `unknown`, never $0. Priced planning counts against `escalation.runBudgetUsd` before any
   task starts: if planning alone is over the budget, the run stops with that reason and no
   task starts; otherwise the tasks share what is left. Unknown planning cost is not counted
   (soot logs a warning when a run budget is set).
-- **Provider cooldowns (ADR-045).** The planner call is skipped while its provider is in a
+- **Provider cooldowns (ADR-046).** The planner call is skipped while its provider is in a
   cooldown recorded by an earlier task attempt or planner call (the model is reported as not
   usable, with the time it ends), and an outage, rate limit, timeout or auth failure of the
   planner call records a cooldown the same way a task attempt does.
@@ -255,7 +255,7 @@ models by itself, so you can have several keys and let soot pick per task:
   whose key is set, skipping `low`-tier models when another is available. Without
   `decomposer`, decomposition stays fixtures-only as before.
 
-### Keyless local models (ADR-044)
+### Keyless local models (ADR-045)
 
 Local runtimes need no key. When `soot run`, `soot models` or `soot config` starts, soot asks
 each local runtime for its models (`GET <baseURL>/models`, no key sent, 500 ms limit, all

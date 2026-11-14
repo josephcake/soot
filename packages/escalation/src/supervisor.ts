@@ -69,7 +69,7 @@ export interface AdaptiveSupervisorOptions {
   readonly spend?: SpendLedger;
   /**
    * USD already spent on this run before any task: the priced planning (decomposition) call
-   * (issue #5, ADR-045). Counted in `runSpent()` and so against the run budget. Unknown
+   * (issue #5, ADR-046). Counted in `runSpent()` and so against the run budget. Unknown
    * (unpriced) planning is left out by the caller, never guessed.
    */
   readonly planningSpendUsd?: number;

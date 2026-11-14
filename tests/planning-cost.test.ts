@@ -1,5 +1,5 @@
 /**
- * Issue #5 (ADR-045): the planning (decomposer) call in the cost report, the run budget and
+ * Issue #5 (ADR-046): the planning (decomposer) call in the cost report, the run budget and
  * provider cooldowns. Mock model clients and the mock agent only; `fetch` is replaced with a
  * spy that rejects, so any network attempt fails the test.
  */

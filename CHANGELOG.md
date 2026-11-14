@@ -5,7 +5,7 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
-### Added (planning cost in the report and the run budget, ADR-045, issue #5)
+### Added (planning cost in the report and the run budget, ADR-046, issue #5)
 
 - The planning (decomposer) call is its own line in `soot cost` and the run report
   ("Planning (decomposition, not a task)"), saved in `soot.sqlite` (`run_planning`), and the run
@@ -16,7 +16,7 @@ All notable changes are recorded here by milestone. Format loosely follows
 - The planner call skips a provider in cooldown and records a cooldown on an outage, rate
   limit, timeout or auth failure, like task attempts.
 
-### Added (keyless local models, ADR-044)
+### Added (keyless local models, ADR-045)
 
 - soot probes Ollama (`127.0.0.1:11434`) and LM Studio (`127.0.0.1:1234`) with a 500 ms
   `GET /v1/models` and adds their chat models as keyless `local: true` providers, $0

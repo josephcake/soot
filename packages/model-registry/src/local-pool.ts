@@ -8,7 +8,7 @@ import {
 import { modelRef } from './registry.js';
 
 /*
- * Keyless local models (ADR-044). Local runtimes such as Ollama and LM Studio serve an
+ * Keyless local models (ADR-045). Local runtimes such as Ollama and LM Studio serve an
  * OpenAI-compatible API on the user's machine and need no key. The caller probes their
  * `GET /v1/models` (network lives in the adapter layer); this module is pure and turns the
  * probe results into `openai-compatible`, `local: true` providers with no `apiKeyEnv`, each
@@ -283,7 +283,7 @@ export function addLocalModels(
         modelId,
         // soot's API runner needs both. Most current local chat models offer tool calls and
         // JSON output through these runtimes; a model that does not fails its try and the
-        // escalation moves the task on (ADR-044).
+        // escalation moves the task on (ADR-045).
         capabilities: { tools: true, structuredOutput: true },
         contextWindow: input.settings.contextWindow,
         pricing: {

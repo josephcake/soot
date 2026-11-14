@@ -53,7 +53,7 @@ describe('AuditLog', () => {
 });
 
 describe('buildCostReport', () => {
-  it('puts the planning call on its own line and in the run total, never in a task (ADR-045)', () => {
+  it('puts the planning call on its own line and in the run total, never in a task (ADR-046)', () => {
     const tasks = [
       {
         taskId: 't1',
