@@ -195,7 +195,7 @@ M6 notes (2026-11-12, ADR-026):
 | M7-05 | Task visualization: task graph by layer, active agents, execution status | P2       | M7        | M7-01        | Verified    | apps/vscode-extension      | Graph and status match the engine's `soot status` for a run.                       |
 | M7-06 | Model assignment visibility: models per attempt, escalation/retry events | P2       | M7        | M7-01        | Implemented | apps/vscode-extension, cli | Each attempt's model and each escalation shown as the engine recorded them.        |
 | M7-07 | Cost reporting: estimate and actual, per run                             | P2       | M7        | M7-01        | Verified    | apps/vscode-extension      | Same numbers as `soot cost`; estimates and actuals never mixed.                    |
-| M7-08 | Task cancellation and orchestration on/off from the IDE (`stop --task`)  | P2       | M7        | M7-01        | Implemented | apps/vscode-extension, cli | Cancelling one task skips its dependents; other tasks continue.                    |
+| M7-08 | Task cancellation and orchestration on/off from the IDE (`stop --task`)  | P2       | M7        | M7-01        | Verified    | apps/vscode-extension, cli | Cancelling one task skips its dependents; other tasks continue.                    |
 
 M7 notes (2026-11-12, ADR-029; real-editor run 2026-11-14, ADR-041):
 
@@ -211,8 +211,8 @@ M7 notes (2026-11-12, ADR-029; real-editor run 2026-11-14, ADR-041):
   `anthropic/claude-haiku-5-5`, and the run ended incomplete only because nobody approved the
   working-tree update (as designed). **Found:** Enable wrote `"soot.enabled": true` to
   `.vscode/settings.json`, a tracked file, so the next run was refused ("working tree … has
-  uncommitted changes"); fixed by ADR-041, unit-tested, not yet re-run in the editor. The fake
-  `vscode` module never wrote files, which is why the unit tests missed it.
+  uncommitted changes"); fixed by ADR-041 and re-run in the editor the same day (see M7-08).
+  The fake `vscode` module never wrote files, which is why the unit tests missed it.
 - **M7-05 and M7-07 Verified in VS Code:** for run `ide-20261114-081608-7c21` the tree and board
   showed the same tasks, states, verdicts and models as `soot status`, and the same estimate
   ($0.000750) and actual ($0.001630, mock usage) as `soot cost`. The sidebar truncates long
@@ -225,14 +225,17 @@ M7 notes (2026-11-12, ADR-029; real-editor run 2026-11-14, ADR-041):
   `reports/<run>.events.jsonl`), estimate vs actual cost. Text blocks only (ADR-009). **M7-06
   stays Implemented:** per-attempt models showed correctly in VS Code, but no mock run escalated
   or retried, so escalation events were not seen in the editor.
-- **M7-08 Implemented (cancel and stop seen in VS Code):** `soot stop <run> --task <id>` (and MCP
+- **M7-08 Verified in VS Code (cancel, stop and on/off):** `soot stop <run> --task <id>` (and MCP
   `soot_stop` with `taskId`) cancels one task through the scheduler; its dependents are skipped
   and other tasks continue. In VS Code, right-click **Cancel task** cancelled both tasks of run
   `ide-20261114-082748-f749` (`cancelled by request`) and right-click **Stop run** cancelled run
   `ide-20261114-083954-69c4` (`run cancelled`). "Other tasks continue" was checked from the CLI
   on the same build (`cli-cancel-test`); "dependents are skipped" was not exercised in the
-  editor. Stays Implemented until the ADR-041 on/off fix is re-run in the editor. Runs started
-  from the IDE are unattended: approvals are refused, never given.
+  editor. The ADR-041 on/off fix was re-run in VS Code 1.144.0 on 2026-11-14: after
+  **Developer: Reload Window**, Disable then Enable left `git status` clean and
+  `.vscode/settings.json` unchanged, and VS Code's workspace storage held
+  `{"soot.enabled":true}`. Runs started from the IDE are unattended: approvals are refused,
+  never given.
 
 ## Planner: model-backed decomposition (cross-cutting, ADR-033)
 

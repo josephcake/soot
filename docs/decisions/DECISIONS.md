@@ -830,8 +830,9 @@ the old one.
   commit it, and the setting is a useful default).
 - **Consequences:** Turning soot on or off never touches the repository. On/off is now per
   machine and per workspace: it is not shared through git unless the team commits the setting.
-  Workspaces that already have the setting committed keep working as before. Unit-tested;
-  not yet re-run in a real editor.
+  Workspaces that already have the setting committed keep working as before. Unit-tested,
+  and re-run in VS Code 1.144.0 on 2026-11-14: after a window reload, Disable then Enable
+  left `git status` clean, and the value was in VS Code's workspace storage.
 - **Reversible:** Yes.
 
 ## ADR-042: Dashboard run list is History at `#/history`

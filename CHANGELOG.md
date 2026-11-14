@@ -35,7 +35,9 @@ All notable changes are recorded here by milestone. Format loosely follows
 - The extension was installed from the local `.vsix` and used in VS Code 1.144.0 on macOS
   with `--agent mock`: run a prompt, the tree, the task board, cancel task and stop run worked.
   The tree, board and cost matched `soot status` and `soot cost` (M7-01, M7-05 and M7-07
-  Verified). Escalation events were not exercised in the editor. Cursor is still not run.
+  Verified). After the ADR-041 fix, Disable then Enable left the repository clean, so M7-08
+  (cancel task, stop run, on/off) is Verified too. Escalation events were not exercised in
+  the editor. Cursor is still not run.
 
 ### Fixed (VS Code extension on/off, ADR-041)
 
