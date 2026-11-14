@@ -14,14 +14,21 @@ _Named after the soot sprites, the black dust bunnies from Studio Ghibli. Former
 
 > **Status: Milestones 1, 3, 4 and 5 done (mocks, fixtures and fixture git repos); Milestones 2
 > (provider connectivity) and 6 (CLI and skill) in progress.**
-> The `soot` CLI runs the whole workflow on a git repository from one prompt: decompose
-> **from recorded fixtures** (an optional configured decomposer model for other prompts exists
-> but is verified with mocks only), route each task under an
+> The `soot` CLI runs the whole workflow on a git repository from one prompt: decompose from
+> recorded fixtures or an optional configured decomposer model, route each task under an
 > Economy, Balanced or Quality policy, run independent tasks in parallel worktrees, verify each
-> with the project's own checks, integrate serially and report per-task cost. The only agent is
-> a **scripted mock** (no model is called). Provider adapters exist but have **not been run
-> against a real provider**. An MCP server and a universal agent skill exist; **no harness
-> (Claude Code, Codex, …) is supported yet**. See [`docs/project/PROJECT_STATUS.md`](docs/project/PROJECT_STATUS.md).
+> with the project's own checks, integrate serially and report per-task cost. Tasks run on real
+> models with `--agent api` (live-tested with DeepSeek and xAI; Anthropic and OpenAI adapters are
+> not yet run live), on a scripted mock, or through a configured ACP agent. An MCP server and a
+> universal agent skill exist; **no harness (Claude Code, Codex, …) is supported yet**. See
+> [`docs/project/PROJECT_STATUS.md`](docs/project/PROJECT_STATUS.md).
+
+[![A real soot run in the dashboard: one prompt, three tasks on DeepSeek and Grok, all verified](docs/media/soot-real-run.gif)](docs/media/soot-real-run.mp4)
+
+_A real run (soot a90063a, `soot dashboard --agent api --apply`): 3 of 3 tasks verified with
+DeepSeek and Grok for $0.0092 in total; Grok retried once after its first test failed soot's
+check. The GIF shows only the real-time parts; click it for the full
+[67-second video](docs/media/soot-real-run.mp4), where the wait is sped up and labeled._
 
 ## What this project is for
 
