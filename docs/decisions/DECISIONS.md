@@ -607,7 +607,8 @@ the old one.
     exists, then live state per task, cost so far and the worst case, with Stop and a per-task
     stop always visible. Stop has no confirm step.
   - **The prompt box is the landing view** (`#/`). Overview moved to `#/overview` (old
-    `#/?zoom=` links still open it); Prompts stays at `#/prompts`. While the user types or a
+    `#/?zoom=` links still open it); the run list is History at `#/history` (old `#/prompts`
+    links still open it; ADR-042). While the user types or a
     prompt is working, the page drops to focus mode: the tabs and header meta fade out and only
     the prompt (or the submitted prompt), a compact task list and Stop remain, with a small
     `details` link to the full prompt page.
@@ -831,4 +832,24 @@ the old one.
   machine and per workspace: it is not shared through git unless the team commits the setting.
   Workspaces that already have the setting committed keep working as before. Unit-tested;
   not yet re-run in a real editor.
+- **Reversible:** Yes.
+
+## ADR-042: Dashboard run list is History at `#/history`
+
+- **Date:** 2026-11-14
+- **Status:** Accepted (Joseph: "change Prompts into History", then "Stick with History").
+  Amends the route names in ADR-038.
+- **Context:** The landing tab is **Prompt** (the input box). The list of past runs was also
+  labelled **Prompts**, at `#/prompts`, which made the two easy to mix up.
+- **Decision:** Rename the tab and its page heading to **History**, and move the list to
+  `#/history` (and a run's detail to `#/history/<runId>`). Old `#/prompts` and
+  `#/prompts/<runId>` links, including `?from=&to=` window filters, still open the same
+  views, the same way old `#/?zoom=` links still open Overview. Internal names
+  (`renderPrompts`, `view: 'prompts'`, `tab-prompts`) stay. Overview copy such as
+  "Prompts / recorded runs" and "Prompts over time" is unchanged.
+- **Alternatives:** "Runs" (clear, and soot already uses that word; Joseph chose History);
+  keep the `#/prompts` path and only change the label (leaves the URL confusing next to
+  the Prompt tab).
+- **Consequences:** Bookmarked `#/prompts` links keep working. New links the dashboard
+  writes use `#/history`.
 - **Reversible:** Yes.

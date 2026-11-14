@@ -82,8 +82,9 @@ and `--open` still opens it (ADR-039).
 
   Hover or focus shows a tooltip (prompt, local date/time, tasks, tokens, complexity; or the
   window, prompts, tasks, tokens, activity). Each square has an `aria-label`. Enter or a click
-  opens `#/prompts/<runId>` (prompt) or `#/prompts?from=<iso>&to=<iso>` (bucket: the list
-  filtered to that window, with a filter chip and a "clear" link). No runs: an empty frame
+  opens `#/history/<runId>` (prompt) or `#/history?from=<iso>&to=<iso>` (bucket: the list
+  filtered to that window, with a filter chip and a "clear" link). Old `#/prompts` links
+  still open the same views. No runs: an empty frame
   and "No prompts yet". Prompts without a date are left off and counted in a note.
 
   **Prompt complexity** (`complexityOf` in `overview.ts`), from recorded fields only. Each
@@ -117,14 +118,14 @@ and `--open` still opens it (ADR-039).
 - **Views (hash routes, no router library):** a pixel tab bar switches between **Prompt**
   (`#/`, the prompt box above), **Overview**
   (`#/overview`: summary tiles for prompts, tasks, tokens and cost, the prompt grid, the canvas, a shared model legend,
-  and aggregate charts across every prompt; nothing specific to one prompt) and **Prompts**
-  (`#/prompts`). The browser back and forward buttons work (`hashchange`).
-- **Previous prompts (D-04):** `#/prompts` lists every recorded run, newest first, with the
+  and aggregate charts across every prompt; nothing specific to one prompt) and **History**
+  (`#/history`; old `#/prompts` links still open it). The browser back and forward buttons work (`hashchange`).
+- **History (D-04):** `#/history` lists every recorded run, newest first, with the
   prompt text as soot stored it, local date (ISO in the title), status, models used, the runner
-  as a short tag, and total tokens/cost when recorded. Each row links to `#/prompts/<runId>`:
+  as a short tag, and total tokens/cost when recorded. Each row links to `#/history/<runId>`:
   each task with the run's runner and the model(s) that took it, in/out/total tokens per task
   (or an explicit "not reported" reason), totals, and the per-run charts below, with a back
-  link. An unknown run id shows "not found" and the back link.
+  link to History. An unknown run id shows "not found" and the back link.
 - **Model identity:** one deterministic model → style map (names sorted by code point; 8
   colours × 6 pixel patterns: solid, hatch, dots, checker, horizontal and vertical stripes) is
   used by the canvas, every chart, the legend and the prompt detail, so models stay apart

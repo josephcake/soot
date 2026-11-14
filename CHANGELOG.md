@@ -5,6 +5,13 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Changed (dashboard History tab, ADR-042)
+
+- The tab that listed past runs is now **History** (`#/history`), so it is not confused with
+  the **Prompt** box. The list heading is "History · N", and the back link from a run is
+  "← History". Old `#/prompts` and `#/prompts/<runId>` links still open the same views.
+  Overview tiles and "Prompts over time" are unchanged.
+
 ### Verified (VS Code extension in a real editor, M7-01)
 
 - The extension was installed from the local `.vsix` and used in VS Code 1.144.0 on macOS

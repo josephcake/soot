@@ -287,7 +287,7 @@ describe('prompt box helpers', () => {
     expect(t).toContain('stopping the dashboard stops it');
     const buttons = all(card).filter((n) => n.tag === 'button');
     expect(buttons.map((b) => b.textContent)).toEqual(['Stop', 'stop']);
-    expect(all(card).find((n) => n.tag === 'a')?.href).toBe('#/prompts/run-1');
+    expect(all(card).find((n) => n.tag === 'a')?.href).toBe('#/history/run-1');
     expect(said).toBe('Running · 1 of 2 tasks done');
     // No approve or confirm step anywhere on the card.
     expect(t).not.toMatch(/approve and run|confirm/i);
@@ -332,6 +332,9 @@ describe('page shell', () => {
     expect(INDEX_HTML.indexOf('id="tab-compose"')).toBeLessThan(
       INDEX_HTML.indexOf('id="tab-overview"'),
     );
+    expect(INDEX_HTML).toContain('href="#/history">History</a>');
+    expect(INDEX_HTML).toContain('href="#/">Prompt</a>');
+    expect(INDEX_HTML).not.toContain('>Prompts</a>');
     expect(INDEX_HTML).toMatch(/id="view-compose"[^>]*>/);
     expect(INDEX_HTML).not.toMatch(/id="view-compose"[^>]*hidden/);
     expect(INDEX_HTML).toMatch(/id="view-overview" class="grid" hidden/);
