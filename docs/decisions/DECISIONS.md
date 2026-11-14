@@ -925,3 +925,77 @@ the old one.
   (set `"autoModels": false` to keep the old behavior).
 - **Reversible:** Yes. `"autoModels": false` restores the previous behavior per project;
   removing the merge call in the CLI removes it everywhere.
+
+## ADR-044: One .vsix for VS Code-based editors (floor VS Code API 1.100), and a dedicated Escalations view
+
+- **Date:** 2026-11-14
+- **Status:** Accepted (Mochi, on Joseph's standing grant to merge gap-work once CI is green).
+  Implemented; the Escalations view is unit-tested and tested through the CLI on an escalated
+  mock run, but has not been seen in an editor. Cursor and Windsurf are prepared, not run.
+  Renumbered from 070 to 044 at merge so ADRs stay sequential on main. Covers M7-02…M7-04
+  (preparation only) and M7-06.
+- **Context:** M7-02…M7-04 ask for Cursor, Windsurf and Kilo Code. The extension was only
+  ever run in VS Code 1.144 (M7-01), and its README said other editors were "not claimed".
+  Cursor and Windsurf are VS Code forks that install extensions from a `.vsix` or from Open VSX
+  (they cannot use the Visual Studio Marketplace). Kilo Code is not an editor: it is an AI-agent
+  extension for VS Code and JetBrains. On M7-06, escalations were one text line among retries
+  and fallbacks (`ESCALATE task #2 → model: reason`). That line did not say which model the
+  task escalated from, dropped the engine's triggers, and was never seen in an editor because
+  no mock run escalated.
+- **Decision:**
+  - **One package, no per-editor code.** `apps/vscode-extension` stays the only extension.
+    `extensions/{cursor,windsurf,kilo}/` is not created: no fork needs more today.
+  - **Engines floor `^1.100.0`, unchanged.** VS Code 1.100 is the first release that loads
+    ESM (`"type": "module"`) extensions (its release notes, "ESM support for extensions").
+    Every API the extension calls is older. Base versions read on 2026-11-14: Cursor 1.128.0
+    (Cursor forum: users' About panels and a staff reply; not in Cursor's own changelog),
+    Windsurf 1.141.2 (Windsurf changelog). Both are above the floor.
+  - **Guarded by tests, not by memory.** `@types/vscode` stays pinned to exactly the floor,
+    so the type check rejects newer APIs. `src/editor-compat.test.ts` checks that the pin
+    equals `engines.vscode` and lists every `vscode.*` API the code calls (a new one fails
+    the test until someone checks it in the forks). It also rejects `enabledApiProposals`,
+    extension dependencies, runtime packages and imports other than `vscode` and `node:*`.
+  - **Open VSX metadata, no publishing.** The manifest adds `repository`, `homepage`, `bugs`,
+    `keywords`, `galleryBanner` and a 128×128 icon (the 32×32 brand mark scaled up
+    pixel-for-pixel). It stays `private`, version `0.0.0`, publisher `soot-local`. Publishing
+    to Open VSX or the Marketplace needs Joseph's decision, a real publisher namespace and a
+    release version.
+  - **Docs:** the extension README gives install steps per editor from the same `.vsix`
+    (`code` / `cursor` / `windsurf --install-extension`, or **Install from VSIX…**). It cites
+    each fork's base version and labels everything except VS Code "not run". Kilo Code is
+    described as running next to soot inside one of those editors.
+  - **Escalations get their own block (M7-06).** The view model has
+    `escalations: EscalationView[]` built from `escalate` events: task, the new attempt, the
+    `from` model (the model of the attempt before; else the task's previous routing event),
+    the `to` model, the level (from `attemptDetails`), the engine's reason and every
+    trigger. Unknown values stay null and are shown as unknown. The tree has an
+    **Escalations (N)** section with one node per escalation
+    (`task #2 · claude-haiku-5-5 ──▶ gpt-6.1-terra · L1`) and children for from / to / why /
+    triggers. The board has the same lines under `== Escalations (N) ==`, with ▲ in the legend.
+    Other routing events move to **Retries and other events**.
+  - **Palette inside the editor's theme (ADR-009).** The package contributes two theme
+    colors: `soot.escalation` (orange `#ff7a1a` on dark and high-contrast themes, `#a84300`
+    on light) and `soot.secondary` (cream `#e8dcc8`; `#6b5a3e` / `#5a4a30` on light). Tree
+    icons (`ThemeIcon` codicons) use them. The editor keeps its own background, the
+    near-black of the dark themes soot is designed for, and the light-theme shades pass 4.5:1
+    on white. There is no webview: the blocks stay text.
+- **Alternatives:**
+  - Raising the floor to the forks' current bases (1.128 or 1.141): no API needs it, and it
+    would lock out older installs.
+  - Lowering the floor below 1.100: ESM would not load there; it would need a CommonJS build.
+  - A webview run view with exact palette backgrounds: a bespoke UI that ADR-009 rejects, and
+    it fights the editor's theme.
+  - Hard-coded hex colors in the tree: not possible for tree icons, and unreadable on light
+    themes.
+  - Separate per-fork packages: duplicate code for no difference.
+- **Consequences:**
+  - The same `.vsix` is meant for VS Code, Cursor and Windsurf. Only VS Code is verified;
+    M7-02 and M7-03 move to In Progress and M7-04 stays Not Started until a real run in each.
+  - Escalations are now readable at a glance and carry the "from" model and the triggers.
+    The mapping is unit-tested, and tested end to end with the real CLI on an escalated mock
+    run. The `soot.runs` tree labels changed ("Escalations and retries" is now two sections),
+    so anyone matching the old labels must update.
+  - `pnpm --filter soot-vscode package:vsix` still needs a network connection: vsce is fetched
+    with `pnpm dlx`.
+- **Reversible:** Yes. The colors, metadata and sections are additive. The floor stays where
+  it was.

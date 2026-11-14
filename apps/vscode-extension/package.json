@@ -1,15 +1,26 @@
 {
   "name": "soot-vscode",
   "displayName": "soot (local build, unpublished)",
-  "description": "Thin VS Code / Cursor view onto a local soot engine: task graph, models, escalations, cost, cancellation. Talks to the soot CLI; contains no orchestration.",
+  "description": "Thin editor view onto a local soot engine (VS Code, Cursor, Windsurf and other VS Code-based editors): task graph, models, escalations, cost, cancellation. Talks to the soot CLI; contains no orchestration.",
   "version": "0.0.0",
   "private": true,
   "publisher": "soot-local",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/josephcake/soot.git",
+    "directory": "apps/vscode-extension"
+  },
+  "homepage": "https://github.com/josephcake/soot/tree/main/apps/vscode-extension#readme",
+  "bugs": {
+    "url": "https://github.com/josephcake/soot/issues"
+  },
   "type": "module",
   "main": "./dist/extension.js",
+  "icon": "media/icon.png",
   "files": [
     "dist/**/*.js",
+    "media/icon.png",
     "README.md",
     "LICENSE"
   ],
@@ -20,6 +31,18 @@
   "categories": [
     "Other"
   ],
+  "keywords": [
+    "soot",
+    "orchestration",
+    "agents",
+    "model routing",
+    "escalation",
+    "cost"
+  ],
+  "galleryBanner": {
+    "color": "#0e0e0e",
+    "theme": "dark"
+  },
   "activationEvents": [],
   "contributes": {
     "commands": [
@@ -111,7 +134,29 @@
           "when": "view == soot.runs && viewItem == soot.run.running"
         }
       ]
-    }
+    },
+    "colors": [
+      {
+        "id": "soot.escalation",
+        "description": "soot escalation marks in the run view (orange #ff7a1a on dark themes; darker orange on light themes for contrast).",
+        "defaults": {
+          "dark": "#ff7a1a",
+          "light": "#a84300",
+          "highContrast": "#ff7a1a",
+          "highContrastLight": "#a84300"
+        }
+      },
+      {
+        "id": "soot.secondary",
+        "description": "soot secondary marks in the run view (cream #e8dcc8 on dark themes; dark brown on light themes for contrast).",
+        "defaults": {
+          "dark": "#e8dcc8",
+          "light": "#6b5a3e",
+          "highContrast": "#e8dcc8",
+          "highContrastLight": "#5a4a30"
+        }
+      }
+    ]
   },
   "scripts": {
     "build": "tsc -b",

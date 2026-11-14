@@ -106,7 +106,8 @@ describe('soot: Run a prompt → tree and board show what the engine reported', 
       for (const heading of [
         'Task graph',
         'Active agents',
-        'Escalations and retries',
+        'Escalations (0)',
+        'Retries and other events',
         'Failures',
         'Verdicts',
         'Cost',
@@ -172,9 +173,27 @@ describe('escalations and failures are visible', () => {
         model: 'openai/gpt-6.1-terra',
       });
       const run = ext.tree.getChildren()[1];
-      expect(child(run, 'Escalations and retries')?.children.map((n) => n.label)).toContainEqual(
-        expect.stringMatching(/^ESCALATE update-button-color #2 → gpt-6.1-terra: /),
+      // M7-06 (ADR-044): the escalation names task, attempt, from ──▶ to, level, why, trigger.
+      expect(ext.view?.escalations).toMatchObject([
+        {
+          taskId: 'update-button-color',
+          attempt: 2,
+          fromModel: 'anthropic/claude-haiku-5-5',
+          toModel: 'openai/gpt-6.1-terra',
+          level: 1,
+          triggers: [{ kind: 'repeated-failure' }],
+        },
+      ]);
+      const escalation = child(run, 'Escalations (1)')?.children[0];
+      expect(escalation?.label).toBe(
+        'update-button-color #2 · claude-haiku-5-5 ──▶ gpt-6.1-terra · L1',
       );
+      expect(escalation?.children.map((n) => n.label)).toEqual([
+        'from  anthropic/claude-haiku-5-5 (attempt #1)',
+        'to    openai/gpt-6.1-terra (attempt #2, level 1)',
+        expect.stringMatching(/^why {3}escalate: 1 unsuccessful attempts on /),
+        expect.stringMatching(/^· repeated-failure: /),
+      ]);
       expect(child(run, 'Failures')?.children[0]?.label).toMatch(/^✕ update-button-color #1 /);
       expect(child(run, 'Task graph')?.children[0]?.label).toContain(
         '[■ update-button-color · claude-haiku-5-5→gpt-6.1-terra · 2x]',
