@@ -189,8 +189,8 @@ M6 notes (2026-11-12, ADR-026):
 | ID    | Description                                                              | Priority | Milestone | Dependencies | Status      | Component                  | Acceptance criteria                                                                |
 | ----- | ------------------------------------------------------------------------ | -------- | --------- | ------------ | ----------- | -------------------------- | ---------------------------------------------------------------------------------- |
 | M7-01 | VS Code extension (thin adapter over the soot CLI)                       | P2       | M7        | M6-01        | Verified    | apps/vscode-extension      | Loaded and used in a real VS Code; core orchestration stays outside the extension. |
-| M7-02 | Cursor compatibility                                                     | P2       | M7        | M7-01        | Not Started | apps/vscode-extension      | Verified individually in a real Cursor before any claim.                           |
-| M7-03 | Windsurf compatibility                                                   | P3       | M7        | M7-01        | Not Started | apps/vscode-extension      | Verified individually in a real Windsurf before any claim.                         |
+| M7-02 | Cursor compatibility                                                     | P2       | M7        | M7-01        | In Progress | apps/vscode-extension      | Verified individually in a real Cursor before any claim.                           |
+| M7-03 | Windsurf compatibility                                                   | P3       | M7        | M7-01        | In Progress | apps/vscode-extension      | Verified individually in a real Windsurf before any claim.                         |
 | M7-04 | Kilo Code compatibility                                                  | P3       | M7        | M7-01        | Not Started | apps/vscode-extension      | Verified individually in a real Kilo Code before any claim.                        |
 | M7-05 | Task visualization: task graph by layer, active agents, execution status | P2       | M7        | M7-01        | Verified    | apps/vscode-extension      | Graph and status match the engine's `soot status` for a run.                       |
 | M7-06 | Model assignment visibility: models per attempt, escalation/retry events | P2       | M7        | M7-01        | Implemented | apps/vscode-extension, cli | Each attempt's model and each escalation shown as the engine recorded them.        |
@@ -217,14 +217,26 @@ M7 notes (2026-11-12, ADR-029; real-editor run 2026-11-14, ADR-041):
   showed the same tasks, states, verdicts and models as `soot status`, and the same estimate
   ($0.000750) and actual ($0.001630, mock usage) as `soot cost`. The sidebar truncates long
   labels; the board shows them in full.
-- **M7-02…M7-04 Not Started:** nothing is claimed for Cursor, Windsurf or Kilo Code (or GitHub
-  Copilot). Each needs its own run in that editor.
+- **M7-02, M7-03 In Progress; M7-04 Not Started (ADR-070, 2026-11-14):** the extension is
+  prepared for VS Code-based editors but nothing is claimed until it runs in each one. The floor
+  stays `engines.vscode ^1.100.0` (ESM extensions need 1.100; every API used is older).
+  Cursor reports VS Code API 1.128.0 (Cursor forum, staff reply) and Windsurf 1.141.2 (its
+  changelog). The manifest now has Open VSX metadata (repository, icon, keywords), and
+  `apps/vscode-extension/src/editor-compat.test.ts` pins the floor to `@types/vscode`, lists
+  every VS Code API used, and rejects proposed APIs and extension dependencies. The README has
+  per-editor install steps from a `.vsix`. Kilo Code is an extension, not an editor: M7-04
+  means soot running next to it in one of those editors, which nobody has tried. Each still
+  needs its own run in that editor.
 - **M7-05…M7-07:** the tree view and the plain-text board show what `soot status <run>` and
   `soot cost <run>` report: task graph by layer, per-attempt models, escalation level and
   failures, escalate/retry/fallback/downgrade events (from the run's new
   `reports/<run>.events.jsonl`), estimate vs actual cost. Text blocks only (ADR-009). **M7-06
   stays Implemented:** per-attempt models showed correctly in VS Code, but no mock run escalated
-  or retried, so escalation events were not seen in the editor.
+  or retried, so escalation events were not seen in the editor. ADR-070 gives escalations their
+  own **Escalations (N)** section in the tree and the board: task, new attempt, `from ──▶ to`
+  model, escalation level, the engine's reason and each trigger, with orange theme-colored
+  icons. It is tested against a real escalated mock run through the CLI
+  (`tests/m7-vscode-extension.test.ts`), not yet in an editor.
 - **M7-08 Verified in VS Code (cancel, stop and on/off):** `soot stop <run> --task <id>` (and MCP
   `soot_stop` with `taskId`) cancels one task through the scheduler; its dependents are skipped
   and other tasks continue. In VS Code, right-click **Cancel task** cancelled both tasks of run

@@ -2,14 +2,16 @@ import * as vscode from 'vscode';
 import {
   activeBlock,
   costBlock,
-  eventBlock,
+  escalationDetails,
+  escalationLine,
   failureBlock,
   graphBlock,
+  otherEventsBlock,
   renderBoard,
   taskBlock,
 } from './core/blocks.js';
 import { SootCli, type AgentSetting } from './core/soot-cli.js';
-import { toRunView, type RunView } from './core/view-model.js';
+import { toRunView, type EscalationView, type RunView } from './core/view-model.js';
 
 /*
  * Thin VS Code / Cursor adapter (ADR-029). It runs the soot CLI and shows what the engine
@@ -33,16 +35,32 @@ const POLL_MS = 500;
 /** Key for orchestration on/off in VS Code's per-workspace storage (ADR-041). */
 export const ENABLED_STATE_KEY = 'soot.enabled';
 
+/**
+ * Theme colors contributed in package.json (`contributes.colors`): soot's locked palette
+ * (ADR-009) on dark themes, orange #ff7a1a and cream #e8dcc8, with darker variants on light
+ * and high-contrast-light themes so the text stays readable (ADR-070). The editor keeps its own
+ * background; soot only tints icons.
+ */
+export const ESCALATION_COLOR = 'soot.escalation';
+export const SECONDARY_COLOR = 'soot.secondary';
+
+const icon = (id: string, color: string) => new vscode.ThemeIcon(id, new vscode.ThemeColor(color));
+
+interface NodeExtra {
+  contextValue?: string;
+  runId?: string;
+  taskId?: string;
+  description?: string;
+  tooltip?: string;
+  icon?: vscode.ThemeIcon;
+}
+
 export class SootNode extends vscode.TreeItem {
   declare label: string;
   readonly children: SootNode[];
   readonly runId: string | null;
   readonly taskId: string | null;
-  constructor(
-    label: string,
-    children: SootNode[] = [],
-    extra: { contextValue?: string; runId?: string; taskId?: string; description?: string } = {},
-  ) {
+  constructor(label: string, children: SootNode[] = [], extra: NodeExtra = {}) {
     super(
       label,
       children.length > 0
@@ -54,10 +72,37 @@ export class SootNode extends vscode.TreeItem {
     this.taskId = extra.taskId ?? null;
     if (extra.contextValue !== undefined) this.contextValue = extra.contextValue;
     if (extra.description !== undefined) this.description = extra.description;
+    if (extra.tooltip !== undefined) this.tooltip = extra.tooltip;
+    if (extra.icon !== undefined) this.iconPath = extra.icon;
   }
 }
 
 const leaf = (label: string) => new SootNode(label);
+
+/**
+ * One escalation as a tree node (M7-06): label = task, attempt and the model step; children =
+ * from, to, why and each trigger, so nothing depends on hovering or on a wide sidebar.
+ */
+export function escalationNode(e: EscalationView, runId: string): SootNode {
+  const [from = '', to = '', why = '', ...triggers] = escalationDetails(e);
+  return new SootNode(
+    escalationLine(e),
+    [
+      new SootNode(from, [], { icon: icon('circle-outline', SECONDARY_COLOR) }),
+      new SootNode(to, [], { icon: icon('triangle-up', ESCALATION_COLOR) }),
+      new SootNode(why, [], { tooltip: e.reason, icon: icon('comment', SECONDARY_COLOR) }),
+      ...triggers.map(
+        (t) => new SootNode(t.trim(), [], { icon: icon('warning', ESCALATION_COLOR) }),
+      ),
+    ],
+    {
+      runId,
+      taskId: e.taskId,
+      tooltip: escalationDetails(e).join('\n'),
+      icon: icon('triangle-up', ESCALATION_COLOR),
+    },
+  );
+}
 
 export function treeFor(enabled: boolean, view: RunView | null): SootNode[] {
   const roots = [
@@ -70,11 +115,14 @@ export function treeFor(enabled: boolean, view: RunView | null): SootNode[] {
     (t) =>
       new SootNode(
         taskBlock(t),
-        t.attempts.map((a) =>
-          leaf(
-            `#${String(a.attempt)} ${a.state} · ${a.model ?? 'no model'}${a.escalationLevel !== null && a.escalationLevel > 0 ? ` · escalated ×${String(a.escalationLevel)}` : ''}${a.failure === null ? '' : ` · ${a.failure}`}`,
-          ),
-        ),
+        t.attempts.map((a) => {
+          const escalated = a.escalationLevel !== null && a.escalationLevel > 0;
+          return new SootNode(
+            `#${String(a.attempt)} ${a.state} · ${a.model ?? 'no model'}${escalated ? ` · escalated ×${String(a.escalationLevel)}` : ''}${a.failure === null ? '' : ` · ${a.failure}`}`,
+            [],
+            escalated ? { icon: icon('triangle-up', ESCALATION_COLOR) } : {},
+          );
+        }),
         {
           contextValue: t.active ? 'soot.task.active' : 'soot.task',
           runId: view.runId,
@@ -91,9 +139,13 @@ export function treeFor(enabled: boolean, view: RunView | null): SootNode[] {
         new SootNode('Tasks', tasks),
         new SootNode('Active agents', activeBlock(view.tasks).map(leaf)),
         new SootNode(
-          'Escalations and retries',
-          (view.events.length === 0 ? ['(none)'] : view.events.map(eventBlock)).map(leaf),
+          `Escalations (${String(view.escalations.length)})`,
+          view.escalations.length === 0
+            ? [leaf('(no escalations)')]
+            : view.escalations.map((e) => escalationNode(e, view.runId)),
+          { icon: icon('triangle-up', ESCALATION_COLOR) },
         ),
+        new SootNode('Retries and other events', otherEventsBlock(view.events).map(leaf)),
         new SootNode('Failures', failureBlock(view.tasks).map(leaf)),
         new SootNode('Cost', costBlock(view.cost).map(leaf)),
       ],

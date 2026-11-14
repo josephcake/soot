@@ -130,7 +130,10 @@ describe('renderBoard: stacked text blocks, no dashboard', () => {
     expect(board).toMatch(/L2 \[□ review/);
     expect(board).toMatch(/└▶ review ← implement, tests/);
     expect(board).toMatch(/== Active agents ==\n.*tests.*claude-haiku-5-5/);
-    expect(board).toMatch(/ESCALATE implement #2 → gpt-6.1-terra: validation failed/);
+    expect(board).toMatch(
+      /== Escalations \(1\) ==\n▲ implement #2 · claude-haiku-5-5 ──▶ gpt-6.1-terra · L1\n/,
+    );
+    expect(board).toMatch(/== Retries and other events ==\n\(none\)/);
     expect(board).toMatch(/✕ implement #1 retried \(validation-failed\): acceptance test failed/);
     expect(board).toMatch(/▣ tests on claude-haiku-5-5 \(starting\)/);
     expect(board).toMatch(/▣ tests: running/);

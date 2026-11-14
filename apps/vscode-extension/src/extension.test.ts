@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { COMMANDS, SootNode, activate, treeFor } from './extension.js';
 import { toRunView } from './core/view-model.js';
-import { commands, extensionContext, fake } from './test-support/fake-vscode.js';
+import { ThemeIcon, commands, extensionContext, fake } from './test-support/fake-vscode.js';
 
 /*
  * Extension glue against a FAKE `vscode` module (src/test-support/fake-vscode.ts). This checks
@@ -24,6 +24,9 @@ const pkg = JSON.parse(readFileSync(join(PKG_DIR, 'package.json'), 'utf8')) as {
 };
 
 const context = () => extensionContext() as never;
+
+/** Tree icons are always ThemeIcons here; the real type also allows URIs and paths. */
+const icon = (n: SootNode | undefined) => n?.iconPath as ThemeIcon | undefined;
 
 beforeEach(() => {
   fake.reset();
@@ -124,6 +127,64 @@ describe('tree nodes', () => {
       'L1 [▣ b · m · 0x]',
       '   └▶ b ← a',
     ]);
+  });
+
+  it('shows each escalation as its own node: task, attempt, from ──▶ to, why, triggers (M7-06)', () => {
+    const view = toRunView({
+      runId: 'r',
+      state: 'succeeded',
+      tasks: [
+        {
+          taskId: 'btn',
+          state: 'succeeded',
+          models: ['p/small', 'q/big'],
+          attemptDetails: [
+            { attempt: 1, state: 'retried', model: 'p/small', escalationLevel: 0 },
+            { attempt: 2, state: 'succeeded', model: 'q/big', escalationLevel: 1 },
+          ],
+        },
+      ],
+      events: [
+        { taskId: 'btn', attempt: 1, type: 'assign', model: 'p/small', reason: 'cheapest' },
+        {
+          taskId: 'btn',
+          attempt: 2,
+          type: 'escalate',
+          model: 'q/big',
+          reason: 'escalate: 1 unsuccessful attempts on p/small → q/big',
+          triggers: [{ kind: 'repeated-failure', detail: '1 unsuccessful attempts on p/small' }],
+        },
+        { taskId: 'btn', attempt: 2, type: 'retry', model: 'q/big', reason: 'tool error' },
+      ],
+    });
+    const run = treeFor(true, view)[1];
+    const section = run?.children.find((n) => n.label === 'Escalations (1)');
+    expect(icon(section)).toEqual(new ThemeIcon('triangle-up', { id: 'soot.escalation' }));
+    const [node] = section?.children ?? [];
+    expect(node?.label).toBe('btn #2 · small ──▶ big · L1');
+    expect(node?.taskId).toBe('btn');
+    expect(node?.tooltip).toContain('why   escalate: 1 unsuccessful attempts');
+    expect(node?.children.map((n) => [n.label, icon(n)?.id, icon(n)?.color?.id])).toEqual([
+      ['from  p/small (attempt #1)', 'circle-outline', 'soot.secondary'],
+      ['to    q/big (attempt #2, level 1)', 'triangle-up', 'soot.escalation'],
+      ['why   escalate: 1 unsuccessful attempts on p/small → q/big', 'comment', 'soot.secondary'],
+      ['· repeated-failure: 1 unsuccessful attempts on p/small', 'warning', 'soot.escalation'],
+    ]);
+    // Other routing events keep their own section; the escalated attempt is marked in Tasks.
+    expect(
+      run?.children
+        .find((n) => n.label === 'Retries and other events')
+        ?.children.map((n) => n.label),
+    ).toEqual(['RETRY btn #2 → big: tool error']);
+    const attempts = run?.children.find((n) => n.label === 'Tasks')?.children[0]?.children ?? [];
+    expect(attempts.map((a) => icon(a)?.color?.id)).toEqual([undefined, 'soot.escalation']);
+  });
+
+  it('says "(no escalations)" when nothing escalated', () => {
+    const run = treeFor(true, toRunView({ runId: 'r', tasks: [] }))[1];
+    expect(
+      run?.children.find((n) => n.label === 'Escalations (0)')?.children.map((n) => n.label),
+    ).toEqual(['(no escalations)']);
   });
 });
 

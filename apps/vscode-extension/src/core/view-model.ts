@@ -37,6 +37,30 @@ export interface EventView {
   readonly reason: string;
 }
 
+export interface TriggerView {
+  /** Engine trigger kind, e.g. `repeated-failure`, `unmet-criteria`, `low-confidence`. */
+  readonly kind: string;
+  readonly detail: string;
+}
+
+/**
+ * One escalation (M7-06): the engine moved a task to a stronger model. `toModel` is the model
+ * the `escalate` event assigned; `fromModel` is the model of the attempt before it (or, if the
+ * engine reported no attempts, the task's previous routing event). Nothing here is guessed:
+ * a value the engine did not report stays null.
+ */
+export interface EscalationView {
+  readonly taskId: string;
+  /** The new attempt the escalation planned (attempt #N runs on `toModel`). */
+  readonly attempt: number;
+  readonly fromModel: string | null;
+  readonly toModel: string | null;
+  /** Escalation level of the new attempt (0 = the first model), from `attemptDetails`. */
+  readonly level: number | null;
+  readonly reason: string;
+  readonly triggers: readonly TriggerView[];
+}
+
 export interface CostView {
   readonly estimatedUsd: number | null;
   readonly actualUsd: number | null;
@@ -51,8 +75,13 @@ export interface RunView {
   readonly tasks: readonly TaskView[];
   /** Escalations, fallbacks, retries, downgrades, failures, cancellations. */
   readonly events: readonly EventView[];
+  /** Only the `escalate` events, with from/to models, attempt, level and triggers. */
+  readonly escalations: readonly EscalationView[];
   readonly cost: CostView | null;
 }
+
+/** Event types that put a model on a task; the last one before an escalation is its "from". */
+const ROUTING_EVENTS = new Set(['assign', 'retry', 'fallback', 'escalate', 'downgrade']);
 
 /** Event types that are about routing changes or trouble (not routine assign/accept). */
 export const NOTABLE_EVENTS = new Set([
@@ -104,6 +133,38 @@ function costOf(cost: Record<string, unknown> | null): CostView | null {
   };
 }
 
+function escalationsOf(
+  rawEvents: readonly Record<string, unknown>[],
+  tasks: readonly TaskView[],
+): EscalationView[] {
+  const lastModel = new Map<string, string>();
+  const out: EscalationView[] = [];
+  for (const e of rawEvents) {
+    const taskId = str(e.taskId);
+    const type = str(e.type);
+    const model = typeof e.model === 'string' ? e.model : null;
+    if (type === 'escalate') {
+      const attempt = num(e.attempt) ?? 0;
+      const attempts = tasks.find((t) => t.id === taskId)?.attempts ?? [];
+      const before = attempts.find((a) => a.attempt === attempt - 1);
+      const after = attempts.find((a) => a.attempt === attempt);
+      out.push({
+        taskId,
+        attempt,
+        fromModel: before?.model ?? lastModel.get(taskId) ?? null,
+        toModel: model ?? after?.model ?? null,
+        level: after?.escalationLevel ?? null,
+        reason: str(e.reason),
+        triggers: arr(e.triggers)
+          .map(rec)
+          .map((t) => ({ kind: str(t.kind, 'unknown'), detail: str(t.detail) })),
+      });
+    }
+    if (ROUTING_EVENTS.has(type) && model !== null) lastModel.set(taskId, model);
+  }
+  return out;
+}
+
 export function toRunView(
   status: Record<string, unknown>,
   cost: Record<string, unknown> | null = null,
@@ -143,8 +204,8 @@ export function toRunView(
       active: ACTIVE_STATES.has(state),
     };
   });
-  const events: EventView[] = arr(status.events)
-    .map(rec)
+  const rawEvents = arr(status.events).map(rec);
+  const events: EventView[] = rawEvents
     .map((e) => ({
       taskId: str(e.taskId),
       attempt: num(e.attempt) ?? 0,
@@ -160,6 +221,7 @@ export function toRunView(
     prompt: str(status.prompt),
     tasks,
     events,
+    escalations: escalationsOf(rawEvents, tasks),
     cost: costOf(cost),
   };
 }

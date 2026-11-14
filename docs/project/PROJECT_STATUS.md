@@ -40,8 +40,10 @@ status` and `soot cost` (M7-05, M7-07 Verified). That run found that `soot: Enab
 orchestration` wrote `.vscode/settings.json`, which dirtied the repository so soot refused the
 next run; ADR-041 moves on/off to VS Code's workspace storage, and a re-run in the editor the
 same day left the repository clean (M7-08 Verified: cancel task, stop run, on/off). Escalation events were not exercised in the editor
-(M7-06 Implemented). Cursor, Windsurf, Kilo Code and Copilot are not run or claimed, so M7 stays
-In Progress.
+(M7-06 Implemented; ADR-070 adds a dedicated Escalations section, tested through the CLI, not
+yet seen in an editor). Cursor and Windsurf are prepared (ADR-070: VS Code API floor 1.100,
+Open VSX metadata, per-editor install steps) but not run; Kilo Code and Copilot are not run or
+claimed, so M7 stays In Progress.
 
 Engine hardening (ADR-030, mocks only, no milestone status change): `SOOT_DATA_DIR` and
 `SOOT_LOG_LEVEL` are honoured by the real CLI and `soot mcp`; provider cooldowns and

@@ -5,6 +5,24 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (editor support and an Escalations view, ADR-070; M7-02…M7-04 prepared, M7-06)
+
+- The VS Code extension's tree and board have an **Escalations (N)** section: one entry per
+  escalation naming the task, the new attempt, `from ──▶ to` model, the escalation level, the
+  engine's reason and each trigger (e.g. `repeated-failure`), marked with an orange `▲`. Other
+  routing events are under **Retries and other events**.
+- Two contributed theme colors, `soot.escalation` (orange `#ff7a1a`, darker on light themes)
+  and `soot.secondary` (cream `#e8dcc8`), tint the tree icons in soot's palette (ADR-009)
+  while the editor keeps its own background.
+- Per-editor install steps (VS Code, Cursor, Windsurf, and Kilo Code alongside) from one
+  `.vsix`, with each fork's VS Code base cited. Only VS Code is verified; Cursor and Windsurf
+  are not run.
+- Open VSX-ready manifest metadata (repository, homepage, keywords, a 128×128 pixel icon).
+  Nothing is published.
+- `src/editor-compat.test.ts`: the engines floor (`^1.100.0`, needed for ESM extensions)
+  equals the pinned `@types/vscode`; every VS Code API the code calls is listed; no proposed
+  APIs, extension dependencies or runtime packages.
+
 ### Added (auto models from your keys, ADR-043)
 
 - Several keys, one pool: when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY` or

@@ -24,11 +24,31 @@ export enum TreeItemCollapsibleState {
   Expanded = 2,
 }
 
+/** `vscode.ThemeColor`: a reference to a theme color id, resolved by the editor's theme. */
+export class ThemeColor {
+  readonly id: string;
+  constructor(id: string) {
+    this.id = id;
+  }
+}
+
+/** `vscode.ThemeIcon`: a codicon id, optionally tinted with a theme color. */
+export class ThemeIcon {
+  readonly id: string;
+  readonly color?: ThemeColor;
+  constructor(id: string, color?: ThemeColor) {
+    this.id = id;
+    if (color !== undefined) this.color = color;
+  }
+}
+
 export class TreeItem {
   label: string;
   collapsibleState: TreeItemCollapsibleState;
   contextValue?: string;
   description?: string;
+  tooltip?: string;
+  iconPath?: ThemeIcon;
   constructor(label: string, collapsibleState: TreeItemCollapsibleState) {
     this.label = label;
     this.collapsibleState = collapsibleState;
