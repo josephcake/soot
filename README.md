@@ -187,3 +187,41 @@ Security reports: [`SECURITY.md`](SECURITY.md).
 ## License
 
 [MIT](LICENSE).
+
+## Free models with FreeLLMAPI
+
+No API keys or budget? [FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi) by
+[@tashfeenahmed](https://github.com/tashfeenahmed) pools the free tiers of dozens of LLM
+providers behind one OpenAI-compatible `/v1` endpoint, with automatic failover when one
+is rate-limited. Run it locally, copy the unified key from its dashboard, and point soot's
+`openai-compatible` adapter at it:
+
+```json
+{
+  "version": 1,
+  "providers": [
+    {
+      "id": "freellmapi",
+      "kind": "openai-compatible",
+      "baseURL": "http://localhost:3001/v1",
+      "apiKeyEnv": "FREELLMAPI_KEY"
+    }
+  ],
+  "models": [
+    {
+      "provider": "freellmapi",
+      "modelId": "auto",
+      "pricing": {
+        "inputPerMTokUsd": 0,
+        "outputPerMTokUsd": 0,
+        "source": "https://github.com/tashfeenahmed/freellmapi",
+        "asOf": "2026-11-14"
+      }
+    }
+  ]
+}
+```
+
+`auto` lets FreeLLMAPI pick the model; you can also name a specific one. FreeLLMAPI is a
+separate project, meant for personal experimentation, and each provider's own free-tier
+terms still apply.
