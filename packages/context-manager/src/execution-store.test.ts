@@ -235,6 +235,44 @@ describe('execution store: attempt history (Milestone 4)', () => {
     store.close();
   });
 
+  it('a v5 database from before run_planning gets run_planning and command_runs side by side at v6', () => {
+    const dataDir = tempDir();
+    const before = openExecutionStore({ dataDir });
+    const runId = before.createRun({ intake, graph: buildTaskGraph([task('a')]) });
+    before.close();
+    const db = new DatabaseSync(join(dataDir, STATE_DB_FILE));
+    db.exec(
+      `DROP TABLE run_planning; DROP TABLE command_runs; UPDATE meta SET value = '5' WHERE key = 'schema_version';`,
+    );
+    db.close();
+    const store = openExecutionStore({ dataDir });
+    store.savePlanningCost(runId, {
+      model: 'p/m',
+      inputTokens: 10,
+      outputTokens: 2,
+      usd: 0.001,
+      priced: true,
+    });
+    store.recordCommandRun({
+      runId,
+      taskId: 'a',
+      attempt: 1,
+      stage: 'task-check',
+      name: 'test',
+      status: 'passed',
+      exitCode: 0,
+      sandbox: 'bwrap',
+    });
+    expect(store.planningCost(runId)).toMatchObject({ model: 'p/m', usd: 0.001 });
+    expect(store.commandRuns(runId).map((c) => c.sandbox)).toEqual(['bwrap']);
+    store.close();
+    const check = new DatabaseSync(join(dataDir, STATE_DB_FILE));
+    expect(check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({
+      value: '6',
+    });
+    check.close();
+  });
+
   it('records soot-run commands with their sandbox backend (ADR-051), and migrates v5 to v6', () => {
     const dataDir = tempDir();
     openExecutionStore({ dataDir }).close();
