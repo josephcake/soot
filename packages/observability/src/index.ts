@@ -60,5 +60,7 @@ export {
   type CostSide,
   type CostTaskInput,
   type ModelCostLine,
+  type PlanningCostInput,
+  type PlanningCostLine,
   type TaskCostLine,
 } from './cost-report.js';

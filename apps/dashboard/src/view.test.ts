@@ -90,6 +90,7 @@ describe('toDashboardRun', () => {
     expect(v.cost).toEqual({
       estimatedUsd: null,
       actualUsd: null,
+      runUsd: null,
       unpricedAttempts: null,
       routedEstimateUsd: null,
     });
@@ -153,6 +154,7 @@ describe('toDashboardRun', () => {
     expect(v.cost).toEqual({
       estimatedUsd: 0.002,
       actualUsd: null,
+      runUsd: null,
       unpricedAttempts: 1,
       routedEstimateUsd: 0.003,
     });

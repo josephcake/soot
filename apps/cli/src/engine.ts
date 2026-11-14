@@ -40,10 +40,18 @@ import {
   ProviderHealth,
   actualCostFromUsage,
   addAutoModels,
+  addLocalModels,
   applyPriceCatalog,
   describeAutoPool,
+  describeLocalPool,
+  localProbeSettings,
+  type LocalProbeSettings,
+  type LocalRuntime,
+  type LocalRuntimeProbe,
+  type LocalRuntimeReport,
   loadRegistryConfigFile,
   type AutoProviderReport,
+  type UnavailableReason,
   unpricedModels,
   unpricedWarning,
   type ModelEntry,
@@ -60,6 +68,7 @@ import {
   costRecordsFromAttempts,
   renderCostReport,
   summarizeCosts,
+  type PlanningCostInput,
 } from '@soot/observability';
 import {
   ModelDecompositionError,
@@ -88,7 +97,7 @@ import {
   formatLimit,
   withTimeLimit,
 } from './time-limit.js';
-import { createModelClient, hasApiKey } from '@soot/provider-adapters';
+import { createModelClient, hasApiKey, probeLocalRuntimes } from '@soot/provider-adapters';
 
 /*
  * The soot engine behind the CLI and the MCP server: one prompt → recorded-fixture
@@ -148,6 +157,11 @@ export interface EngineOptions {
   readonly modelClientFactory?: ModelClientFactory;
   /** Day (YYYY-MM-DD) used to pick dated catalog prices (ADR-037). Default: today (UTC). */
   readonly priceDate?: string;
+  /**
+   * Probes local runtimes for keyless models (ADR-045). Default `probeLocalRuntimes`
+   * (`GET <baseURL>/models`, short limit, no key). Tests pass one bound to a fake server.
+   */
+  readonly localProbe?: (runtimes: readonly LocalRuntime[]) => Promise<LocalRuntimeProbe[]>;
 }
 
 /**
@@ -162,13 +176,35 @@ interface PricedRegistry {
   readonly unpriced: readonly string[];
   /** One row per well-known vendor: added, no key, already configured, or off. */
   readonly auto: readonly AutoProviderReport[];
+  /** Refs added from keys and from local runtimes (`origin: 'auto'`). */
   readonly autoRefs: readonly string[];
+  /** One row per local runtime (ADR-045): added, not running, configured, off, ... */
+  readonly local: readonly LocalRuntimeReport[];
+  readonly localRefs: readonly string[];
+  readonly localSettings: LocalProbeSettings;
 }
+
+/** Local probe settings for a loaded config (ADR-045). Throws on a bad URL. */
+function localSettingsFor(
+  cfg: LoadedConfig,
+  env: Readonly<Record<string, string | undefined>>,
+): LocalProbeSettings {
+  return localProbeSettings({
+    autoModels: cfg.config.autoModels,
+    localModels: cfg.config.localModels,
+    env,
+  });
+}
+
+/** Cache key for one set of probed runtimes. */
+const probeKey = (runtimes: readonly LocalRuntime[]) =>
+  runtimes.map((r) => `${r.id}=${r.baseURL}`).join(',');
 
 function loadPricedRegistry(
   cfg: LoadedConfig,
   env: Readonly<Record<string, string | undefined>>,
-  today?: string,
+  today: string | undefined,
+  probed: ReadonlyMap<string, readonly LocalRuntimeProbe[]>,
 ): PricedRegistry {
   const file =
     cfg.modelsPath === null ? EMPTY_REGISTRY_CONFIG : loadRegistryConfigFile(cfg.modelsPath);
@@ -180,12 +216,23 @@ function loadPricedRegistry(
     keyIsSet: (provider) => hasApiKey(provider, env),
     ...day,
   });
+  const localSettings = localSettingsFor(cfg, env);
+  const local = addLocalModels(pool.config, {
+    settings: localSettings,
+    probes: probed.get(probeKey(localSettings.runtimes)) ?? null,
+    fileProviders: file.providers,
+    ...day,
+  });
+  const autoRefs = [...pool.autoRefs, ...local.localRefs];
   return {
-    registry: new ModelRegistry(pool.config, { autoRefs: pool.autoRefs }),
+    registry: new ModelRegistry(local.config, { autoRefs }),
     catalogPriced,
-    unpriced: unpricedModels(pool.config),
+    unpriced: unpricedModels(local.config),
     auto: pool.providers,
-    autoRefs: pool.autoRefs,
+    autoRefs,
+    local: local.runtimes,
+    localRefs: local.localRefs,
+    localSettings,
   };
 }
 
@@ -318,7 +365,10 @@ export interface PlanPreview {
   /** Sum of the known task estimates; `estimatePartial` when a task has none. */
   readonly estimateUsd: number | null;
   readonly estimatePartial: boolean;
-  /** Sum of the per-task worst cases, capped by the run budget when one is set. */
+  /**
+   * Sum of the per-task worst cases, capped by what the run budget leaves after planning when a
+   * budget is set.
+   */
   readonly worstCaseUsd: number | null;
   readonly worstCasePartial: boolean;
   readonly worstCaseBasis: string;
@@ -331,8 +381,38 @@ const USED_PLANS = new WeakSet<EnginePlan>();
 export class SootEngine implements OrchestrationService {
   readonly #o: EngineOptions;
 
+  /** Local runtime probes from this engine's async commands, by runtime list (ADR-045). */
+  readonly #probed = new Map<string, readonly LocalRuntimeProbe[]>();
+
   constructor(options: EngineOptions) {
     this.#o = options;
+  }
+
+  /**
+   * Probe the local runtimes the project's config and environment name (ADR-045), so the
+   * next registry load includes their models. `plan`/`run` and `models` call it; call it before
+   * the synchronous `config()` to see local models there. Never throws: a config error is
+   * reported by the command itself, and a runtime that is not running is just not running.
+   */
+  async probeLocalModels(repo = '.'): Promise<void> {
+    let settings: LocalProbeSettings;
+    try {
+      settings = localSettingsFor(
+        this.#configFor(resolve(this.#o.cwd, repo)),
+        this.#o.modelEnv ?? process.env,
+      );
+    } catch {
+      return;
+    }
+    if (!settings.enabled) return;
+    const probe = this.#o.localProbe ?? ((r) => probeLocalRuntimes(r));
+    try {
+      this.#probed.set(probeKey(settings.runtimes), await probe(settings.runtimes));
+    } catch (error) {
+      (this.#o.log ?? SILENT_LOGGER).warn(
+        `soot: local model probe failed: ${(error as Error).message}`,
+      );
+    }
   }
 
   #configFor(repoRoot: string): LoadedConfig {
@@ -470,9 +550,15 @@ export class SootEngine implements OrchestrationService {
     let registry: ModelRegistry;
     let priced: PricedRegistry;
     let fixtures: DecompositionFixture[];
+    await this.probeLocalModels(repoRoot);
     try {
       cfg = this.#configFor(repoRoot);
-      priced = loadPricedRegistry(cfg, this.#o.modelEnv ?? process.env, this.#o.priceDate);
+      priced = loadPricedRegistry(
+        cfg,
+        this.#o.modelEnv ?? process.env,
+        this.#o.priceDate,
+        this.#probed,
+      );
       registry = priced.registry;
       fixtures = loadFixtures(cfg.fixturesPath);
     } catch (error) {
@@ -501,14 +587,27 @@ export class SootEngine implements OrchestrationService {
     const autoAdded = priced.auto.filter((a) => a.status === 'added');
     if (autoAdded.length > 0) {
       log.info(
-        `soot: auto models from ${autoAdded.map((a) => `$${a.apiKeyEnv}`).join(', ')}: ${String(priced.autoRefs.length)} model(s); light work goes to low-tier models, hard work to high-tier ones (see soot models)`,
+        `soot: auto models from ${autoAdded.map((a) => `$${a.apiKeyEnv}`).join(', ')}: ${String(priced.autoRefs.length - priced.localRefs.length)} model(s); light work goes to low-tier models, hard work to high-tier ones (see soot models)`,
+      );
+    }
+    const localAdded = priced.local.filter((r) => r.status === 'added');
+    if (localAdded.length > 0) {
+      log.info(
+        `soot: local models from ${localAdded.map((r) => r.label).join(', ')}: ${String(priced.localRefs.length)} model(s) at $0, tier low; light work that fits their ${String(priced.localSettings.contextWindow)}-token context goes there first (see soot models)`,
       );
     }
 
     const intake = createPromptIntake({ prompt: request.prompt });
     // Fixtures first; the configured decomposer model only for prompts no fixture matches, and
     // only when a client could be built (ADR-034). No client: fixture-only, no network.
-    const decomposerModel = this.#decomposerModel(cfg, registry);
+    let decomposerModel = this.#decomposerModel(cfg, registry);
+    // The planner call honours provider cooldowns recorded by earlier calls (issue #5, ADR-046).
+    if (decomposerModel.status === 'usable') {
+      const cooling = this.#cooldownOf(decomposerModel.client.provider);
+      if (cooling !== null) {
+        decomposerModel = { status: 'unusable', ref: decomposerModel.ref, reason: cooling };
+      }
+    }
     if (decomposerModel.status === 'unusable') {
       log.warn(
         `soot: decomposer model ${decomposerModel.ref} is not usable (${decomposerModel.reason}); only recorded prompts can be decomposed`,
@@ -568,14 +667,31 @@ export class SootEngine implements OrchestrationService {
         );
       }
       if (error instanceof ModelDecompositionError) {
+        // A provider failure puts the provider in cooldown, as a task attempt would (ADR-046).
+        const cooldown =
+          decomposerModel.status === 'usable'
+            ? this.#recordPlannerFailure(decomposerModel.client.provider, error)
+            : null;
         // Reported as is: soot never falls back to a guess or a similar fixture.
         return failed(
-          fail([error.message, ...error.issues.map((i) => `- ${i}`)].join('\n'), {
-            promptSha256: error.promptSha256,
-            decomposerModel: error.modelRef,
-            decompositionFailure: error.reason,
-            issues: [...error.issues],
-          }),
+          fail(
+            [
+              error.message,
+              ...error.issues.map((i) => `- ${i}`),
+              ...(cooldown === null
+                ? []
+                : [
+                    `Provider ${cooldown.provider} is now in cooldown (${cooldown.reason})${cooldown.until === null ? ' for this session' : ` until ${new Date(cooldown.until).toISOString()}`}; routing and planning skip it until then.`,
+                  ]),
+            ].join('\n'),
+            {
+              promptSha256: error.promptSha256,
+              decomposerModel: error.modelRef,
+              decompositionFailure: error.reason,
+              issues: [...error.issues],
+              ...(cooldown === null ? {} : { providerCooldown: json(cooldown) }),
+            },
+          ),
         );
       }
       return failed(fail((error as Error).message));
@@ -583,6 +699,35 @@ export class SootEngine implements OrchestrationService {
     const { graph } = decomposition;
     const source = decomposition.decomposer;
     const planning = planningCost(registry, source);
+    // Planning spend counts against the run budget before any task starts (issue #5, ADR-046).
+    if (source.kind === 'model') {
+      let runBudgetUsd: number | null;
+      try {
+        runBudgetUsd = escalationConfig(cfg.config.escalation ?? {}).runBudgetUsd;
+      } catch (error) {
+        return failed(fail((error as Error).message));
+      }
+      const spent = planning.costUsd ?? null;
+      if (runBudgetUsd !== null && spent !== null && spent > runBudgetUsd) {
+        return failed(
+          fail(
+            `Planning alone cost $${spent.toFixed(6)} (${source.modelRef}), more than the run budget of $${String(runBudgetUsd)} ("escalation.runBudgetUsd" in ${CONFIG_FILE}). No task was started.`,
+            {
+              promptSha256: intake.promptSha256,
+              decomposerModel: source.modelRef,
+              decompositionFailure: 'run-budget',
+              planningCostUsd: spent,
+              runBudgetUsd,
+            },
+          ),
+        );
+      }
+      if (runBudgetUsd !== null && spent === null) {
+        log.warn(
+          `soot: the planning call's cost is unknown (${planning.priceBasis === null || planning.priceBasis === undefined ? `${source.modelRef} has no price` : 'usage not reported'}); it is not counted against the run budget`,
+        );
+      }
+    }
     const fixtureId = source.kind === 'fixture' ? source.fixtureId : null;
     const planLabel =
       source.kind === 'fixture'
@@ -699,8 +844,18 @@ export class SootEngine implements OrchestrationService {
       store.close();
       return fail((error as Error).message);
     }
+    const planningLine = planningCostInput(source, planning);
     try {
       store.createRun({ runId, intake, graph });
+      if (planningLine !== null) {
+        store.savePlanningCost(runId, {
+          model: planningLine.model,
+          inputTokens: planningLine.inputTokens,
+          outputTokens: planningLine.outputTokens,
+          usd: planningLine.costUsd,
+          priced: planningLine.priced,
+        });
+      }
       const runAudit = new AuditLog({ runId, file: auditLogPath(this.#o.dataDir, runId) });
       plan.acp.audit = runAudit;
       hooks.onRunStarted?.(runId);
@@ -731,6 +886,8 @@ export class SootEngine implements OrchestrationService {
         health,
         // Run-budget spend is kept per attempt in soot.sqlite and reloaded on restart (ADR-030).
         spend: store.spendLedger(runId),
+        // Priced planning counts against the run budget (ADR-046); unknown is never guessed.
+        ...(planningLine?.costUsd == null ? {} : { planningSpendUsd: planningLine.costUsd }),
         ...(cfg.config.escalation === undefined ? {} : { config: cfg.config.escalation }),
         onEvent: (e) => {
           progress(`soot: ${eventLine(e).slice(2)}`);
@@ -790,6 +947,7 @@ export class SootEngine implements OrchestrationService {
           },
         },
         prompt: request.prompt,
+        planning: planningLine,
         ...(this.#o.gitEnv === undefined ? {} : { gitEnv: this.#o.gitEnv }),
       });
       const { report } = result;
@@ -851,6 +1009,48 @@ export class SootEngine implements OrchestrationService {
       return fail(`run ${runId} failed: ${(error as Error).message}`, { runId });
     } finally {
       control.release();
+      store.close();
+    }
+  }
+
+  /**
+   * Why a provider may not be called now (a cooldown recorded in soot.sqlite by an earlier task
+   * attempt or planner call), or `null` when it may (ADR-046).
+   */
+  #cooldownOf(provider: string): string | null {
+    const store = this.#store();
+    try {
+      const status = new ProviderHealth({ store }).status(provider);
+      if (status.available || status.until === null) return null;
+      return `provider "${provider}" is in cooldown until ${new Date(status.until).toISOString()} (${String(status.reason)}${status.detail === null ? '' : `: ${status.detail}`}), recorded by an earlier call`;
+    } finally {
+      store.close();
+    }
+  }
+
+  /**
+   * Record a cooldown for the planner's provider when its call failed the way a task attempt's
+   * would (outage, rate limit, auth, timeout). Returns what was recorded, or `null`.
+   */
+  #recordPlannerFailure(
+    provider: string,
+    error: ModelDecompositionError,
+  ): { provider: string; reason: UnavailableReason; until: number | null } | null {
+    const kind = error.providerError?.kind;
+    const reason: UnavailableReason | undefined =
+      kind === undefined ? undefined : PLANNER_COOLDOWN_REASON[kind];
+    if (reason === undefined || error.reason !== 'model-call-failed') return null;
+    const store = this.#store();
+    try {
+      const health = new ProviderHealth({ store });
+      const retryAfter = error.providerError?.retryAfterMs ?? null;
+      health.markUnavailable(provider, reason, {
+        detail: `planner call: ${error.message}`.slice(0, 500),
+        ...(retryAfter === null ? {} : { cooldownMs: retryAfter }),
+      });
+      const until = health.status(provider).until;
+      return { provider, reason, until: until !== null && Number.isFinite(until) ? until : null };
+    } finally {
       store.close();
     }
   }
@@ -1027,6 +1227,7 @@ export class SootEngine implements OrchestrationService {
               result: a.result === null ? null : { status: a.result.status, usage: a.result.usage },
             })),
         })),
+        planningFromStore(store.planningCost(id)),
       );
       const costRecords = this.#costRecords(store, id);
       const summary = summarizeCosts(costRecords);
@@ -1044,8 +1245,9 @@ export class SootEngine implements OrchestrationService {
     }
   }
 
-  models(): Promise<CommandOutput> {
-    return Promise.resolve(this.modelsReport());
+  async models(): Promise<CommandOutput> {
+    await this.probeLocalModels(this.#o.cwd);
+    return this.modelsReport();
   }
 
   /** `soot models`, synchronously (the dashboard's project setup reads it too). */
@@ -1055,7 +1257,12 @@ export class SootEngine implements OrchestrationService {
     let priced: PricedRegistry;
     try {
       cfg = this.#configFor(this.#o.cwd);
-      priced = loadPricedRegistry(cfg, this.#o.modelEnv ?? process.env, this.#o.priceDate);
+      priced = loadPricedRegistry(
+        cfg,
+        this.#o.modelEnv ?? process.env,
+        this.#o.priceDate,
+        this.#probed,
+      );
       registry = priced.registry;
     } catch (error) {
       return fail((error as Error).message);
@@ -1097,17 +1304,24 @@ export class SootEngine implements OrchestrationService {
     });
     const usd = (v: number | null | undefined) =>
       v === null || v === undefined ? '?' : `$${String(v)}`;
+    const autoFrom = (provider: string) => {
+      const runtime = priced.local.find((l) => l.id === provider && l.status === 'added');
+      if (runtime !== undefined) return ` (auto: local runtime at ${runtime.baseURL}, no key)`;
+      return ` (auto from $${priced.auto.find((a) => a.id === provider)?.apiKeyEnv ?? '?'})`;
+    };
     const text = [
-      `Models from ${modelsSource(cfg)}${priced.autoRefs.length > 0 && cfg.modelsPath !== null ? ' plus your keys' : ''} (policy ${cfg.config.policy}; thresholds low ${String(policy.thresholds.low)} / medium ${String(policy.thresholds.medium)} / high ${String(policy.thresholds.high)})`,
+      `Models from ${modelsSource(cfg)}${priced.autoRefs.length > priced.localRefs.length && cfg.modelsPath !== null ? ' plus your keys' : ''}${priced.localRefs.length > 0 ? ' plus local runtimes' : ''} (policy ${cfg.config.policy}; thresholds low ${String(policy.thresholds.low)} / medium ${String(policy.thresholds.medium)} / high ${String(policy.thresholds.high)})`,
       ...rows.map(
         (r) =>
-          `- ${r.ref} (${r.kind ?? '?'}) ${r.eligible ? 'eligible' : `excluded: ${r.excludedBecause.join(', ')}`}; price in/out per MTok ${r.pricing === null ? 'price not set' : `${usd(r.pricing.inputPerMTokUsd)}/${usd(r.pricing.outputPerMTokUsd)} (${r.priceFrom === 'catalog' ? 'soot catalog' : 'your config'}, ${r.pricing.asOf})`}; context ${r.contextWindow === null ? 'unknown' : String(r.contextWindow)}${r.tier === null ? '' : `; tier ${r.tier}`}${r.origin === 'auto' ? ` (auto from $${priced.auto.find((a) => a.id === r.provider)?.apiKeyEnv ?? '?'})` : ''}`,
+          `- ${r.ref} (${r.kind ?? '?'}) ${r.eligible ? 'eligible' : `excluded: ${r.excludedBecause.join(', ')}`}; price in/out per MTok ${r.pricing === null ? 'price not set' : `${usd(r.pricing.inputPerMTokUsd)}/${usd(r.pricing.outputPerMTokUsd)} (${r.priceFrom === 'catalog' ? 'soot catalog' : 'your config'}, ${r.pricing.asOf})`}; context ${r.contextWindow === null ? 'unknown' : String(r.contextWindow)}${r.tier === null ? '' : `; tier ${r.tier}`}${r.origin === 'auto' ? autoFrom(r.provider) : ''}`,
       ),
       ...(priced.autoRefs.length > 0
         ? [
             'Auto models: tiers come from list output price (low under $2.5/MTok, high from $15/MTok). While a model has no reliability data, it gets work up to its tier, cheapest first; measured history then takes over. Configure a vendor in your models file to override.',
           ]
         : []),
+      `Local runtimes${priced.localSettings.enabled ? '' : ` (off: ${priced.localSettings.offReason})`}:`,
+      ...describeLocalPool(priced.local),
       "Reliability comes from your config. Prices come from your config, else from soot's sourced price catalog for the vendor's own API.",
       ...(unpricedWarning(priced.unpriced) === null
         ? []
@@ -1121,6 +1335,7 @@ export class SootEngine implements OrchestrationService {
         policy: cfg.config.policy,
         models: rows,
         autoModels: { enabled: cfg.config.autoModels, providers: [...priced.auto] },
+        localModels: { enabled: priced.localSettings.enabled, runtimes: [...priced.local] },
         unpricedModels: [...priced.unpriced],
       }) as Record<string, JsonValue>,
     };
@@ -1163,7 +1378,12 @@ export class SootEngine implements OrchestrationService {
     let priced: PricedRegistry;
     try {
       cfg = this.#configFor(repoRoot);
-      priced = loadPricedRegistry(cfg, this.#o.modelEnv ?? process.env, this.#o.priceDate);
+      priced = loadPricedRegistry(
+        cfg,
+        this.#o.modelEnv ?? process.env,
+        this.#o.priceDate,
+        this.#probed,
+      );
       registry = priced.registry;
     } catch (error) {
       return fail((error as Error).message, { dataDir: this.#o.dataDir });
@@ -1201,6 +1421,7 @@ export class SootEngine implements OrchestrationService {
       providers: json(providers),
       models: registry.models().length,
       autoModels: { enabled: cfg.config.autoModels, providers: [...priced.auto] },
+      localModels: { enabled: priced.localSettings.enabled, runtimes: [...priced.local] },
       pricing: {
         catalogPriced: [...priced.catalogPriced],
         unpriced: [...priced.unpriced],
@@ -1210,9 +1431,11 @@ export class SootEngine implements OrchestrationService {
     const text = [
       `Config: ${cfg.path}`,
       `State dir: ${this.#o.dataDir}`,
-      `Models: ${modelsSource(cfg)} (${String(data.models)} models${priced.autoRefs.length > 0 ? `, ${String(priced.autoRefs.length)} auto-added from your keys` : ''})`,
+      `Models: ${modelsSource(cfg)} (${String(data.models)} models${priced.autoRefs.length > priced.localRefs.length ? `, ${String(priced.autoRefs.length - priced.localRefs.length)} auto-added from your keys` : ''}${priced.localRefs.length > 0 ? `, ${String(priced.localRefs.length)} from local runtimes` : ''})`,
       `Auto models${cfg.config.autoModels ? '' : ' (off: "autoModels": false)'} (key variables checked for presence only; values are never printed):`,
       ...describeAutoPool(priced.auto),
+      `Local runtimes${priced.localSettings.enabled ? ' (keyless; probed with a short limit)' : ` (off: ${priced.localSettings.offReason})`}:`,
+      ...describeLocalPool(priced.local),
       `Prices: ${String(registry.models().filter((m) => m.pricing !== null).length)} of ${String(data.models)} priced${priced.catalogPriced.length > 0 ? ` (${String(priced.catalogPriced.length)} from soot's price catalog)` : ''}${pricingNote === null ? '' : `. ${pricingNote}`}`,
       `Policy: ${cfg.config.policy}; concurrency ${String(cfg.config.concurrency)}`,
       `Attempt timeout: ${String(data.effectiveAttemptTimeoutMs)} ms${cfg.config.attemptTimeoutMs === undefined ? ' (default; set "attemptTimeoutMs" to change)' : ''}`,
@@ -1265,6 +1488,49 @@ export function planningCost(registry: ModelRegistry, source: DecompositionSourc
   return { costUsd: costUsd === null ? null : Number(costUsd), priceBasis: basis };
 }
 
+/** Provider error kinds that put the planner's provider in cooldown, as for task attempts. */
+const PLANNER_COOLDOWN_REASON: Readonly<Record<string, UnavailableReason>> = {
+  unavailable: 'outage',
+  'rate-limited': 'rate-limited',
+  timeout: 'timeout',
+  auth: 'auth',
+};
+
+/** The cost report's planning line for a model plan; `null` for a fixture plan (ADR-046). */
+export function planningCostInput(
+  source: DecompositionSource,
+  cost: PlanningCost,
+): PlanningCostInput | null {
+  if (source.kind !== 'model') return null;
+  return {
+    model: source.modelRef,
+    inputTokens: source.usage.inputTokens,
+    outputTokens: source.usage.outputTokens,
+    costUsd: cost.costUsd ?? null,
+    priced: cost.priceBasis !== null && cost.priceBasis !== undefined,
+  };
+}
+
+function planningFromStore(
+  p: {
+    model: string;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    usd: number | null;
+    priced: boolean;
+  } | null,
+): PlanningCostInput | null {
+  return p === null
+    ? null
+    : {
+        model: p.model,
+        inputTokens: p.inputTokens,
+        outputTokens: p.outputTokens,
+        costUsd: p.usd,
+        priced: p.priced,
+      };
+}
+
 function describePlanningCost(source: ModelDecompositionSource, cost: PlanningCost): string {
   const tokens = (n: number | null) => (n === null ? 'not reported' : String(n));
   const usd =
@@ -1315,7 +1581,10 @@ export function buildPlanPreview(
   const est = tasks.map((t) => t.estimateUsd);
   const worstVals = tasks.map((t) => t.worstCaseUsd);
   let worst = sum(worstVals);
-  if (worst !== null && esc.runBudgetUsd !== null) worst = Math.min(worst, esc.runBudgetUsd);
+  // The run budget covers planning too (ADR-046): tasks can spend only what planning left.
+  const planningSpent = plan.source.kind === 'model' ? (num(plan.planning.costUsd) ?? 0) : 0;
+  if (worst !== null && esc.runBudgetUsd !== null)
+    worst = Math.min(worst, Math.max(0, esc.runBudgetUsd - planningSpent));
   const src = plan.source;
   const planner: PlanPreview['planner'] =
     src.kind === 'fixture'
@@ -1345,7 +1614,7 @@ export function buildPlanPreview(
     estimatePartial: est.some((v) => v === null),
     worstCaseUsd: worst,
     worstCasePartial: worstVals.some((v) => v === null),
-    worstCaseBasis: `up to ${String(esc.maxAttemptsPerTask)} attempts per task on the priciest model the router accepts${esc.taskBudgetUsd === null ? '' : `, capped at $${String(esc.taskBudgetUsd)} per task`}${esc.runBudgetUsd === null ? '' : `, $${String(esc.runBudgetUsd)} per run`}`,
+    worstCaseBasis: `up to ${String(esc.maxAttemptsPerTask)} attempts per task on the priciest model the router accepts${esc.taskBudgetUsd === null ? '' : `, capped at $${String(esc.taskBudgetUsd)} per task`}${esc.runBudgetUsd === null ? '' : `, $${String(esc.runBudgetUsd)} per run including planning`}`,
     policy: plan.cfg.config.policy,
     agentLabel: plan.agentLabel,
   };

@@ -32,8 +32,9 @@ const known = (provider: Record<string, unknown>, verified: string): KnownProvid
   Object.freeze({ provider: ProviderConfigSchema.parse(provider), verified });
 
 /**
- * Only vendors whose API soot has exercised end to end. Others (Gemini, Mistral, local
- * runtimes, FreeLLMAPI) still work through a models file.
+ * Only vendors whose API soot has exercised end to end. Others (Gemini, Mistral, FreeLLMAPI)
+ * still work through a models file. Keyless local runtimes are probed separately (ADR-045,
+ * `local-pool.ts`).
  */
 export const KNOWN_PROVIDERS: readonly KnownProvider[] = Object.freeze([
   known(

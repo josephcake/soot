@@ -8,7 +8,7 @@ import {
   type RunReport,
 } from '@soot/agent-runtime';
 import type { ModelOutcome } from '@soot/context-manager';
-import { AuditLog } from '@soot/observability';
+import { AuditLog, type PlanningCostInput } from '@soot/observability';
 import type { TaskGraph } from '@soot/task-graph';
 import { runCheck, type CheckCommand, type CheckEvidence, type CommandPolicy } from './commands.js';
 import {
@@ -58,6 +58,8 @@ export interface CodebaseWorkflowOptions {
   /** Where soot-verified model outcomes are stored for routing feedback (M5-07). */
   readonly outcomes?: OutcomeSink;
   readonly prompt?: string;
+  /** The planning model call, shown on its own line in the report's cost (ADR-046). */
+  readonly planning?: PlanningCostInput | null;
   readonly identity?: GitIdentity;
   readonly gitEnv?: NodeJS.ProcessEnv;
   /** Called with the scheduler as soon as it exists (to cancel single tasks). */
@@ -228,6 +230,7 @@ export async function runCodebaseWorkflow(o: CodebaseWorkflowOptions): Promise<C
     workingTree,
     diffOverlaps: findDiffOverlaps(latest.map((v) => ({ taskId: v.taskId, files: v.files }))),
     cancelled: run.status === 'cancelled',
+    planning: o.planning ?? null,
   });
   audit.record('run-finished', null, {
     status: report.status,

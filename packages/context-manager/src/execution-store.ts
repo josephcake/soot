@@ -40,6 +40,16 @@ export interface AttemptSpend {
   readonly source: 'actual' | 'estimate';
 }
 
+/** A run's planning model call (`run_planning`, ADR-046). `usd: null` = unknown, never 0. */
+export interface RunPlanningCost {
+  readonly model: string;
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+  readonly usd: number | null;
+  /** Whether the planning model had a list price. */
+  readonly priced: boolean;
+}
+
 /** Per-run spend ledger in `soot.sqlite` (`attempt_spend`), used to rebuild run budgets. */
 export interface AttemptSpendLedger {
   attemptSpend(): AttemptSpend[];
@@ -206,6 +216,15 @@ export class ExecutionStore {
         detail TEXT,
         updated_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS run_planning (
+        run_id TEXT PRIMARY KEY REFERENCES runs(run_id) ON DELETE CASCADE,
+        model TEXT NOT NULL,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        usd REAL,
+        priced INTEGER NOT NULL,
+        recorded_at TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS attempt_spend (
         run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
         task_id TEXT NOT NULL,
@@ -325,6 +344,57 @@ export class ExecutionStore {
 
   clearProviderCooldown(provider: string): void {
     this.#db.prepare('DELETE FROM provider_cooldowns WHERE provider = ?').run(provider);
+  }
+
+  /**
+   * Record the run's planning (decomposition) model call (issue #5, ADR-046): reported tokens
+   * and USD (`null` = unknown: unpriced model or no usage reported). Fixture plans record none.
+   */
+  savePlanningCost(runId: string, planning: RunPlanningCost): void {
+    this.#requireRun(runId);
+    if (planning.usd !== null && (!Number.isFinite(planning.usd) || planning.usd < 0)) {
+      throw new RangeError(`invalid planning spend for ${runId}`);
+    }
+    this.#db
+      .prepare(
+        `INSERT OR REPLACE INTO run_planning
+           (run_id, model, input_tokens, output_tokens, usd, priced, recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        runId,
+        planning.model,
+        planning.inputTokens,
+        planning.outputTokens,
+        planning.usd,
+        planning.priced ? 1 : 0,
+        this.#now().toISOString(),
+      );
+  }
+
+  /** The run's planning call, or `null` for a fixture plan or a run from before ADR-046. */
+  planningCost(runId: string): RunPlanningCost | null {
+    const row = this.#db
+      .prepare(
+        'SELECT model, input_tokens, output_tokens, usd, priced FROM run_planning WHERE run_id = ?',
+      )
+      .get(runId) as
+      | {
+          model: string;
+          input_tokens: number | null;
+          output_tokens: number | null;
+          usd: number | null;
+          priced: number;
+        }
+      | undefined;
+    if (row === undefined) return null;
+    return {
+      model: row.model,
+      inputTokens: row.input_tokens,
+      outputTokens: row.output_tokens,
+      usd: row.usd,
+      priced: row.priced === 1,
+    };
   }
 
   /** The run's spend ledger: one row per attempt, overwritten when an actual replaces an estimate. */

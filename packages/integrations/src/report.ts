@@ -1,5 +1,10 @@
 import type { TaskOutcome } from '@soot/agent-runtime';
-import { buildCostReport, renderCostReport, type CostReport } from '@soot/observability';
+import {
+  buildCostReport,
+  renderCostReport,
+  type CostReport,
+  type PlanningCostInput,
+} from '@soot/observability';
 import type { TaskGraph } from '@soot/task-graph';
 import type { CheckEvidence } from './commands.js';
 import type { IntegrationResult } from './integrate.js';
@@ -76,6 +81,8 @@ export interface ReportInput {
   readonly workingTree: WorkingTreeUpdate;
   readonly diffOverlaps: readonly DiffOverlap[];
   readonly cancelled: boolean;
+  /** The planning model call, for the cost report's own planning line (ADR-046). */
+  readonly planning?: PlanningCostInput | null;
 }
 
 export function buildConsolidatedReport(input: ReportInput): ConsolidatedReport {
@@ -164,6 +171,7 @@ export function buildConsolidatedReport(input: ReportInput): ConsolidatedReport 
         result: a.result,
       })),
     })),
+    input.planning ?? null,
   );
   return {
     runId: input.runId,

@@ -63,8 +63,33 @@ export interface ModelCostLine {
   readonly actualUsd: ActualUsd | null;
 }
 
+/**
+ * The planning (decomposition) model call (issue #5, ADR-046). Its own line, never mixed into a
+ * task. `costUsd` is reported usage × list price; `null` when the model has no price or the
+ * call reported no usage (never read as 0).
+ */
+export interface PlanningCostInput {
+  readonly model: string;
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+  readonly costUsd: number | null;
+  /** Whether the planning model had a list price. */
+  readonly priced: boolean;
+}
+
+export interface PlanningCostLine {
+  readonly label: 'planning (decomposition)';
+  readonly model: string;
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+  readonly actualUsd: ActualUsd | null;
+  readonly priced: boolean;
+}
+
 export interface CostReport {
   readonly tasks: readonly TaskCostLine[];
+  /** The planning model call; `null` for a fixture plan (no model call, no cost). */
+  readonly planning: PlanningCostLine | null;
   readonly totals: {
     readonly estimated: CostSide<EstimatedUsd>;
     readonly actual: CostSide<ActualUsd> & {
@@ -72,6 +97,11 @@ export interface CostReport {
       readonly unpricedAttempts: number;
       readonly unreportedAttempts: number;
     };
+    /**
+     * What the run spent: planning plus every task attempt's actual. Equals `actual.usd` when
+     * there was no planning call; `null` when either part is unknown.
+     */
+    readonly run: { readonly usd: ActualUsd | null; readonly planningUsd: ActualUsd | null };
   };
   readonly byModel: readonly ModelCostLine[];
 }
@@ -118,8 +148,22 @@ function taskLine(input: CostTaskInput): TaskCostLine {
   };
 }
 
-export function buildCostReport(tasks: readonly CostTaskInput[]): CostReport {
+export function buildCostReport(
+  tasks: readonly CostTaskInput[],
+  planningInput: PlanningCostInput | null = null,
+): CostReport {
   const lines = tasks.map(taskLine);
+  const planning: PlanningCostLine | null =
+    planningInput === null
+      ? null
+      : {
+          label: 'planning (decomposition)',
+          model: planningInput.model,
+          inputTokens: planningInput.inputTokens,
+          outputTokens: planningInput.outputTokens,
+          actualUsd: planningInput.costUsd === null ? null : actualUsd(planningInput.costUsd),
+          priced: planningInput.priced,
+        };
   const all = lines.flatMap((l) => l.attempts);
   const estimated = sumOrNull(lines.map((l) => l.estimated.usd));
   const actual = sumOrNull(all.map((a) => a.actualUsd));
@@ -128,8 +172,15 @@ export function buildCostReport(tasks: readonly CostTaskInput[]): CostReport {
     const key = a.model ?? '(no model)';
     byModel.set(key, [...(byModel.get(key) ?? []), a]);
   }
+  const runUsd =
+    planning === null
+      ? actual
+      : actual === null || planning.actualUsd === null
+        ? null
+        : actual + planning.actualUsd;
   return {
     tasks: lines,
+    planning,
     totals: {
       estimated: {
         inputTokens: lines.reduce((n, l) => n + l.estimated.inputTokens, 0),
@@ -143,6 +194,10 @@ export function buildCostReport(tasks: readonly CostTaskInput[]): CostReport {
         usd: actual === null ? null : actualUsd(actual),
         unpricedAttempts: lines.reduce((n, l) => n + l.actual.unpricedAttempts, 0),
         unreportedAttempts: lines.reduce((n, l) => n + l.actual.unreportedAttempts, 0),
+      },
+      run: {
+        usd: runUsd === null ? null : actualUsd(runUsd),
+        planningUsd: planning?.actualUsd ?? null,
       },
     },
     byModel: [...byModel.entries()]
@@ -165,6 +220,14 @@ const fmtUsd = (v: number | null) => (v === null ? 'unknown' : `$${v.toFixed(6)}
 /** Plain-text rendering (no UI, ADR-009). Estimates and actuals are labelled separately. */
 export function renderCostReport(report: CostReport): string {
   const lines: string[] = ['Cost (estimates and actuals are never mixed)'];
+  const p = report.planning;
+  if (p !== null) {
+    const tokens = (n: number | null) => (n === null ? 'not reported' : String(n));
+    const why = p.priced ? 'usage not reported' : 'model has no price';
+    lines.push(
+      `- Planning (decomposition, not a task): ${p.model}, ${tokens(p.inputTokens)} in / ${tokens(p.outputTokens)} out tokens reported | actual ${p.actualUsd === null ? `unknown (${why})` : fmtUsd(p.actualUsd)}`,
+    );
+  }
   for (const t of report.tasks) {
     lines.push(
       `- ${t.taskId}: estimated ${fmtUsd(t.estimated.usd)} (${String(t.estimated.inputTokens)} in / ${String(t.estimated.outputTokens)} out tokens planned) | actual ${fmtUsd(t.actual.usd)} (${String(t.actual.inputTokens)} in / ${String(t.actual.outputTokens)} out tokens reported) | models ${t.modelPath.join(' → ') || 'none'}`,
@@ -179,6 +242,11 @@ export function renderCostReport(report: CostReport): string {
   lines.push(
     `Total estimated: ${fmtUsd(estimated.usd)} (${String(estimated.inputTokens)} in / ${String(estimated.outputTokens)} out tokens planned)`,
     `Total actual: ${fmtUsd(actual.usd)} over ${String(actual.attempts)} attempts (${String(actual.inputTokens)} in / ${String(actual.outputTokens)} out tokens reported; ${String(actual.unpricedAttempts)} unpriced, ${String(actual.unreportedAttempts)} without usage)`,
+    ...(p === null
+      ? []
+      : [
+          `Total actual with planning: ${fmtUsd(report.totals.run.usd)} (planning ${fmtUsd(p.actualUsd)} + tasks ${fmtUsd(actual.usd)})`,
+        ]),
     'By model (actual):',
     ...report.byModel.map(
       (m) =>

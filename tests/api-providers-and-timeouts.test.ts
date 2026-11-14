@@ -142,7 +142,7 @@ const engine = (
     agent: { kind: 'api' },
     approvals: withApply(unattendedApprovals()),
     gitEnv: r.env,
-    modelEnv: env,
+    modelEnv: { ...env, SOOT_LOCAL_MODELS: 'off' },
     modelClientFactory: (p, m, o) =>
       createModelClient(p, m, { ...o, fetch: redirect, retry: { maxAttempts: 1 } }),
   });

@@ -213,6 +213,8 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
           return out.ok ? 0 : 1;
         }
         case 'config': {
+          // Probe local runtimes first so `soot config` lists their models (ADR-045).
+          await engine.probeLocalModels(values.repo);
           const out = engine.config(values.repo);
           print(io, out, asJson);
           return out.ok ? 0 : 1;

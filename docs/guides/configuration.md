@@ -15,6 +15,11 @@ shell yourself (for example `set -a; . ./.env; set +a`).
 | `SOOT_LOG_LEVEL` | `info`    | `silent`, `error`, `warn`, `info`, `debug` (case-insensitive) | Log lines on stderr (see below). Invalid values fail the command with `SOOT_LOG_LEVEL: expected …`.   |
 | `SOOT_DATA_DIR`  | `~/.soot` | absolute or relative path (relative resolves against cwd)     | Local-first state: `soot.sqlite` (execution state, M1); `worktrees/<run>/`, `audit/<run>.jsonl` (M5). |
 
+Local model probing ([below](#keyless-local-models-adr-045)) reads two more variables, from the
+environment soot starts in: `SOOT_LOCAL_MODELS` (`off`, `0` or `false` turns probing off) and
+`SOOT_LOCAL_MODEL_URLS` (comma-separated OpenAI-compatible base URLs to probe instead of the
+defaults).
+
 Empty values are treated as unset.
 
 Log levels: `info` prints progress (task assignments, escalations, provider cooldowns carried
@@ -155,22 +160,23 @@ task edits. Unknown keys are rejected.
 }
 ```
 
-| Key                  | Default    | Meaning                                                                                                                       |
-| -------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `models`             | none       | Model registry file (above), relative to the config file. Optional: without it, models come from your keys (`autoModels`).    |
-| `autoModels`         | `true`     | Add models for well-known vendor keys that are set (see [Auto models](#auto-models-from-your-keys-adr-043)). `false` = off.   |
-| `policy`             | `balanced` | `economy`, `balanced` or `quality` ([routing](model-routing.md)).                                                             |
-| `checks`             | `[]`       | Project checks run on every task that changes files, and on the merged result.                                                |
-| `acceptance`         | `{}`       | Extra commands per task id; also run for read-only tasks (their only way to be verified).                                     |
-| `protectedPaths`     | `[]`       | Paths no task may change, even inside its lease. The config, registry, fixtures and mock script are added automatically.      |
-| `allowedExecutables` | `[]`       | Exact `argv[0]` values allowed to run. Destructive programs are refused regardless.                                           |
-| `concurrency`        | `4`        | Tasks running at once (1–16).                                                                                                 |
-| `attemptTimeoutMs`   | `1800000`  | Abort an attempt after this many ms (default 30 minutes, `DEFAULT_ATTEMPT_TIMEOUT_MS`); a hung runner ends as `timeout`.      |
-| `modelCallTimeoutMs` | `120000`   | Wall-clock limit for one model call: one `--agent api` try (with its repair round and retries) or one planner call (ADR-040). |
-| `escalation`         | defaults   | Escalation limits and budgets (`@soot/escalation`, e.g. `{ "sameModelRetries": 0 }`).                                         |
-| `fixtures`           | none       | JSON array of extra recorded decompositions `{ id, prompt, tasks }`.                                                          |
-| `acpAgent`           | none       | ACP agent for `--agent acp`: `command`, `args`, `passEnv` (variable names; credential-like names are rejected).               |
-| `decomposer`         | none       | `{ "model": "<provider/modelId>" }` or `{ "model": "auto" }`: the model for prompts with no fixture (see below).              |
+| Key                  | Default    | Meaning                                                                                                                         |
+| -------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `models`             | none       | Model registry file (above), relative to the config file. Optional: without it, models come from your keys (`autoModels`).      |
+| `autoModels`         | `true`     | Add models for well-known vendor keys that are set (see [Auto models](#auto-models-from-your-keys-adr-043)). `false` = off.     |
+| `localModels`        | `true`     | Probe local runtimes for keyless models ([below](#keyless-local-models-adr-045)). `false` = off; `{ "urls", "contextWindow" }`. |
+| `policy`             | `balanced` | `economy`, `balanced` or `quality` ([routing](model-routing.md)).                                                               |
+| `checks`             | `[]`       | Project checks run on every task that changes files, and on the merged result.                                                  |
+| `acceptance`         | `{}`       | Extra commands per task id; also run for read-only tasks (their only way to be verified).                                       |
+| `protectedPaths`     | `[]`       | Paths no task may change, even inside its lease. The config, registry, fixtures and mock script are added automatically.        |
+| `allowedExecutables` | `[]`       | Exact `argv[0]` values allowed to run. Destructive programs are refused regardless.                                             |
+| `concurrency`        | `4`        | Tasks running at once (1–16).                                                                                                   |
+| `attemptTimeoutMs`   | `1800000`  | Abort an attempt after this many ms (default 30 minutes, `DEFAULT_ATTEMPT_TIMEOUT_MS`); a hung runner ends as `timeout`.        |
+| `modelCallTimeoutMs` | `120000`   | Wall-clock limit for one model call: one `--agent api` try (with its repair round and retries) or one planner call (ADR-040).   |
+| `escalation`         | defaults   | Escalation limits and budgets (`@soot/escalation`, e.g. `{ "sameModelRetries": 0 }`).                                           |
+| `fixtures`           | none       | JSON array of extra recorded decompositions `{ id, prompt, tasks }`.                                                            |
+| `acpAgent`           | none       | ACP agent for `--agent acp`: `command`, `args`, `passEnv` (variable names; credential-like names are rejected).                 |
+| `decomposer`         | none       | `{ "model": "<provider/modelId>" }` or `{ "model": "auto" }`: the model for prompts with no fixture (see below).                |
 
 Check entries: `name`, `kind` (`test`, `typecheck`, `lint`, `acceptance`), `argv`, optional
 `timeoutMs` and `required` (default `true`).
@@ -200,9 +206,18 @@ models in your registry file:
 - `soot config` (and `--json`, field `decomposer`) shows the setting and whether it is usable,
   without printing any key. Checking builds a client but makes no request.
 - Only decomposition uses this model. Execution needs `--agent api` (each task on its routed
-  model, ADR-039), `--agent mock` or `--agent acp`; routing is unchanged. Decomposition tokens
-  are recorded in the run report (`decomposition.usage`, priced) but are not yet counted in the
-  cost report or run budget.
+  model, ADR-039), `--agent mock` or `--agent acp`; routing is unchanged.
+- **Planning cost (ADR-046).** The planning call's tokens and price are a line of their own in
+  `soot cost`, the run report and the dashboard ("Planning (decomposition, not a task)"), and
+  the run total includes them (`cost.totals.run`). An unpriced model or unreported usage stays
+  `unknown`, never $0. Priced planning counts against `escalation.runBudgetUsd` before any
+  task starts: if planning alone is over the budget, the run stops with that reason and no
+  task starts; otherwise the tasks share what is left. Unknown planning cost is not counted
+  (soot logs a warning when a run budget is set).
+- **Provider cooldowns (ADR-046).** The planner call is skipped while its provider is in a
+  cooldown recorded by an earlier task attempt or planner call (the model is reported as not
+  usable, with the time it ends), and an outage, rate limit, timeout or auth failure of the
+  planner call records a cooldown the same way a task attempt does.
 - **Status:** implemented, verified with mock model clients, and run live with
   `deepseek/deepseek-flash` (2026-11-13).
 
@@ -239,6 +254,42 @@ models by itself, so you can have several keys and let soot pick per task:
 - `"decomposer": { "model": "auto" }` picks the cheapest priced model with structured output
   whose key is set, skipping `low`-tier models when another is available. Without
   `decomposer`, decomposition stays fixtures-only as before.
+
+### Keyless local models (ADR-045)
+
+Local runtimes need no key. When `soot run`, `soot models` or `soot config` starts, soot asks
+each local runtime for its models (`GET <baseURL>/models`, no key sent, 500 ms limit, all
+runtimes at once) and adds what answers:
+
+| Runtime   | Provider id | Base URL probed             |
+| --------- | ----------- | --------------------------- |
+| Ollama    | `ollama`    | `http://127.0.0.1:11434/v1` |
+| LM Studio | `lmstudio`  | `http://127.0.0.1:1234/v1`  |
+
+- Each runtime that answers becomes an `openai-compatible` provider with `local: true` and no
+  `apiKeyEnv`. Its chat models (embedding models are skipped, at most 32 per runtime) are
+  priced at $0 (`source: "local runtime"`) and get tier `low`, so light work goes to them
+  first and harder work still goes to stronger models.
+- Each gets `tools` and `structuredOutput` (soot's API runner needs both; most current local
+  chat models offer them through these runtimes). A model that cannot do either fails its
+  try, and escalation moves the task on.
+- The listing does not say how much context a runtime loaded, and Ollama and LM Studio both
+  default to 4096 tokens, so soot assumes **4096** and routes only tasks that fit. If you
+  raised the runtime's context, set `"localModels": { "contextWindow": 32768 }` to match.
+- **Other addresses:** `"localModels": { "urls": ["http://127.0.0.1:8080/v1"] }` in
+  soot.config.json, or `SOOT_LOCAL_MODEL_URLS=http://127.0.0.1:8080/v1,...` (the variable
+  wins). A URL with no path gets `/v1`. Runtimes on other ports get ids like
+  `local-127-0-0-1-8080`.
+- **Your models file wins.** A runtime whose provider id or base URL (`localhost` and
+  `127.0.0.1` count as the same) your file configures gets nothing added. Configure it
+  yourself to choose models, tiers, context windows or priors.
+- **Off:** `"localModels": false`, `"autoModels": false`, or `SOOT_LOCAL_MODELS=off`.
+- `soot config` and `soot models` list each runtime as added, not-running, no-models, error,
+  configured or off, and `soot models` marks local models `(auto: local runtime at <url>, no
+key)`. The dashboard's project panel reads config without probing and shows `not-probed`;
+  a dashboard run probes like `soot run`.
+- Nothing leaves your machine: the probe goes only to the addresses above (or yours), and
+  `"decomposer": { "model": "auto" }` never picks a local model, since they are tier `low`.
 
 ## CLI state files
 

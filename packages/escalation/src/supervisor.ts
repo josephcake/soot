@@ -67,6 +67,12 @@ export interface AdaptiveSupervisorOptions {
    * actual is saved to it (ADR-030).
    */
   readonly spend?: SpendLedger;
+  /**
+   * USD already spent on this run before any task: the priced planning (decomposition) call
+   * (issue #5, ADR-046). Counted in `runSpent()` and so against the run budget. Unknown
+   * (unpriced) planning is left out by the caller, never guessed.
+   */
+  readonly planningSpendUsd?: number;
 }
 
 /** Spend attributed to one attempt: a reported actual, or the routed estimate. Never invented. */
@@ -127,9 +133,15 @@ export class AdaptiveSupervisor implements AttemptSupervisor {
     return [...(this.#spent.get(taskId)?.values() ?? [])].reduce((a, b) => a + b, 0);
   }
 
-  /** Total spend of the run so far (actuals where reported, else routed estimates). */
+  /**
+   * Total spend of the run so far: planning (when priced) plus each attempt's actual where
+   * reported, else its routed estimate.
+   */
   runSpent(): number {
-    return [...this.#spent.keys()].reduce((n, id) => n + this.#taskSpent(id), 0);
+    return [...this.#spent.keys()].reduce(
+      (n, id) => n + this.#taskSpent(id),
+      this.#options.planningSpendUsd ?? 0,
+    );
   }
 
   #emit(event: AdaptiveEvent): void {
@@ -218,9 +230,10 @@ export class AdaptiveSupervisor implements AttemptSupervisor {
     }
     const runSpent = this.runSpent();
     if (runBudgetUsd !== null && runSpent + next > runBudgetUsd) {
+      const planning = this.#options.planningSpendUsd ?? 0;
       return {
         action: 'stop',
-        reason: `run budget exhausted: spent ${usd(runSpent)} + next attempt ${usd(next)} > ${usd(runBudgetUsd)}`,
+        reason: `run budget exhausted: spent ${usd(runSpent)}${planning > 0 ? ` (planning ${usd(planning)})` : ''} + next attempt ${usd(next)} > ${usd(runBudgetUsd)}`,
       };
     }
     return { action: 'run', assignment };

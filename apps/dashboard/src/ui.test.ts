@@ -970,7 +970,7 @@ describe('page helpers', () => {
         tokens: {
           actual: covered({ inputTokens: 1000, outputTokens: 234, unreportedAttempts: 0 }, 1),
         },
-        cost: { actualUsd: covered(null, 0), unpricedAttempts: 2 },
+        cost: { actualUsd: covered(null, 0), runUsd: covered(null, 0), unpricedAttempts: 2 },
       },
     });
     expect(tiles.map((t) => text(t))).toEqual(
@@ -980,6 +980,18 @@ describe('page helpers', () => {
         '1,234 Tokens reported · 1/2 runs',
         '— Cost actual not reported · 2 unpriced attempt(s)',
       ].map((s) => ` ${s}`),
+    );
+    // The Cost tile is planning plus tasks (runUsd), not the tasks-only actual (ADR-046).
+    const withPlanning = ui.tilesFor({
+      promptCount: 1,
+      taskCount: 1,
+      aggregate: {
+        tokens: { actual: covered(null, 0) },
+        cost: { actualUsd: covered(0.01, 1), runUsd: covered(0.013, 1), unpricedAttempts: 0 },
+      },
+    });
+    expect(withPlanning[3] && text(withPlanning[3])).toBe(
+      ' $0.0130 Cost reported actual incl. planning · 1/1 runs',
     );
     const none = ui.tilesFor({ promptCount: 0, taskCount: 0, aggregate: null });
     expect(none.map((t) => t.children[0]?.textContent)).toEqual(['—', '—', '—', '—']);
@@ -999,6 +1011,7 @@ describe('page helpers', () => {
           estimatedUsd: covered(null, 0),
           routedEstimateUsd: covered(null, 0),
           actualUsd: covered(null, 0),
+          runUsd: covered(null, 0),
           unpricedAttempts: 0,
         },
         outcomes: {

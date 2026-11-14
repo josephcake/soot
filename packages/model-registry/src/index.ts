@@ -97,3 +97,20 @@ export {
   type AutoProviderReport,
   type KnownProvider,
 } from './auto-pool.js';
+export {
+  DEFAULT_LOCAL_RUNTIMES,
+  LOCAL_DEFAULT_CONTEXT_WINDOW,
+  LOCAL_PRICE_SOURCE,
+  LOCAL_PROBE_TIMEOUT_MS,
+  MAX_LOCAL_MODELS_PER_RUNTIME,
+  addLocalModels,
+  describeLocalPool,
+  localProbeSettings,
+  localRuntimeFromUrl,
+  normalizeBaseURL,
+  type LocalPoolResult,
+  type LocalProbeSettings,
+  type LocalRuntime,
+  type LocalRuntimeProbe,
+  type LocalRuntimeReport,
+} from './local-pool.js';

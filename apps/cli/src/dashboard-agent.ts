@@ -46,6 +46,7 @@ const asRecord = (v: unknown): Record<string, unknown> =>
 
 function planErrorCode(data: Record<string, unknown>): string {
   if (data.decomposerModelStatus === 'unusable') return 'decomposer_unusable';
+  if (data.decompositionFailure === 'run-budget') return 'planning_over_budget';
   if (data.decompositionFailure !== undefined) return 'invalid_decomposition';
   if (data.promptSha256 !== undefined) return 'no_fixture';
   return 'planning_failed';

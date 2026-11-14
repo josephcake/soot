@@ -53,6 +53,63 @@ describe('AuditLog', () => {
 });
 
 describe('buildCostReport', () => {
+  it('puts the planning call on its own line and in the run total, never in a task (ADR-046)', () => {
+    const tasks = [
+      {
+        taskId: 't1',
+        plannedInputTokens: 100,
+        plannedOutputTokens: 10,
+        attempts: [
+          {
+            attempt: 1,
+            model: 'a/m',
+            estimatedUsd: 0.001,
+            result: { status: 'succeeded' as const, usage: usage(120, 12, 0.002, 'a/m') },
+          },
+        ],
+      },
+    ];
+    const priced = buildCostReport(tasks, {
+      model: 'p/planner',
+      inputTokens: 700,
+      outputTokens: 150,
+      costUsd: 0.000145,
+      priced: true,
+    });
+    expect(priced.planning).toMatchObject({
+      label: 'planning (decomposition)',
+      model: 'p/planner',
+    });
+    expect(priced.tasks.map((t) => t.taskId)).toEqual(['t1']);
+    expect(priced.totals.actual.usd).toBeCloseTo(0.002, 12);
+    expect(priced.totals.run.usd).toBeCloseTo(0.002145, 12);
+    expect(priced.byModel.map((m) => m.model)).toEqual(['a/m']);
+    const text = renderCostReport(priced);
+    expect(text).toContain(
+      '- Planning (decomposition, not a task): p/planner, 700 in / 150 out tokens reported | actual $0.000145',
+    );
+    expect(text).toContain(
+      'Total actual with planning: $0.002145 (planning $0.000145 + tasks $0.002000)',
+    );
+
+    const unpriced = buildCostReport(tasks, {
+      model: 'p/planner',
+      inputTokens: 700,
+      outputTokens: null,
+      costUsd: null,
+      priced: false,
+    });
+    expect(unpriced.totals.run).toEqual({ usd: null, planningUsd: null });
+    expect(renderCostReport(unpriced)).toContain(
+      '700 in / not reported out tokens reported | actual unknown (model has no price)',
+    );
+
+    const fixture = buildCostReport(tasks);
+    expect(fixture.planning).toBeNull();
+    expect(fixture.totals.run.usd).toBe(fixture.totals.actual.usd);
+    expect(renderCostReport(fixture)).not.toContain('Planning');
+  });
+
   it('keeps estimates and actuals apart and totals match the reported usage', () => {
     const report = buildCostReport([
       {

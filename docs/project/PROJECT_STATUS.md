@@ -181,7 +181,7 @@ Node 26 (M0-11 Completed).
 
 ## Known Issues
 
-- The CLI and MCP server decompose from fixtures unless `decomposer.model` is configured with a usable key (ADR-034); without it, prompts without a recorded fixture are refused. The model path is verified with mock model clients only: no real model has decomposed a prompt, and decomposition tokens are not yet counted in the cost report or run budget.
+- The CLI and MCP server decompose from fixtures unless `decomposer.model` is configured with a usable key (ADR-034); without it, prompts without a recorded fixture are refused. The model path is verified with mock model clients only: no real model has decomposed a prompt, and since ADR-046 the planning call is counted in the cost report and the run budget and honours provider cooldowns.
 - Agents are mocks. Since M5, "complete" means soot ran the checks on the task's real diff, but no real model has produced a diff yet.
 - No OS sandbox: worktrees isolate git state, not processes (`docs/project/TECHNICAL_DEBT.md`).
 - Provider adapters are verified against mocked HTTP only. Real wire behaviour is unverified until M2-07.

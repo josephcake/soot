@@ -5,6 +5,30 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (planning cost in the report and the run budget, ADR-046, issue #5)
+
+- The planning (decomposer) call is its own line in `soot cost` and the run report
+  ("Planning (decomposition, not a task)"), saved in `soot.sqlite` (`run_planning`), and the run
+  total with planning is `cost.totals.run`. Unpriced planning stays unknown.
+- Priced planning counts against `escalation.runBudgetUsd`: planning alone over the budget stops
+  the run before any task starts (`decompositionFailure: "run-budget"`); otherwise tasks share
+  the rest.
+- The plan preview's worst case is capped at the run budget minus the planning already spent.
+- The dashboard overview's reported Cost tile and "actual (reported)" chart include each run's
+  planning call (`totals.run.usd`).
+- The planner call skips a provider in cooldown and records a cooldown on an outage, rate
+  limit, timeout or auth failure, like task attempts.
+
+### Added (keyless local models, ADR-045)
+
+- soot probes Ollama (`127.0.0.1:11434`) and LM Studio (`127.0.0.1:1234`) with a 500 ms
+  `GET /v1/models` and adds their chat models as keyless `local: true` providers, $0
+  (`source: "local runtime"`), tier `low`, assumed 4096-token context, so light work goes to
+  them first. `"localModels": false` or `SOOT_LOCAL_MODELS=off` turns this off;
+  `"localModels": { "urls": [...], "contextWindow": N }` or `SOOT_LOCAL_MODEL_URLS` changes
+  where to probe and the window. Your models file wins for a runtime it configures.
+  `soot config` and `soot models` list each runtime.
+
 ### Added (editor support and an Escalations view, ADR-044; M7-02…M7-04 prepared, M7-06)
 
 - The VS Code extension's tree and board have an **Escalations (N)** section: one entry per

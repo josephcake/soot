@@ -24,7 +24,7 @@ const engineFor = (r: DemoRepo) =>
     agent: { kind: 'mock', script: 'mock-agent.json' },
     approvals: unattendedApprovals(),
     gitEnv: r.env,
-    modelEnv: {},
+    modelEnv: { SOOT_LOCAL_MODELS: 'off' },
   });
 
 describe('SootEngine.plan / runPlan', () => {
