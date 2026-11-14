@@ -77,9 +77,11 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   with user-supplied keys (ADR-011).
 - **[Open, ADR-050] Retries do not see the failed check's output.** A retry is told only that
   a check failed (`acceptance:title failed (exit 1)`) and starts from a reset worktree, so a
-  model can repeat or swap the same mistake. In the 2026-11-14 benchmark this failed the
-  single-model arm on every run of one prompt. Passing a bounded tail of the check output to
-  the next attempt is the likely fix.
+  model can repeat or swap the same mistake. The 2026-11-14 benchmark first pointed here, but
+  that prompt's failures came from a task that contradicted its acceptance test (fixed in the
+  bench app). The gap is still real for genuine first-attempt mistakes. Passing a bounded tail
+  of the check output (and the rejected diff) to the next attempt is the fix in progress
+  (branch `feat/retry-check-output`).
 - **[Resolved, ADR-030] Provider health persists.** Timed cooldowns (outage, rate limit,
   timeout) are stored in `soot.sqlite` (`provider_cooldowns`) through `ProviderHealthStore`;
   `soot run` loads them, so a restarted process skips a provider that was down until its

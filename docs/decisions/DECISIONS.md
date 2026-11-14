@@ -1355,11 +1355,14 @@ generativelanguage.googleapis.com`, so the existing Gemini catalog prices apply.
     `--max-usd` stops it before the next run once known spend reaches the cap.
   - **Results** are published with method, raw data and caveats in
     `docs/benchmarks/2026-11-14.md` and `.json`: three repetitions with xAI and DeepSeek. On
-    the 10 paired runs where both arms passed with known cost, routed $0.0174 vs baseline
-    $0.1176. Routed passed 15/18, baseline 11/18. The high-complexity prompt failed in both
-    arms (same model, 120 s call limit), and the baseline's 0/3 on the title prompt comes from
-    having no escalation target plus retries that do not see the failed check's output. That
-    is all soot may claim; README and the routing guide quote it with the sample size.
+    the 13 paired runs where both arms passed with known cost, routed $0.0190 vs baseline
+    $0.1288. Routed passed 15/18, baseline 14/18. The high-complexity prompt failed in both
+    arms (same model, 120 s call limit). The title + button prompt was first run on spec Test
+    1's fixture, whose "No other page text changes" contradicted the bench app's acceptance
+    test (both `<title>` and `<h1>`). The baseline went 0/3 there and routed passed only by
+    escalating. The bench app now has its own fixture for a reworded prompt that asks for
+    both, and the re-run passed 3/3 in both arms. That is all soot may claim; README and the
+    routing guide quote it with the sample size.
   - **Acceptance runs** (`docs/benchmarks/2026-11-14-acceptance.md`): Tests 1 and 2 passed
     and landed; Test 4 ran on both providers with implementation and tests verified and the
     read-only review unverified by design; Test 3 started cheap but did not escalate from
@@ -1375,8 +1378,8 @@ generativelanguage.googleapis.com`, so the existing Gemini catalog prices apply.
     small). Milestone 6 stays In Progress (no real harness, M6-04/05).
 - **Verification:** the runs themselves (2026-11-14, about 12:44 to 1:33 PM PT, soot built
   from `5dfbd8d`), and a smoke run of benchmark prompt 2 in both arms after rebasing onto
-  `dd6ff34` (passed). Live spend: $0.32 known for all runs (benchmark $0.25, acceptance
-  $0.07); 21 timed-out calls reported no usage, so their cost, if billed, is unknown.
+  `dd6ff34` (passed), and the prompt 1 re-run (about 2:19 PM PT, built from `6c9b1e1`, $0.0127).
+  Live spend: $0.33 known for all runs on this branch (benchmark $0.26, acceptance $0.07); 21 timed-out calls reported no usage, so their cost, if billed, is unknown.
   `bash scripts/ci.sh` with all four key variables unset passes and makes no live call.
 - **Alternatives:** a benchmark inside Vitest behind an env flag (too easy to run by
   accident and spend money); letting a model decompose each prompt (adds noise and planning

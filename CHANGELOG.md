@@ -12,8 +12,10 @@ All notable changes are recorded here by milestone. Format loosely follows
   expensive available model, with real keys. It needs `--live`, refuses in CI and never runs in
   tests. First results with xAI and DeepSeek, three repetitions:
   [docs/benchmarks/2026-11-14.md](docs/benchmarks/2026-11-14.md). On the prompts both arms
-  passed, routing cost $0.0174 against $0.1176; routed passed 15/18 runs, the baseline 11/18.
-  The high-complexity prompt failed in both arms, and the sample is small.
+  passed, routing cost $0.0190 against $0.1288; routed passed 15/18 runs, the baseline 14/18.
+  The high-complexity prompt failed in both arms, and the sample is small. The title + button
+  prompt was re-run after its task was corrected to ask for both `<title>` and `<h1>` (the
+  recorded spec fixture said "No other page text changes", contradicting the acceptance test).
 - Spec Tests 1 to 6 ran live with `--agent api`
   ([docs/benchmarks/2026-11-14-acceptance.md](docs/benchmarks/2026-11-14-acceptance.md)):
   Tests 1, 2 and 4 passed (Test 4's review is unverified by design), Test 3 in part, and Test 6

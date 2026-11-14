@@ -1,5 +1,5 @@
 {
-  "note": "Raw output of scripts/benchmark.mjs: rep 1 from one invocation (--reps 1), reps 2-3 from a second (--reps 2, renumbered). Engine built from 5dfbd8d. Costs are soot list-price computations from provider-reported tokens; null = unknown (an attempt reported no usage).",
+  "note": "Raw output of scripts/benchmark.mjs: rep 1 from one invocation (--reps 1), reps 2-3 from a second (--reps 2, renumbered). Engine built from 5dfbd8d. Costs are soot list-price computations from provider-reported tokens; null = unknown (an attempt reported no usage). Prompt 1 was re-run on 2026-11-14 at about 2:19 PM PT with the engine built from 6c9b1e1, after its fixture was changed to ask for both the <title> and the <h1> (the old spec Test 1 task said \"No other page text changes\", which contradicted the acceptance test). Those runs replace the prompt 1 results; the old prompt 1 runs are kept in supersededResults.",
   "engineCommit": "5dfbd8d",
   "runs": [
     {
@@ -11,6 +11,13 @@
       "date": "2026-11-14T21:33:20.215Z",
       "reps": 2,
       "spentUsd": 0.12158061999999997
+    },
+    {
+      "date": "2026-11-14T22:19:07.347Z",
+      "reps": 3,
+      "spentUsd": 0.012736919999999999,
+      "only": [1],
+      "engineCommit": "6c9b1e1"
     }
   ],
   "node": "v24.22.1",
@@ -73,7 +80,7 @@
   ],
   "baseline": "xai/grok-4.7",
   "prompts": [
-    "Change the page title to HELLO WORLD and update the primary button to purple.",
+    "Change the page title and heading to HELLO WORLD and update the primary button to purple.",
     "Rename the --brand CSS variable to --accent in the theme.",
     "Fix the paging bug in paginate().",
     "Add a slugify helper.",
@@ -83,53 +90,8 @@
   "results": [
     {
       "rep": 1,
-      "arm": "baseline",
-      "prompt": "Change the page title to HELLO WORLD and update the primary button to purple.",
-      "exitCode": 2,
-      "sootStatus": "incomplete",
-      "passed": false,
-      "acceptance": [
-        {
-          "name": "acceptance:title",
-          "passed": false
-        },
-        {
-          "name": "acceptance:button",
-          "passed": true
-        }
-      ],
-      "projectTests": true,
-      "wallMs": 63429,
-      "attempts": 3,
-      "inputTokens": 5091,
-      "outputTokens": 4385,
-      "usd": 0.031308,
-      "unpricedAttempts": 0,
-      "unreportedAttempts": 0,
-      "tasks": [
-        {
-          "taskId": "update-page-title",
-          "modelPath": ["xai/grok-4.7"],
-          "attempts": 2,
-          "inputTokens": 3472,
-          "outputTokens": 4272,
-          "usd": 0.02912
-        },
-        {
-          "taskId": "update-button-color",
-          "modelPath": ["xai/grok-4.7"],
-          "attempts": 1,
-          "inputTokens": 1619,
-          "outputTokens": 113,
-          "usd": 0.002188
-        }
-      ],
-      "error": null
-    },
-    {
-      "rep": 1,
       "arm": "routed",
-      "prompt": "Change the page title to HELLO WORLD and update the primary button to purple.",
+      "prompt": "Change the page title and heading to HELLO WORLD and update the primary button to purple.",
       "exitCode": 0,
       "sootStatus": "complete",
       "passed": true,
@@ -144,30 +106,315 @@
         }
       ],
       "projectTests": true,
-      "wallMs": 16675,
-      "attempts": 4,
-      "inputTokens": 2577,
-      "outputTokens": 1808,
-      "usd": 0.00433024,
+      "wallMs": 2965,
+      "attempts": 2,
+      "inputTokens": 1138,
+      "outputTokens": 323,
+      "usd": 0.0006161039999999999,
       "unpricedAttempts": 0,
       "unreportedAttempts": 0,
       "tasks": [
         {
           "taskId": "update-page-title",
-          "modelPath": ["deepseek/deepseek-flash", "xai/grok-4.3"],
-          "attempts": 3,
-          "inputTokens": 2172,
-          "outputTokens": 1671,
-          "usd": 0.004119604
+          "verdict": "verified",
+          "reason": "3 soot-run checks passed on 542be3a12f6873ec44736b3b90e5fcdfb30bb9b9",
+          "modelPath": ["deepseek/deepseek-flash"],
+          "attempts": 1,
+          "inputTokens": 587,
+          "outputTokens": 153,
+          "usd": 0.00032206799999999995
         },
         {
           "taskId": "update-button-color",
+          "verdict": "verified",
+          "reason": "3 soot-run checks passed on 97997dd2c8743c780904261c270f452ce15a88be",
           "modelPath": ["deepseek/deepseek-flash"],
           "attempts": 1,
-          "inputTokens": 405,
-          "outputTokens": 137,
-          "usd": 0.000210636
+          "inputTokens": 551,
+          "outputTokens": 170,
+          "usd": 0.000294036
         }
+      ],
+      "decisions": [
+        "- update-page-title #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.000960 \u00f7 unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
+        "- update-button-color #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.001110 \u00f7 unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
+        "- update-page-title #1 accept deepseek/deepseek-flash: result accepted",
+        "- update-button-color #1 accept deepseek/deepseek-flash: result accepted"
+      ],
+      "error": null
+    },
+    {
+      "rep": 1,
+      "arm": "baseline",
+      "prompt": "Change the page title and heading to HELLO WORLD and update the primary button to purple.",
+      "exitCode": 0,
+      "sootStatus": "complete",
+      "passed": true,
+      "acceptance": [
+        {
+          "name": "acceptance:title",
+          "passed": true
+        },
+        {
+          "name": "acceptance:button",
+          "passed": true
+        }
+      ],
+      "projectTests": true,
+      "wallMs": 3188,
+      "attempts": 2,
+      "inputTokens": 3553,
+      "outputTokens": 262,
+      "usd": 0.003686,
+      "unpricedAttempts": 0,
+      "unreportedAttempts": 0,
+      "tasks": [
+        {
+          "taskId": "update-page-title",
+          "verdict": "verified",
+          "reason": "3 soot-run checks passed on e846388e0e620768a24d74c21ab8bb4fbb312fff",
+          "modelPath": ["xai/grok-4.7"],
+          "attempts": 1,
+          "inputTokens": 1791,
+          "outputTokens": 144,
+          "usd": 0.00195
+        },
+        {
+          "taskId": "update-button-color",
+          "verdict": "verified",
+          "reason": "3 soot-run checks passed on 6528424006197dd60d95f0e7fe8ae85fe0bef864",
+          "modelPath": ["xai/grok-4.7"],
+          "attempts": 1,
+          "inputTokens": 1762,
+          "outputTokens": 118,
+          "usd": 0.001736
+        }
+      ],
+      "decisions": [
+        "- update-page-title #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.005800 \u00f7 unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
+        "- update-button-color #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.006800 \u00f7 unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
+        "- update-page-title #1 accept xai/grok-4.7: result accepted",
+        "- update-button-color #1 accept xai/grok-4.7: result accepted"
+      ],
+      "error": null
+    },
+    {
+      "rep": 2,
+      "arm": "routed",
+      "prompt": "Change the page title and heading to HELLO WORLD and update the primary button to purple.",
+      "exitCode": 0,
+      "sootStatus": "complete",
+      "passed": true,
+      "acceptance": [
+        {
+          "name": "acceptance:title",
+          "passed": true
+        },
+        {
+          "name": "acceptance:button",
+          "passed": true
+        }
+      ],
+      "projectTests": true,
+      "wallMs": 2596,
+      "attempts": 2,
+      "inputTokens": 1138,
+      "outputTokens": 304,
+      "usd": 0.000480408,
+      "unpricedAttempts": 0,
+      "unreportedAttempts": 0,
+      "tasks": [
+        {
+          "taskId": "update-page-title",
+          "verdict": "verified",
+          "reason": "3 soot-run checks passed on 67a5ee55f70f1237e5d39070f7715c48b52af20a",
+          "modelPath": ["deepseek/deepseek-flash"],
+          "attempts": 1,
+          "inputTokens": 587,
+          "outputTokens": 144,
+          "usd": 0.000236004
+        },
+        {
+          "taskId": "update-button-color",
+          "verdict": "verified",
+          "reason": "3 soot-run checks passed on 147bfc0a37871a38e2b483ed1d149c1cab7d9313",
+          "modelPath": ["deepseek/deepseek-flash"],
+          "attempts": 1,
+          "inputTokens": 551,
+          "outputTokens": 160,
+          "usd": 0.000244404
+        }
+      ],
+      "decisions": [
+        "- update-page-title #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.000960 \u00f7 unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
+        "- update-button-color #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.001110 \u00f7 unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
+        "- update-page-title #1 accept deepseek/deepseek-flash: result accepted",
+        "- update-button-color #1 accept deepseek/deepseek-flash: result accepted"
+      ],
+      "error": null
+    },
+    {
+      "rep": 2,
+      "arm": "baseline",
+      "prompt": "Change the page title and heading to HELLO WORLD and update the primary button to purple.",
+      "exitCode": 0,
+      "sootStatus": "complete",
+      "passed": true,
+      "acceptance": [
+        {
+          "name": "acceptance:title",
+          "passed": true
+        },
+        {
+          "name": "acceptance:button",
+          "passed": true
+        }
+      ],
+      "projectTests": true,
+      "wallMs": 6409,
+      "attempts": 2,
+      "inputTokens": 3553,
+      "outputTokens": 279,
+      "usd": 0.0037879999999999997,
+      "unpricedAttempts": 0,
+      "unreportedAttempts": 0,
+      "tasks": [
+        {
+          "taskId": "update-page-title",
+          "verdict": "verified",
+          "reason": "3 soot-run checks passed on 6d0b7e0943a8336741b73d176fe8a9724de6efa2",
+          "modelPath": ["xai/grok-4.7"],
+          "attempts": 1,
+          "inputTokens": 1791,
+          "outputTokens": 161,
+          "usd": 0.002052
+        },
+        {
+          "taskId": "update-button-color",
+          "verdict": "verified",
+          "reason": "3 soot-run checks passed on 4c6c4c02bbe2ec651b3a3e898301838209dbaf7f",
+          "modelPath": ["xai/grok-4.7"],
+          "attempts": 1,
+          "inputTokens": 1762,
+          "outputTokens": 118,
+          "usd": 0.001736
+        }
+      ],
+      "decisions": [
+        "- update-page-title #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.005800 \u00f7 unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
+        "- update-button-color #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.006800 \u00f7 unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
+        "- update-page-title #1 accept xai/grok-4.7: result accepted",
+        "- update-button-color #1 accept xai/grok-4.7: result accepted"
+      ],
+      "error": null
+    },
+    {
+      "rep": 3,
+      "arm": "routed",
+      "prompt": "Change the page title and heading to HELLO WORLD and update the primary button to purple.",
+      "exitCode": 0,
+      "sootStatus": "complete",
+      "passed": true,
+      "acceptance": [
+        {
+          "name": "acceptance:title",
+          "passed": true
+        },
+        {
+          "name": "acceptance:button",
+          "passed": true
+        }
+      ],
+      "projectTests": true,
+      "wallMs": 2134,
+      "attempts": 2,
+      "inputTokens": 1138,
+      "outputTokens": 299,
+      "usd": 0.00047440799999999995,
+      "unpricedAttempts": 0,
+      "unreportedAttempts": 0,
+      "tasks": [
+        {
+          "taskId": "update-page-title",
+          "verdict": "verified",
+          "reason": "3 soot-run checks passed on 24289c027555d5209ba363966651722943645e75",
+          "modelPath": ["deepseek/deepseek-flash"],
+          "attempts": 1,
+          "inputTokens": 587,
+          "outputTokens": 143,
+          "usd": 0.000234804
+        },
+        {
+          "taskId": "update-button-color",
+          "verdict": "verified",
+          "reason": "3 soot-run checks passed on cf60916bf04533f6c8bbc285c72aa5e089098fc6",
+          "modelPath": ["deepseek/deepseek-flash"],
+          "attempts": 1,
+          "inputTokens": 551,
+          "outputTokens": 156,
+          "usd": 0.00023960399999999998
+        }
+      ],
+      "decisions": [
+        "- update-page-title #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.000960 \u00f7 unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
+        "- update-button-color #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.001110 \u00f7 unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
+        "- update-page-title #1 accept deepseek/deepseek-flash: result accepted",
+        "- update-button-color #1 accept deepseek/deepseek-flash: result accepted"
+      ],
+      "error": null
+    },
+    {
+      "rep": 3,
+      "arm": "baseline",
+      "prompt": "Change the page title and heading to HELLO WORLD and update the primary button to purple.",
+      "exitCode": 0,
+      "sootStatus": "complete",
+      "passed": true,
+      "acceptance": [
+        {
+          "name": "acceptance:title",
+          "passed": true
+        },
+        {
+          "name": "acceptance:button",
+          "passed": true
+        }
+      ],
+      "projectTests": true,
+      "wallMs": 2371,
+      "attempts": 2,
+      "inputTokens": 3553,
+      "outputTokens": 263,
+      "usd": 0.003692,
+      "unpricedAttempts": 0,
+      "unreportedAttempts": 0,
+      "tasks": [
+        {
+          "taskId": "update-page-title",
+          "verdict": "verified",
+          "reason": "3 soot-run checks passed on 74ef251bf15fa202c4c627ca5d14be0be0d6f0b6",
+          "modelPath": ["xai/grok-4.7"],
+          "attempts": 1,
+          "inputTokens": 1791,
+          "outputTokens": 153,
+          "usd": 0.002004
+        },
+        {
+          "taskId": "update-button-color",
+          "verdict": "verified",
+          "reason": "3 soot-run checks passed on 753d42ed614af3057b2486cb5c40a08a74f96c0a",
+          "modelPath": ["xai/grok-4.7"],
+          "attempts": 1,
+          "inputTokens": 1762,
+          "outputTokens": 110,
+          "usd": 0.001688
+        }
+      ],
+      "decisions": [
+        "- update-page-title #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.005800 \u00f7 unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
+        "- update-button-color #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.006800 \u00f7 unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
+        "- update-button-color #1 accept xai/grok-4.7: result accepted",
+        "- update-page-title #1 accept xai/grok-4.7: result accepted"
       ],
       "error": null
     },
@@ -503,118 +750,6 @@
     },
     {
       "rep": 2,
-      "arm": "baseline",
-      "prompt": "Change the page title to HELLO WORLD and update the primary button to purple.",
-      "exitCode": 2,
-      "sootStatus": "incomplete",
-      "passed": false,
-      "acceptance": [
-        {
-          "name": "acceptance:title",
-          "passed": false
-        },
-        {
-          "name": "acceptance:button",
-          "passed": true
-        }
-      ],
-      "projectTests": true,
-      "wallMs": 12604,
-      "attempts": 3,
-      "inputTokens": 5091,
-      "outputTokens": 1002,
-      "usd": 0.010626,
-      "unpricedAttempts": 0,
-      "unreportedAttempts": 0,
-      "tasks": [
-        {
-          "taskId": "update-page-title",
-          "verdict": "failed-validation",
-          "reason": "failed-validation: acceptance:title failed (exit 1)",
-          "modelPath": ["xai/grok-4.7"],
-          "attempts": 2,
-          "inputTokens": 3472,
-          "outputTokens": 889,
-          "usd": 0.008438
-        },
-        {
-          "taskId": "update-button-color",
-          "verdict": "verified",
-          "reason": "3 soot-run checks passed on 13a4166ac30bf32b4daa4af0e58045bc4d0e7da4",
-          "modelPath": ["xai/grok-4.7"],
-          "attempts": 1,
-          "inputTokens": 1619,
-          "outputTokens": 113,
-          "usd": 0.002188
-        }
-      ],
-      "decisions": [
-        "- update-page-title #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.005800 ÷ unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
-        "- update-button-color #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.006800 ÷ unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
-        "- update-button-color #1 accept xai/grok-4.7: result accepted",
-        "- update-page-title #2 retry xai/grok-4.7: retry same model after reported-failure (1/1)",
-        "- update-page-title #3 stop: no stronger model available (escalate: 2 unsuccessful attempts on xai/grok-4.7)"
-      ],
-      "error": null
-    },
-    {
-      "rep": 2,
-      "arm": "routed",
-      "prompt": "Change the page title to HELLO WORLD and update the primary button to purple.",
-      "exitCode": 0,
-      "sootStatus": "complete",
-      "passed": true,
-      "acceptance": [
-        {
-          "name": "acceptance:title",
-          "passed": true
-        },
-        {
-          "name": "acceptance:button",
-          "passed": true
-        }
-      ],
-      "projectTests": true,
-      "wallMs": 7913,
-      "attempts": 3,
-      "inputTokens": 1492,
-      "outputTokens": 1252,
-      "usd": 0.0017618399999999998,
-      "unpricedAttempts": 0,
-      "unreportedAttempts": 0,
-      "tasks": [
-        {
-          "taskId": "update-page-title",
-          "verdict": "verified",
-          "reason": "3 soot-run checks passed on 8f0502cbd891241ef55321f4814343c25de8c7ed",
-          "modelPath": ["deepseek/deepseek-flash"],
-          "attempts": 2,
-          "inputTokens": 1087,
-          "outputTokens": 1115,
-          "usd": 0.0015512039999999998
-        },
-        {
-          "taskId": "update-button-color",
-          "verdict": "verified",
-          "reason": "3 soot-run checks passed on 22a9e83e4338254c435e99632695c681d14dc9a1",
-          "modelPath": ["deepseek/deepseek-flash"],
-          "attempts": 1,
-          "inputTokens": 405,
-          "outputTokens": 137,
-          "usd": 0.000210636
-        }
-      ],
-      "decisions": [
-        "- update-page-title #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.000960 ÷ unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
-        "- update-button-color #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.001110 ÷ unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
-        "- update-button-color #1 accept deepseek/deepseek-flash: result accepted",
-        "- update-page-title #2 retry deepseek/deepseek-flash: retry same model after reported-failure (1/1)",
-        "- update-page-title #2 accept deepseek/deepseek-flash: result accepted"
-      ],
-      "error": null
-    },
-    {
-      "rep": 2,
       "arm": "routed",
       "prompt": "Rename the --brand CSS variable to --accent in the theme.",
       "exitCode": 0,
@@ -647,7 +782,7 @@
         }
       ],
       "decisions": [
-        "- rename-theme-variable #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.000810 ÷ unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
+        "- rename-theme-variable #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.000810 \u00f7 unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
         "- rename-theme-variable #1 accept deepseek/deepseek-flash: result accepted"
       ],
       "error": null
@@ -686,7 +821,7 @@
         }
       ],
       "decisions": [
-        "- rename-theme-variable #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.004800 ÷ unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
+        "- rename-theme-variable #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.004800 \u00f7 unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
         "- rename-theme-variable #1 accept xai/grok-4.7: result accepted"
       ],
       "error": null
@@ -725,7 +860,7 @@
         }
       ],
       "decisions": [
-        "- fix-paginate #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.008000 ÷ unknown reliability) among 1 model(s) meeting the 0.85 threshold for medium-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for medium work).",
+        "- fix-paginate #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.008000 \u00f7 unknown reliability) among 1 model(s) meeting the 0.85 threshold for medium-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for medium work).",
         "- fix-paginate #1 accept xai/grok-4.7: result accepted"
       ],
       "error": null
@@ -764,7 +899,7 @@
         }
       ],
       "decisions": [
-        "- fix-paginate #1 assign xai/grok-4.3: Balanced: lowest estimated cost per success (unknown cost = est. $0.004375 ÷ unknown reliability) among 3 model(s) meeting the 0.85 threshold for medium-complexity work; 2 below threshold, 0 excluded. Reliability not measured yet; routed by tier (medium model for medium work).",
+        "- fix-paginate #1 assign xai/grok-4.3: Balanced: lowest estimated cost per success (unknown cost = est. $0.004375 \u00f7 unknown reliability) among 3 model(s) meeting the 0.85 threshold for medium-complexity work; 2 below threshold, 0 excluded. Reliability not measured yet; routed by tier (medium model for medium work).",
         "- fix-paginate #1 accept xai/grok-4.3: result accepted"
       ],
       "error": null
@@ -803,7 +938,7 @@
         }
       ],
       "decisions": [
-        "- add-slugify #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.001050 ÷ unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
+        "- add-slugify #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.001050 \u00f7 unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
         "- add-slugify #1 accept deepseek/deepseek-flash: result accepted"
       ],
       "error": null
@@ -842,7 +977,7 @@
         }
       ],
       "decisions": [
-        "- add-slugify #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.006000 ÷ unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
+        "- add-slugify #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.006000 \u00f7 unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
         "- add-slugify #2 retry xai/grok-4.7: retry same model after timeout (1/2)",
         "- add-slugify #2 accept xai/grok-4.7: result accepted"
       ],
@@ -882,7 +1017,7 @@
         }
       ],
       "decisions": [
-        "- add-parse-duration #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.009400 ÷ unknown reliability) among 1 model(s) meeting the 0.85 threshold for medium-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for medium work).",
+        "- add-parse-duration #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.009400 \u00f7 unknown reliability) among 1 model(s) meeting the 0.85 threshold for medium-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for medium work).",
         "- add-parse-duration #1 accept xai/grok-4.7: result accepted"
       ],
       "error": null
@@ -921,7 +1056,7 @@
         }
       ],
       "decisions": [
-        "- add-parse-duration #1 assign xai/grok-4.3: Balanced: lowest estimated cost per success (unknown cost = est. $0.004750 ÷ unknown reliability) among 3 model(s) meeting the 0.85 threshold for medium-complexity work; 2 below threshold, 0 excluded. Reliability not measured yet; routed by tier (medium model for medium work).",
+        "- add-parse-duration #1 assign xai/grok-4.3: Balanced: lowest estimated cost per success (unknown cost = est. $0.004750 \u00f7 unknown reliability) among 3 model(s) meeting the 0.85 threshold for medium-complexity work; 2 below threshold, 0 excluded. Reliability not measured yet; routed by tier (medium model for medium work).",
         "- add-parse-duration #1 accept xai/grok-4.3: result accepted"
       ],
       "error": null
@@ -1001,121 +1136,10 @@
         }
       ],
       "decisions": [
-        "- add-rate-limiter #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.015000 ÷ unknown reliability) among 1 model(s) meeting the 0.90 threshold for high-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for high work).",
+        "- add-rate-limiter #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.015000 \u00f7 unknown reliability) among 1 model(s) meeting the 0.90 threshold for high-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for high work).",
         "- add-rate-limiter #2 retry xai/grok-4.7: retry same model after timeout (1/2)",
         "- add-rate-limiter #3 retry xai/grok-4.7: retry same model after timeout (2/2)",
         "- add-rate-limiter #4 stop: no fallback model available outside xai"
-      ],
-      "error": null
-    },
-    {
-      "rep": 3,
-      "arm": "routed",
-      "prompt": "Change the page title to HELLO WORLD and update the primary button to purple.",
-      "exitCode": 0,
-      "sootStatus": "complete",
-      "passed": true,
-      "acceptance": [
-        {
-          "name": "acceptance:title",
-          "passed": true
-        },
-        {
-          "name": "acceptance:button",
-          "passed": true
-        }
-      ],
-      "projectTests": true,
-      "wallMs": 4373,
-      "attempts": 2,
-      "inputTokens": 797,
-      "outputTokens": 702,
-      "usd": 0.000930972,
-      "unpricedAttempts": 0,
-      "unreportedAttempts": 0,
-      "tasks": [
-        {
-          "taskId": "update-page-title",
-          "verdict": "verified",
-          "reason": "3 soot-run checks passed on fa3c343d3828140f61f590437fb9b617c13246cc",
-          "modelPath": ["deepseek/deepseek-flash"],
-          "attempts": 1,
-          "inputTokens": 392,
-          "outputTokens": 578,
-          "usd": 0.000735936
-        },
-        {
-          "taskId": "update-button-color",
-          "verdict": "verified",
-          "reason": "3 soot-run checks passed on 17676ab4e55127fb83fdd68b4c691399b3cb18d5",
-          "modelPath": ["deepseek/deepseek-flash"],
-          "attempts": 1,
-          "inputTokens": 405,
-          "outputTokens": 124,
-          "usd": 0.00019503599999999997
-        }
-      ],
-      "decisions": [
-        "- update-page-title #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.000960 ÷ unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
-        "- update-button-color #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.001110 ÷ unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
-        "- update-button-color #1 accept deepseek/deepseek-flash: result accepted",
-        "- update-page-title #1 accept deepseek/deepseek-flash: result accepted"
-      ],
-      "error": null
-    },
-    {
-      "rep": 3,
-      "arm": "baseline",
-      "prompt": "Change the page title to HELLO WORLD and update the primary button to purple.",
-      "exitCode": 2,
-      "sootStatus": "incomplete",
-      "passed": false,
-      "acceptance": [
-        {
-          "name": "acceptance:title",
-          "passed": false
-        },
-        {
-          "name": "acceptance:button",
-          "passed": true
-        }
-      ],
-      "projectTests": true,
-      "wallMs": 24578,
-      "attempts": 3,
-      "inputTokens": 5091,
-      "outputTokens": 1795,
-      "usd": 0.015576,
-      "unpricedAttempts": 0,
-      "unreportedAttempts": 0,
-      "tasks": [
-        {
-          "taskId": "update-page-title",
-          "verdict": "failed-validation",
-          "reason": "failed-validation: acceptance:title failed (exit 1)",
-          "modelPath": ["xai/grok-4.7"],
-          "attempts": 2,
-          "inputTokens": 3472,
-          "outputTokens": 1669,
-          "usd": 0.013309999999999999
-        },
-        {
-          "taskId": "update-button-color",
-          "verdict": "verified",
-          "reason": "3 soot-run checks passed on 5c158c751c4e67448228f6e5ce02f220ed7c737d",
-          "modelPath": ["xai/grok-4.7"],
-          "attempts": 1,
-          "inputTokens": 1619,
-          "outputTokens": 126,
-          "usd": 0.002266
-        }
-      ],
-      "decisions": [
-        "- update-page-title #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.005800 ÷ unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
-        "- update-button-color #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.006800 ÷ unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
-        "- update-button-color #1 accept xai/grok-4.7: result accepted",
-        "- update-page-title #2 retry xai/grok-4.7: retry same model after reported-failure (1/1)",
-        "- update-page-title #3 stop: no stronger model available (escalate: 2 unsuccessful attempts on xai/grok-4.7)"
       ],
       "error": null
     },
@@ -1153,7 +1177,7 @@
         }
       ],
       "decisions": [
-        "- rename-theme-variable #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.004800 ÷ unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
+        "- rename-theme-variable #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.004800 \u00f7 unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
         "- rename-theme-variable #1 accept xai/grok-4.7: result accepted"
       ],
       "error": null
@@ -1192,7 +1216,7 @@
         }
       ],
       "decisions": [
-        "- rename-theme-variable #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.000810 ÷ unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
+        "- rename-theme-variable #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.000810 \u00f7 unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
         "- rename-theme-variable #1 accept deepseek/deepseek-flash: result accepted"
       ],
       "error": null
@@ -1231,7 +1255,7 @@
         }
       ],
       "decisions": [
-        "- fix-paginate #1 assign xai/grok-4.3: Balanced: lowest estimated cost per success (unknown cost = est. $0.004375 ÷ unknown reliability) among 3 model(s) meeting the 0.85 threshold for medium-complexity work; 2 below threshold, 0 excluded. Reliability not measured yet; routed by tier (medium model for medium work).",
+        "- fix-paginate #1 assign xai/grok-4.3: Balanced: lowest estimated cost per success (unknown cost = est. $0.004375 \u00f7 unknown reliability) among 3 model(s) meeting the 0.85 threshold for medium-complexity work; 2 below threshold, 0 excluded. Reliability not measured yet; routed by tier (medium model for medium work).",
         "- fix-paginate #1 accept xai/grok-4.3: result accepted"
       ],
       "error": null
@@ -1270,7 +1294,7 @@
         }
       ],
       "decisions": [
-        "- fix-paginate #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.008000 ÷ unknown reliability) among 1 model(s) meeting the 0.85 threshold for medium-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for medium work).",
+        "- fix-paginate #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.008000 \u00f7 unknown reliability) among 1 model(s) meeting the 0.85 threshold for medium-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for medium work).",
         "- fix-paginate #1 accept xai/grok-4.7: result accepted"
       ],
       "error": null
@@ -1309,7 +1333,7 @@
         }
       ],
       "decisions": [
-        "- add-slugify #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.006000 ÷ unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
+        "- add-slugify #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.006000 \u00f7 unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
         "- add-slugify #1 accept xai/grok-4.7: result accepted"
       ],
       "error": null
@@ -1348,7 +1372,7 @@
         }
       ],
       "decisions": [
-        "- add-slugify #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.001050 ÷ unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
+        "- add-slugify #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.001050 \u00f7 unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
         "- add-slugify #1 accept deepseek/deepseek-flash: result accepted"
       ],
       "error": null
@@ -1387,7 +1411,7 @@
         }
       ],
       "decisions": [
-        "- add-parse-duration #1 assign xai/grok-4.3: Balanced: lowest estimated cost per success (unknown cost = est. $0.004750 ÷ unknown reliability) among 3 model(s) meeting the 0.85 threshold for medium-complexity work; 2 below threshold, 0 excluded. Reliability not measured yet; routed by tier (medium model for medium work).",
+        "- add-parse-duration #1 assign xai/grok-4.3: Balanced: lowest estimated cost per success (unknown cost = est. $0.004750 \u00f7 unknown reliability) among 3 model(s) meeting the 0.85 threshold for medium-complexity work; 2 below threshold, 0 excluded. Reliability not measured yet; routed by tier (medium model for medium work).",
         "- add-parse-duration #1 accept xai/grok-4.3: result accepted"
       ],
       "error": null
@@ -1426,7 +1450,7 @@
         }
       ],
       "decisions": [
-        "- add-parse-duration #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.009400 ÷ unknown reliability) among 1 model(s) meeting the 0.85 threshold for medium-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for medium work).",
+        "- add-parse-duration #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.009400 \u00f7 unknown reliability) among 1 model(s) meeting the 0.85 threshold for medium-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for medium work).",
         "- add-parse-duration #1 accept xai/grok-4.7: result accepted"
       ],
       "error": null
@@ -1465,7 +1489,7 @@
         }
       ],
       "decisions": [
-        "- add-rate-limiter #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.015000 ÷ unknown reliability) among 1 model(s) meeting the 0.90 threshold for high-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for high work).",
+        "- add-rate-limiter #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.015000 \u00f7 unknown reliability) among 1 model(s) meeting the 0.90 threshold for high-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for high work).",
         "- add-rate-limiter #2 retry xai/grok-4.7: retry same model after timeout (1/2)",
         "- add-rate-limiter #3 retry xai/grok-4.7: retry same model after timeout (2/2)",
         "- add-rate-limiter #4 stop: no fallback model available outside xai"
@@ -1513,5 +1537,324 @@
       ],
       "error": null
     }
-  ]
+  ],
+  "supersededResults": {
+    "reason": "Prompt 1 before the fixture fix: its task criteria (\"No other page text changes\") contradicted the acceptance test (both <title> and <h1>).",
+    "prompt": "Change the page title to HELLO WORLD and update the primary button to purple.",
+    "results": [
+      {
+        "rep": 1,
+        "arm": "baseline",
+        "prompt": "Change the page title to HELLO WORLD and update the primary button to purple.",
+        "exitCode": 2,
+        "sootStatus": "incomplete",
+        "passed": false,
+        "acceptance": [
+          {
+            "name": "acceptance:title",
+            "passed": false
+          },
+          {
+            "name": "acceptance:button",
+            "passed": true
+          }
+        ],
+        "projectTests": true,
+        "wallMs": 63429,
+        "attempts": 3,
+        "inputTokens": 5091,
+        "outputTokens": 4385,
+        "usd": 0.031308,
+        "unpricedAttempts": 0,
+        "unreportedAttempts": 0,
+        "tasks": [
+          {
+            "taskId": "update-page-title",
+            "modelPath": ["xai/grok-4.7"],
+            "attempts": 2,
+            "inputTokens": 3472,
+            "outputTokens": 4272,
+            "usd": 0.02912
+          },
+          {
+            "taskId": "update-button-color",
+            "modelPath": ["xai/grok-4.7"],
+            "attempts": 1,
+            "inputTokens": 1619,
+            "outputTokens": 113,
+            "usd": 0.002188
+          }
+        ],
+        "error": null
+      },
+      {
+        "rep": 1,
+        "arm": "routed",
+        "prompt": "Change the page title to HELLO WORLD and update the primary button to purple.",
+        "exitCode": 0,
+        "sootStatus": "complete",
+        "passed": true,
+        "acceptance": [
+          {
+            "name": "acceptance:title",
+            "passed": true
+          },
+          {
+            "name": "acceptance:button",
+            "passed": true
+          }
+        ],
+        "projectTests": true,
+        "wallMs": 16675,
+        "attempts": 4,
+        "inputTokens": 2577,
+        "outputTokens": 1808,
+        "usd": 0.00433024,
+        "unpricedAttempts": 0,
+        "unreportedAttempts": 0,
+        "tasks": [
+          {
+            "taskId": "update-page-title",
+            "modelPath": ["deepseek/deepseek-flash", "xai/grok-4.3"],
+            "attempts": 3,
+            "inputTokens": 2172,
+            "outputTokens": 1671,
+            "usd": 0.004119604
+          },
+          {
+            "taskId": "update-button-color",
+            "modelPath": ["deepseek/deepseek-flash"],
+            "attempts": 1,
+            "inputTokens": 405,
+            "outputTokens": 137,
+            "usd": 0.000210636
+          }
+        ],
+        "error": null
+      },
+      {
+        "rep": 2,
+        "arm": "baseline",
+        "prompt": "Change the page title to HELLO WORLD and update the primary button to purple.",
+        "exitCode": 2,
+        "sootStatus": "incomplete",
+        "passed": false,
+        "acceptance": [
+          {
+            "name": "acceptance:title",
+            "passed": false
+          },
+          {
+            "name": "acceptance:button",
+            "passed": true
+          }
+        ],
+        "projectTests": true,
+        "wallMs": 12604,
+        "attempts": 3,
+        "inputTokens": 5091,
+        "outputTokens": 1002,
+        "usd": 0.010626,
+        "unpricedAttempts": 0,
+        "unreportedAttempts": 0,
+        "tasks": [
+          {
+            "taskId": "update-page-title",
+            "verdict": "failed-validation",
+            "reason": "failed-validation: acceptance:title failed (exit 1)",
+            "modelPath": ["xai/grok-4.7"],
+            "attempts": 2,
+            "inputTokens": 3472,
+            "outputTokens": 889,
+            "usd": 0.008438
+          },
+          {
+            "taskId": "update-button-color",
+            "verdict": "verified",
+            "reason": "3 soot-run checks passed on 13a4166ac30bf32b4daa4af0e58045bc4d0e7da4",
+            "modelPath": ["xai/grok-4.7"],
+            "attempts": 1,
+            "inputTokens": 1619,
+            "outputTokens": 113,
+            "usd": 0.002188
+          }
+        ],
+        "decisions": [
+          "- update-page-title #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.005800 \u00f7 unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
+          "- update-button-color #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.006800 \u00f7 unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
+          "- update-button-color #1 accept xai/grok-4.7: result accepted",
+          "- update-page-title #2 retry xai/grok-4.7: retry same model after reported-failure (1/1)",
+          "- update-page-title #3 stop: no stronger model available (escalate: 2 unsuccessful attempts on xai/grok-4.7)"
+        ],
+        "error": null
+      },
+      {
+        "rep": 2,
+        "arm": "routed",
+        "prompt": "Change the page title to HELLO WORLD and update the primary button to purple.",
+        "exitCode": 0,
+        "sootStatus": "complete",
+        "passed": true,
+        "acceptance": [
+          {
+            "name": "acceptance:title",
+            "passed": true
+          },
+          {
+            "name": "acceptance:button",
+            "passed": true
+          }
+        ],
+        "projectTests": true,
+        "wallMs": 7913,
+        "attempts": 3,
+        "inputTokens": 1492,
+        "outputTokens": 1252,
+        "usd": 0.0017618399999999998,
+        "unpricedAttempts": 0,
+        "unreportedAttempts": 0,
+        "tasks": [
+          {
+            "taskId": "update-page-title",
+            "verdict": "verified",
+            "reason": "3 soot-run checks passed on 8f0502cbd891241ef55321f4814343c25de8c7ed",
+            "modelPath": ["deepseek/deepseek-flash"],
+            "attempts": 2,
+            "inputTokens": 1087,
+            "outputTokens": 1115,
+            "usd": 0.0015512039999999998
+          },
+          {
+            "taskId": "update-button-color",
+            "verdict": "verified",
+            "reason": "3 soot-run checks passed on 22a9e83e4338254c435e99632695c681d14dc9a1",
+            "modelPath": ["deepseek/deepseek-flash"],
+            "attempts": 1,
+            "inputTokens": 405,
+            "outputTokens": 137,
+            "usd": 0.000210636
+          }
+        ],
+        "decisions": [
+          "- update-page-title #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.000960 \u00f7 unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
+          "- update-button-color #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.001110 \u00f7 unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
+          "- update-button-color #1 accept deepseek/deepseek-flash: result accepted",
+          "- update-page-title #2 retry deepseek/deepseek-flash: retry same model after reported-failure (1/1)",
+          "- update-page-title #2 accept deepseek/deepseek-flash: result accepted"
+        ],
+        "error": null
+      },
+      {
+        "rep": 3,
+        "arm": "routed",
+        "prompt": "Change the page title to HELLO WORLD and update the primary button to purple.",
+        "exitCode": 0,
+        "sootStatus": "complete",
+        "passed": true,
+        "acceptance": [
+          {
+            "name": "acceptance:title",
+            "passed": true
+          },
+          {
+            "name": "acceptance:button",
+            "passed": true
+          }
+        ],
+        "projectTests": true,
+        "wallMs": 4373,
+        "attempts": 2,
+        "inputTokens": 797,
+        "outputTokens": 702,
+        "usd": 0.000930972,
+        "unpricedAttempts": 0,
+        "unreportedAttempts": 0,
+        "tasks": [
+          {
+            "taskId": "update-page-title",
+            "verdict": "verified",
+            "reason": "3 soot-run checks passed on fa3c343d3828140f61f590437fb9b617c13246cc",
+            "modelPath": ["deepseek/deepseek-flash"],
+            "attempts": 1,
+            "inputTokens": 392,
+            "outputTokens": 578,
+            "usd": 0.000735936
+          },
+          {
+            "taskId": "update-button-color",
+            "verdict": "verified",
+            "reason": "3 soot-run checks passed on 17676ab4e55127fb83fdd68b4c691399b3cb18d5",
+            "modelPath": ["deepseek/deepseek-flash"],
+            "attempts": 1,
+            "inputTokens": 405,
+            "outputTokens": 124,
+            "usd": 0.00019503599999999997
+          }
+        ],
+        "decisions": [
+          "- update-page-title #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.000960 \u00f7 unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
+          "- update-button-color #1 assign deepseek/deepseek-flash: Balanced: lowest estimated cost per success (unknown cost = est. $0.001110 \u00f7 unknown reliability) among 5 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (low model for low work).",
+          "- update-button-color #1 accept deepseek/deepseek-flash: result accepted",
+          "- update-page-title #1 accept deepseek/deepseek-flash: result accepted"
+        ],
+        "error": null
+      },
+      {
+        "rep": 3,
+        "arm": "baseline",
+        "prompt": "Change the page title to HELLO WORLD and update the primary button to purple.",
+        "exitCode": 2,
+        "sootStatus": "incomplete",
+        "passed": false,
+        "acceptance": [
+          {
+            "name": "acceptance:title",
+            "passed": false
+          },
+          {
+            "name": "acceptance:button",
+            "passed": true
+          }
+        ],
+        "projectTests": true,
+        "wallMs": 24578,
+        "attempts": 3,
+        "inputTokens": 5091,
+        "outputTokens": 1795,
+        "usd": 0.015576,
+        "unpricedAttempts": 0,
+        "unreportedAttempts": 0,
+        "tasks": [
+          {
+            "taskId": "update-page-title",
+            "verdict": "failed-validation",
+            "reason": "failed-validation: acceptance:title failed (exit 1)",
+            "modelPath": ["xai/grok-4.7"],
+            "attempts": 2,
+            "inputTokens": 3472,
+            "outputTokens": 1669,
+            "usd": 0.013309999999999999
+          },
+          {
+            "taskId": "update-button-color",
+            "verdict": "verified",
+            "reason": "3 soot-run checks passed on 5c158c751c4e67448228f6e5ce02f220ed7c737d",
+            "modelPath": ["xai/grok-4.7"],
+            "attempts": 1,
+            "inputTokens": 1619,
+            "outputTokens": 126,
+            "usd": 0.002266
+          }
+        ],
+        "decisions": [
+          "- update-page-title #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.005800 \u00f7 unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
+          "- update-button-color #1 assign xai/grok-4.7: Balanced: lowest estimated cost per success (unknown cost = est. $0.006800 \u00f7 unknown reliability) among 1 model(s) meeting the 0.75 threshold for low-complexity work; 0 below threshold, 0 excluded. Reliability not measured yet; routed by tier (high model for low work).",
+          "- update-button-color #1 accept xai/grok-4.7: result accepted",
+          "- update-page-title #2 retry xai/grok-4.7: retry same model after reported-failure (1/1)",
+          "- update-page-title #3 stop: no stronger model available (escalate: 2 unsuccessful attempts on xai/grok-4.7)"
+        ],
+        "error": null
+      }
+    ]
+  }
 }

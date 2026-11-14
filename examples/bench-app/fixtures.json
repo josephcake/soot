@@ -1,5 +1,54 @@
 [
   {
+    "id": "bench-title-button",
+    "prompt": "Change the page title and heading to HELLO WORLD and update the primary button to purple.",
+    "tasks": [
+      {
+        "id": "update-page-title",
+        "title": "Set the page title and heading to HELLO WORLD",
+        "instructions": "In src/pages/index.html change two things to \"HELLO WORLD\": the document title (the <title> element) and the main heading (<h1 id=\"title\">). Change no other text.",
+        "acceptanceCriteria": [
+          "The <title> element reads exactly \"HELLO WORLD\".",
+          "The <h1 id=\"title\"> heading reads exactly \"HELLO WORLD\".",
+          "No other page text changes."
+        ],
+        "requiredCapabilities": ["code-edit"],
+        "complexity": "low",
+        "estimate": {
+          "inputTokens": 2000,
+          "outputTokens": 300,
+          "costUsd": null
+        },
+        "files": {
+          "read": ["src/pages/"],
+          "write": ["src/pages/index.html"]
+        },
+        "dependsOn": []
+      },
+      {
+        "id": "update-button-color",
+        "title": "Update primary button to purple",
+        "instructions": "Locate the primary button styling and change its color to purple. Leave other button variants unchanged.",
+        "acceptanceCriteria": [
+          "The primary button renders purple.",
+          "Secondary and other button variants are unaffected."
+        ],
+        "requiredCapabilities": ["code-edit", "css"],
+        "complexity": "low",
+        "estimate": {
+          "inputTokens": 2500,
+          "outputTokens": 300,
+          "costUsd": null
+        },
+        "files": {
+          "read": ["src/styles/"],
+          "write": ["src/styles/button.css"]
+        },
+        "dependsOn": []
+      }
+    ]
+  },
+  {
     "id": "bench-theme-rename",
     "prompt": "Rename the --brand CSS variable to --accent in the theme.",
     "tasks": [
@@ -14,8 +63,15 @@
         ],
         "requiredCapabilities": ["code-edit", "css"],
         "complexity": "low",
-        "estimate": { "inputTokens": 1500, "outputTokens": 300, "costUsd": null },
-        "files": { "read": ["src/styles/"], "write": ["src/styles/theme.css"] },
+        "estimate": {
+          "inputTokens": 1500,
+          "outputTokens": 300,
+          "costUsd": null
+        },
+        "files": {
+          "read": ["src/styles/"],
+          "write": ["src/styles/theme.css"]
+        },
         "dependsOn": []
       }
     ]
@@ -35,8 +91,15 @@
         ],
         "requiredCapabilities": ["code-edit", "debugging"],
         "complexity": "medium",
-        "estimate": { "inputTokens": 2500, "outputTokens": 500, "costUsd": null },
-        "files": { "read": ["src/lib/", "tests/"], "write": ["src/lib/paginate.js"] },
+        "estimate": {
+          "inputTokens": 2500,
+          "outputTokens": 500,
+          "costUsd": null
+        },
+        "files": {
+          "read": ["src/lib/", "tests/"],
+          "write": ["src/lib/paginate.js"]
+        },
         "dependsOn": []
       }
     ]
@@ -56,8 +119,15 @@
         ],
         "requiredCapabilities": ["code-edit"],
         "complexity": "low",
-        "estimate": { "inputTokens": 1500, "outputTokens": 500, "costUsd": null },
-        "files": { "read": ["src/"], "write": ["src/feature/slugify.js"] },
+        "estimate": {
+          "inputTokens": 1500,
+          "outputTokens": 500,
+          "costUsd": null
+        },
+        "files": {
+          "read": ["src/"],
+          "write": ["src/feature/slugify.js"]
+        },
         "dependsOn": []
       }
     ]
@@ -76,8 +146,15 @@
         ],
         "requiredCapabilities": ["code-edit", "testing"],
         "complexity": "medium",
-        "estimate": { "inputTokens": 2000, "outputTokens": 900, "costUsd": null },
-        "files": { "read": ["src/lib/"], "write": ["src/lib/duration.js"] },
+        "estimate": {
+          "inputTokens": 2000,
+          "outputTokens": 900,
+          "costUsd": null
+        },
+        "files": {
+          "read": ["src/lib/"],
+          "write": ["src/lib/duration.js"]
+        },
         "dependsOn": []
       }
     ]
@@ -97,8 +174,15 @@
         ],
         "requiredCapabilities": ["code-edit", "testing"],
         "complexity": "high",
-        "estimate": { "inputTokens": 3000, "outputTokens": 1500, "costUsd": null },
-        "files": { "read": ["src/lib/"], "write": ["src/lib/rate-limiter.js"] },
+        "estimate": {
+          "inputTokens": 3000,
+          "outputTokens": 1500,
+          "costUsd": null
+        },
+        "files": {
+          "read": ["src/lib/"],
+          "write": ["src/lib/rate-limiter.js"]
+        },
         "dependsOn": []
       }
     ]

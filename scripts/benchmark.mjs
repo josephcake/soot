@@ -27,7 +27,7 @@ const sootBin = join(root, 'apps/cli/dist/bin.js');
 
 /** The fixed task set: each prompt is decomposed by a recorded fixture, so both arms run the same tasks. */
 export const PROMPTS = [
-  'Change the page title to HELLO WORLD and update the primary button to purple.',
+  'Change the page title and heading to HELLO WORLD and update the primary button to purple.',
   'Rename the --brand CSS variable to --accent in the theme.',
   'Fix the paging bug in paginate().',
   'Add a slugify helper.',

@@ -181,7 +181,7 @@ target behavior is described in [`docs/specs/build-spec.md`](docs/specs/build-sp
 Savings are reported only from measured runs. The first benchmark
 ([`docs/benchmarks/2026-11-14.md`](docs/benchmarks/2026-11-14.md)) ran six prompts three times
 each with real xAI and DeepSeek models. On the light and medium prompts that passed both ways,
-soot's routing cost $0.0174 against $0.1176 for sending every task to `xai/grok-4.7` (85% less).
+soot's routing cost $0.0190 against $0.1288 for sending every task to `xai/grok-4.7` (85% less).
 On the one high-complexity prompt both picked the same model, so routing saved nothing. It is
 a small sample from two vendors; read the caveats before quoting it.
 
