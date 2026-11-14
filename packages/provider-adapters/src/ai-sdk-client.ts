@@ -86,11 +86,38 @@ interface SdkUsage {
     cacheReadTokens?: number | undefined;
     cacheWriteTokens?: number | undefined;
   };
+  /** The provider's own usage object, as received. */
+  raw?: unknown;
+}
+
+const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+/**
+ * Reasoning tokens a Chat Completions provider reported OUTSIDE `completion_tokens`. OpenAI
+ * counts reasoning inside `completion_tokens`, and the AI SDK assumes that; some compatible
+ * providers (xAI, checked live 2026-11-13) report it separately, and their `total_tokens`
+ * shows it: total = prompt + completion + reasoning. Those tokens are billed as output, so
+ * soot adds them. Vendor-neutral: decided from the numbers only, never from a provider id.
+ */
+export function hiddenReasoningTokens(raw: unknown): number {
+  if (raw === null || typeof raw !== 'object') return 0;
+  const r = raw as Record<string, unknown>;
+  const prompt = num(r.prompt_tokens);
+  const completion = num(r.completion_tokens);
+  const total = num(r.total_tokens);
+  const details = r.completion_tokens_details;
+  const reasoning =
+    details !== null && typeof details === 'object'
+      ? num((details as Record<string, unknown>).reasoning_tokens)
+      : null;
+  if (prompt === null || completion === null || total === null || reasoning === null) return 0;
+  return reasoning > 0 && total === prompt + completion + reasoning ? reasoning : 0;
 }
 
 const toUsage = (u: SdkUsage | undefined): Usage => ({
   inputTokens: u?.inputTokens ?? null,
-  outputTokens: u?.outputTokens ?? null,
+  outputTokens:
+    u?.outputTokens === undefined ? null : u.outputTokens + hiddenReasoningTokens(u.raw),
   cacheReadTokens: u?.inputTokenDetails?.cacheReadTokens ?? null,
   cacheWriteTokens: u?.inputTokenDetails?.cacheWriteTokens ?? null,
 });

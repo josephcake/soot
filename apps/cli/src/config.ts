@@ -94,6 +94,11 @@ export const ProjectConfigSchema = z
     allowedExecutables: z.array(z.string().min(1)).default([]),
     concurrency: z.number().int().min(1).max(16).default(4),
     attemptTimeoutMs: z.number().int().positive().optional(),
+    /**
+     * Wall-clock limit for one model call in ms: one --agent api try (with its repair round
+     * and the adapter's transient retries) or one planner call. Default 120000 (ADR-040).
+     */
+    modelCallTimeoutMs: z.number().int().min(100).max(3_600_000).optional(),
     /** Escalation limits and budgets (`@soot/escalation` EscalationConfig fields). */
     escalation: z.record(z.string(), z.unknown()).optional(),
     /** Extra recorded decompositions (JSON array of {id, prompt, tasks}), relative to this file. */

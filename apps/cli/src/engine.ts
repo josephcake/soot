@@ -78,6 +78,12 @@ import {
 import { holdRun, requestStop, requestTaskStop, runningInfo } from './control.js';
 import { loadMockScript } from './mock-script.js';
 import { ApiAgentRunner } from './api-runner.js';
+import {
+  DEFAULT_MODEL_CALL_TIMEOUT_MS,
+  TimeLimitError,
+  formatLimit,
+  withTimeLimit,
+} from './time-limit.js';
 import { createModelClient } from '@soot/provider-adapters';
 
 /*
@@ -357,10 +363,7 @@ export class SootEngine implements OrchestrationService {
           const { costUsd } = actualCostFromUsage(model, usage);
           return costUsd === null ? null : Number(costUsd);
         },
-        requestTimeoutMs: Math.min(
-          cfg.config.attemptTimeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS,
-          600_000,
-        ),
+        tryTimeoutMs: cfg.config.modelCallTimeoutMs ?? DEFAULT_MODEL_CALL_TIMEOUT_MS,
       });
     }
     if (agent.kind === 'acp') {
@@ -475,12 +478,36 @@ export class SootEngine implements OrchestrationService {
       );
     }
     let decomposition: Decomposition;
+    const planLimitMs = cfg.config.modelCallTimeoutMs ?? DEFAULT_MODEL_CALL_TIMEOUT_MS;
     try {
-      decomposition = await createDecomposer({
-        fixtures: [...SPEC_FIXTURES, ...fixtures],
-        model: decomposerModel.status === 'usable' ? decomposerModel.client : null,
-      }).decompose(intake, signal);
+      decomposition = await withTimeLimit(
+        planLimitMs,
+        signal,
+        (planSignal, remaining) =>
+          createDecomposer({
+            fixtures: [...SPEC_FIXTURES, ...fixtures],
+            model: decomposerModel.status === 'usable' ? decomposerModel.client : null,
+            timeoutMs: remaining(),
+          }).decompose(intake, planSignal),
+        () =>
+          new TimeLimitError(
+            planLimitMs,
+            `the planner model ${decomposerModel.status === 'not-configured' ? '' : decomposerModel.ref}`.trimEnd(),
+          ),
+      );
     } catch (error) {
+      if (error instanceof TimeLimitError) {
+        return failed(
+          fail(
+            `${error.message} (limit "modelCallTimeoutMs" in ${CONFIG_FILE}); the request was aborted and no task was run.`,
+            {
+              promptSha256: intake.promptSha256,
+              decompositionFailure: 'timeout',
+              timeoutMs: error.limitMs,
+            },
+          ),
+        );
+      }
       if (error instanceof NoFixtureError) {
         const recorded = `Recorded prompts: soot ships the build spec examples; add your own with "fixtures" in ${CONFIG_FILE}.`;
         if (decomposerModel.status === 'unusable') {
@@ -1110,6 +1137,8 @@ export class SootEngine implements OrchestrationService {
       concurrency: cfg.config.concurrency,
       attemptTimeoutMs: cfg.config.attemptTimeoutMs ?? null,
       effectiveAttemptTimeoutMs: cfg.config.attemptTimeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS,
+      modelCallTimeoutMs: cfg.config.modelCallTimeoutMs ?? null,
+      effectiveModelCallTimeoutMs: cfg.config.modelCallTimeoutMs ?? DEFAULT_MODEL_CALL_TIMEOUT_MS,
       agent: this.#o.agent.kind,
       acpAgent: cfg.config.acpAgent === undefined ? null : json(cfg.config.acpAgent),
       decomposer: {
@@ -1137,7 +1166,8 @@ export class SootEngine implements OrchestrationService {
       `Prices: ${String(registry.models().filter((m) => m.pricing !== null).length)} of ${String(data.models)} priced${priced.catalogPriced.length > 0 ? ` (${String(priced.catalogPriced.length)} from soot's price catalog)` : ''}${pricingNote === null ? '' : `. ${pricingNote}`}`,
       `Policy: ${cfg.config.policy}; concurrency ${String(cfg.config.concurrency)}`,
       `Attempt timeout: ${String(data.effectiveAttemptTimeoutMs)} ms${cfg.config.attemptTimeoutMs === undefined ? ' (default; set "attemptTimeoutMs" to change)' : ''}`,
-      `Agent: ${this.#o.agent.kind === 'none' ? 'none (run refuses: pick --agent mock or --agent acp)' : this.#agentLabel(cfg)}`,
+      `Model call limit: ${formatLimit(data.effectiveModelCallTimeoutMs)} per --agent api try and per planner call${cfg.config.modelCallTimeoutMs === undefined ? ' (default; set "modelCallTimeoutMs" to change)' : ''}`,
+      `Agent: ${this.#o.agent.kind === 'none' ? 'none (run refuses: pick --agent api, --agent mock or --agent acp)' : this.#agentLabel(cfg)}`,
       `ACP agent command: ${cfg.config.acpAgent === undefined ? 'not configured' : describeCommand(cfg.config.acpAgent)}`,
       `Decomposition: ${describeDecomposerModel(decomposer)}`,
       `Approvals: ${this.#o.approvals.mode} (soot never approves on your behalf)`,

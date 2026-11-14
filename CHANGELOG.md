@@ -5,6 +5,27 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (model call limit, Anthropic and OpenAI verified, ADR-040)
+
+- `modelCallTimeoutMs` in soot.config.json (default 120 s): a wall-clock limit for one
+  `--agent api` try (both rounds and the adapter's retries) and for the planner call. On expiry
+  soot aborts the request and the try is a retryable `timeout` ("timed out after 120s waiting
+  for xai/grok-4.7" in `soot status` and the dashboard timeline). Escalation then retries the
+  same model and falls back to another provider. `soot config` shows the limit.
+- Anthropic (native Messages API) and OpenAI (Chat Completions) covered end to end with fake
+  servers: planner and api tasks, headers, usage and catalog prices. A live script for real keys
+  is kept outside the repo.
+
+### Fixed (ADR-040)
+
+- Reasoning tokens that a provider reports outside `completion_tokens` (xAI, checked live) are
+  now counted as output tokens, so Grok's cost is no longer under-counted.
+- One api try could last up to 30 minutes: the per-request limit restarted on each of the
+  adapter's internal retries. The 538 s Grok try in the recorded run was most likely two
+  requests of about 270 s each, the first dropped by xAI.
+- The scheduler's attempt timeout reads "30 min" or "5s" instead of milliseconds; `soot config`
+  without `--agent` names `--agent api` too.
+
 ### Added (docs: recording of a real run)
 
 - `docs/media/soot-real-run.mp4` (67 s, sped-up waits labeled), a real-time-only GIF and a

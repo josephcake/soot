@@ -41,8 +41,24 @@ export interface AttemptView {
   readonly estimatedCostUsd: number | null;
   readonly actualCostUsd: number | null;
   readonly failure: string | null;
+  /** Short reason the attempt did not succeed (e.g. "timed out after 120s"), or null. */
+  readonly why: string | null;
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
+}
+
+/**
+ * A short, human reason for a failed attempt: a timeout reads "timed out after 120s waiting
+ * for xai/grok-4.7" instead of the full provider error; other failures keep their message.
+ */
+export function attemptWhy(failure: string | null, error: string | null): string | null {
+  if (failure === null && error === null) return null;
+  const text = error ?? '';
+  const timedOut = /timed out after [0-9.]+ ?(?:ms|s|min)(?: waiting for [^\s(;]+)?/.exec(text);
+  if (timedOut !== null) return timedOut[0];
+  const plain = text.replace(/^provider error \([a-z-]+\): (?:\[[^\]]+\] [a-z-]+: )?/, '').trim();
+  if (plain !== '') return plain.length > 160 ? plain.slice(0, 157) + '...' : plain;
+  return failure;
 }
 
 export interface TaskView {
@@ -422,6 +438,7 @@ export function toDashboardRun(
         estimatedCostUsd: num(a.estimatedCostUsd),
         actualCostUsd: num(a.actualCostUsd),
         failure: strOrNull(a.failure),
+        why: attemptWhy(strOrNull(a.failure), strOrNull(a.error)),
         startedAt: strOrNull(a.startedAt),
         finishedAt: strOrNull(a.finishedAt),
       })),

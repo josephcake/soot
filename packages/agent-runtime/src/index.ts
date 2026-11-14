@@ -57,6 +57,7 @@ export {
 } from './mock-agent.js';
 export {
   DEFAULT_ATTEMPT_TIMEOUT_MS,
+  formatDuration,
   Scheduler,
   runTaskGraph,
   type ExecutionJournal,

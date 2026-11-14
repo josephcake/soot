@@ -10,9 +10,10 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { AgentRunner, AgentTaskInput } from '@soot/agent-runtime';
-import type { ModelClient, Usage } from '@soot/provider-adapters';
+import { ProviderError, type ModelClient, type Usage } from '@soot/provider-adapters';
 import type { AgentResult, Finding } from '@soot/task-graph';
 import { z } from 'zod';
+import { DEFAULT_MODEL_CALL_TIMEOUT_MS, formatLimit, withTimeLimit } from './time-limit.js';
 
 /*
  * Direct-API task runner (ADR-039). For each routed attempt it sends the task (instructions,
@@ -58,8 +59,13 @@ export interface ApiRunnerOptions {
   readonly clientFor: (ref: string) => ModelClient;
   /** Cost of reported usage at the model's list price, or `null` when unknown. */
   readonly priceUsage: (ref: string, usage: Usage) => number | null;
-  /** Per-request timeout in ms (the scheduler's attempt timeout still applies on top). */
-  readonly requestTimeoutMs?: number;
+  /**
+   * Wall-clock limit for one try's model calls (both rounds, the adapter's own transient
+   * retries included), in ms. Default `DEFAULT_MODEL_CALL_TIMEOUT_MS` (120 s). On expiry the
+   * request is aborted and the try ends as a retryable `timeout` provider error. The
+   * scheduler's attempt timeout still applies on top, and covers soot's checks as well.
+   */
+  readonly tryTimeoutMs?: number;
   readonly maxOutputTokens?: number;
   readonly now?: () => number;
 }
@@ -298,33 +304,48 @@ export class ApiAgentRunner implements AgentRunner {
     };
     const totals = () => ({ input: inTok, output: outTok, cost: usageKnown ? cost : null });
 
-    let parsed: ReturnType<typeof parseEditsReply> = { ok: false, error: 'no reply' };
-    for (let round = 0; round < 2; round++) {
-      const response = await client.generate(
-        {
-          system: SYSTEM,
-          messages,
-          maxOutputTokens: this.#o.maxOutputTokens ?? 16_000,
-          timeoutMs: this.#o.requestTimeoutMs ?? 300_000,
-        },
-        signal,
-      );
-      count(response.usage);
-      parsed = parseEditsReply(response.text);
-      if (parsed.ok) break;
-      if (response.finishReason === 'length') {
-        parsed = { ok: false, error: 'the reply was cut off at the output token limit' };
-        break;
-      }
-      // One repair round: show the model its own reply and the problem.
-      messages.push(
-        { role: 'assistant', content: response.text.slice(0, 200_000) },
-        {
-          role: 'user',
-          content: `That reply could not be used: ${parsed.error}. Reply again with ONLY the JSON object in the required shape.`,
-        },
-      );
-    }
+    const limitMs = this.#o.tryTimeoutMs ?? DEFAULT_MODEL_CALL_TIMEOUT_MS;
+    const provider = ref.split('/')[0] ?? ref;
+    const parsed = await withTimeLimit(
+      limitMs,
+      signal,
+      async (callSignal, remaining) => {
+        let reply: ReturnType<typeof parseEditsReply> = { ok: false, error: 'no reply' };
+        for (let round = 0; round < 2; round++) {
+          const response = await client.generate(
+            {
+              system: SYSTEM,
+              messages,
+              maxOutputTokens: this.#o.maxOutputTokens ?? 16_000,
+              timeoutMs: remaining(),
+            },
+            callSignal,
+          );
+          count(response.usage);
+          reply = parseEditsReply(response.text);
+          if (reply.ok) break;
+          if (response.finishReason === 'length') {
+            reply = { ok: false, error: 'the reply was cut off at the output token limit' };
+            break;
+          }
+          // One repair round: show the model its own reply and the problem.
+          messages.push(
+            { role: 'assistant', content: response.text.slice(0, 200_000) },
+            {
+              role: 'user',
+              content: `That reply could not be used: ${reply.error}. Reply again with ONLY the JSON object in the required shape.`,
+            },
+          );
+        }
+        return reply;
+      },
+      () =>
+        new ProviderError({
+          kind: 'timeout',
+          provider,
+          message: `timed out after ${formatLimit(limitMs)} waiting for ${ref} (per-try limit "modelCallTimeoutMs"); the request was aborted`,
+        }),
+    );
     if (!parsed.ok) {
       return result(
         'failed',

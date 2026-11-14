@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SAVINGS_NOTE, planningCall, toDashboardRun, toRunList } from './view.js';
+import { SAVINGS_NOTE, attemptWhy, planningCall, toDashboardRun, toRunList } from './view.js';
 
 const status = {
   runId: 'r1',
@@ -402,5 +402,24 @@ describe('toDashboardRun', () => {
     expect(planningCall(undefined)).toBeNull();
     expect(planningCall({ kind: 'model' })).toBeNull();
     expect(planningCall({ kind: 'fixture' })?.kind).toBe('fixture');
+  });
+});
+
+describe('attemptWhy (ADR-040)', () => {
+  it('shortens a timeout to "timed out after N waiting for <model>"', () => {
+    expect(
+      attemptWhy(
+        'timeout',
+        'provider error (timeout): [xai] timeout: timed out after 120s waiting for xai/grok-4.7 (per-try limit "modelCallTimeoutMs"); the request was aborted',
+      ),
+    ).toBe('timed out after 120s waiting for xai/grok-4.7');
+    expect(attemptWhy('timeout', 'attempt timed out after 30 min')).toBe('timed out after 30 min');
+  });
+  it('keeps other failures readable and is null for a success', () => {
+    expect(
+      attemptWhy('rate-limited', 'provider error (rate-limited): [x] rate-limited: slow down'),
+    ).toBe('slow down');
+    expect(attemptWhy('reported-failure', null)).toBe('reported-failure');
+    expect(attemptWhy(null, null)).toBeNull();
   });
 });

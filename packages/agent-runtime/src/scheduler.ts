@@ -77,6 +77,14 @@ export interface ExecutionJournal {
  */
 export const DEFAULT_ATTEMPT_TIMEOUT_MS = 30 * 60_000;
 
+/** "300 ms", "120s", "1.5s", "30 min": how timeouts read in history and the dashboard. */
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${String(ms)} ms`;
+  if (ms >= 120_000 && ms % 60_000 === 0) return `${String(ms / 60_000)} min`;
+  const s = ms / 1000;
+  return `${Number.isInteger(s) ? String(s) : s.toFixed(1)}s`;
+}
+
 export interface SchedulerOptions {
   readonly runner: AgentRunner;
   /** Maximum tasks running at once. Default 4. */
@@ -386,7 +394,7 @@ export class Scheduler {
       running.timedOut = true;
       this.#endAttempt(task, controller, null, {
         kind: 'timeout',
-        message: `attempt timed out after ${timeoutMs} ms`,
+        message: `attempt timed out after ${formatDuration(timeoutMs)}`,
         provider: null,
         retryAfterMs: null,
       });

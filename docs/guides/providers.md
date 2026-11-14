@@ -6,11 +6,21 @@
 
 ## Supported provider kinds
 
-| Kind                | Adapter                                                      | Verified                                                                     |
-| ------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| `anthropic`         | Anthropic Messages API via the Vercel AI SDK                 | mocked HTTP only                                                             |
-| `openai`            | OpenAI API via the Vercel AI SDK                             | mocked HTTP only                                                             |
-| `openai-compatible` | Any OpenAI-compatible endpoint (Ollama, LM Studio, gateways) | mocked HTTP only; a live local test is skipped unless a runtime is listening |
+| Kind                | Adapter                                                                      | Verified                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `anthropic`         | Anthropic Messages API (native, not OpenAI-compatible) via the Vercel AI SDK | fake HTTP server end to end (planner and `--agent api`); not yet called live                     |
+| `openai`            | OpenAI Chat Completions via the Vercel AI SDK                                | fake HTTP server end to end (`--agent api`); not yet called live                                 |
+| `openai-compatible` | Any OpenAI-compatible endpoint (DeepSeek, xAI, Ollama, LM Studio, gateways)  | live with DeepSeek and xAI (ADR-039); a live local test is skipped unless a runtime is listening |
+
+`anthropic` sends `POST /v1/messages` with `x-api-key` and `anthropic-version` headers, a
+separate `system` field and `max_tokens`, and reads text content blocks and
+`usage.input_tokens` / `usage.output_tokens`. `openai` and `openai-compatible` send Chat
+Completions with a Bearer key. A provider whose `apiKeyEnv` is not set is never called.
+
+**Reasoning tokens.** OpenAI counts reasoning inside `completion_tokens`. Some compatible
+providers report it separately (xAI, checked live on 2026-11-13: `total_tokens` = prompt +
+completion + reasoning). soot adds such reasoning tokens to the output count, because they are
+billed as output; it decides from the numbers only, never from the provider id.
 
 soot ships **no model list**. You describe providers and models in a registry file (see
 [configuration](configuration.md#model-registry-config)); anything you leave out is unknown,

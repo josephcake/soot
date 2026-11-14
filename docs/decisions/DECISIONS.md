@@ -741,3 +741,62 @@ the old one.
   and cost data per attempt. Model output quality is whatever the routed model produces; soot
   only accepts it when its own checks pass. Large files (over 64 KiB) are not sent, so tasks on
   them fail rather than guess. Stored outcomes from mock runs no longer influence real routing.
+
+## ADR-040: Wall-clock limit per model call, native Anthropic verified, reasoning tokens counted
+
+- **Date:** 2026-11-13
+- **Status:** Accepted (Joseph approved a per-try time limit and Claude/GPT support; no
+  Anthropic or OpenAI key is available yet, so those two are verified with fake servers only).
+- **Context:** In the recorded dashboard run (ADR-039) one `xai/grok-4.7` try took 538 s.
+  The audit log shows the time was all inside the model call: the attempt started at
+  16:18:05.6 and the runner returned at 16:27:03.5 (UTC), and soot's check then took 108 ms.
+  The engine had passed a 600 s per-request limit, and the provider adapter retries
+  `timeout` and `unavailable` errors up to 3 times per call, each with a fresh 600 s, so one try
+  could last up to 30 minutes (the scheduler's attempt timeout). A live replay of the same task
+  on 2026-11-13 (the same request, a single adapter attempt) ran 270 s and then xAI closed the
+  connection ("other side closed") without an answer. The most likely account of the 538 s is
+  therefore two requests of about 270 s each: the first dropped by xAI and retried inside the
+  adapter (invisible in soot's history, with no usage reported), the second answering in about
+  268 s. A tiny live probe also showed that xAI reports reasoning tokens outside
+  `completion_tokens` (`total_tokens` = prompt + completion + reasoning), which the AI SDK
+  assumes are inside, so soot under-counted Grok's output tokens and cost.
+- **Decision:**
+  - **`modelCallTimeoutMs`** (soot.config.json, default 120,000 ms): a wall-clock limit on one
+    model call. For `--agent api` it covers one try: both rounds and the adapter's own retries.
+    On expiry the HTTP request is aborted through its AbortSignal (the result also rejects if a
+    request ignores the abort), and the try throws a `timeout` `ProviderError`. The existing
+    escalation rules handle it: retry the same model up to `transientRetries`, then fall back to
+    another provider. The planner call has the same limit; on expiry the run stops before any
+    task with "the planner model … timed out after 120s".
+  - **Visible:** the message reads "timed out after 120s waiting for <model>" in the attempt
+    history (`soot status`) and in the dashboard timeline; the scheduler's own attempt timeout
+    now reads "attempt timed out after 30 min" instead of milliseconds. A timeout stays out of
+    the routing history (ADR-030), which records whether soot verified a model's work, not
+    latency.
+  - **Anthropic:** the `anthropic` kind already used the native Messages API through
+    `@ai-sdk/anthropic` (`x-api-key`, `anthropic-version`, content blocks,
+    `input_tokens`/`output_tokens`). It is now covered end to end for both the planner and the
+    api runner against a fake Messages server, with catalog prices. `openai` (Chat Completions)
+    is covered the same way. Neither is called without its key.
+  - **Reasoning tokens:** when a Chat Completions usage object shows `total_tokens` = prompt +
+    completion + reasoning, soot adds the reasoning tokens to the output count (they are billed
+    as output). Decided from the numbers only, never from a provider id.
+- **Verification:** unit tests with fake slow and hung servers (limit fires, the request is
+  aborted, the limit spans adapter retries and the repair round, a slow reply inside the limit
+  is used, cancelling is not a timeout); an end-to-end run where the first call of one task
+  hangs and is retried (state `retried` then `succeeded`, message in `soot status`, retry in
+  the audit log); a hung planner; Anthropic + OpenAI end to end (planner and one task on
+  Claude, one task on GPT, wire format and headers checked, catalog-priced cost, result
+  landed); a missing key sends no request; reasoning-token accounting both ways. A ready live
+  script (`/tmp/soot-live-claude-gpt.sh`, outside the repo) runs the same flow on real
+  Anthropic and OpenAI once keys exist.
+- **Alternatives:** keep a per-request limit only (an adapter retry restarts the clock, which is
+  how one try reached 9 minutes); stream with an idle timeout (more moving parts; the api runner
+  does not need tokens as they arrive); count timeouts as failed results in routing history
+  (would mix latency into the quality signal); detect "reasoning outside completion" by
+  provider id (vendor-specific; the totals already say it).
+- **Consequences:** a slow model now costs at most about 120 s per try before soot retries or
+  falls back, and the user sees why. Reasoning-heavy models that need more than 120 s on a task
+  need a larger `modelCallTimeoutMs`. A timed-out request has no reported usage, so its tokens
+  (which the provider may bill) are missing from soot's cost. Grok costs recorded before this
+  change are under-counted by their hidden reasoning tokens.

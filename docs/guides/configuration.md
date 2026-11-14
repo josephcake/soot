@@ -151,20 +151,21 @@ task edits. Unknown keys are rejected.
 }
 ```
 
-| Key                  | Default    | Meaning                                                                                                                  |
-| -------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `models`             | (required) | Model registry file (above), relative to the config file.                                                                |
-| `policy`             | `balanced` | `economy`, `balanced` or `quality` ([routing](model-routing.md)).                                                        |
-| `checks`             | `[]`       | Project checks run on every task that changes files, and on the merged result.                                           |
-| `acceptance`         | `{}`       | Extra commands per task id; also run for read-only tasks (their only way to be verified).                                |
-| `protectedPaths`     | `[]`       | Paths no task may change, even inside its lease. The config, registry, fixtures and mock script are added automatically. |
-| `allowedExecutables` | `[]`       | Exact `argv[0]` values allowed to run. Destructive programs are refused regardless.                                      |
-| `concurrency`        | `4`        | Tasks running at once (1–16).                                                                                            |
-| `attemptTimeoutMs`   | `1800000`  | Abort an attempt after this many ms (default 30 minutes, `DEFAULT_ATTEMPT_TIMEOUT_MS`); a hung runner ends as `timeout`. |
-| `escalation`         | defaults   | Escalation limits and budgets (`@soot/escalation`, e.g. `{ "sameModelRetries": 0 }`).                                    |
-| `fixtures`           | none       | JSON array of extra recorded decompositions `{ id, prompt, tasks }`.                                                     |
-| `acpAgent`           | none       | ACP agent for `--agent acp`: `command`, `args`, `passEnv` (variable names; credential-like names are rejected).          |
-| `decomposer`         | none       | `{ "model": "<provider/modelId>" }`: a model from your registry for prompts with no fixture (see below; mocks only).     |
+| Key                  | Default    | Meaning                                                                                                                       |
+| -------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `models`             | (required) | Model registry file (above), relative to the config file.                                                                     |
+| `policy`             | `balanced` | `economy`, `balanced` or `quality` ([routing](model-routing.md)).                                                             |
+| `checks`             | `[]`       | Project checks run on every task that changes files, and on the merged result.                                                |
+| `acceptance`         | `{}`       | Extra commands per task id; also run for read-only tasks (their only way to be verified).                                     |
+| `protectedPaths`     | `[]`       | Paths no task may change, even inside its lease. The config, registry, fixtures and mock script are added automatically.      |
+| `allowedExecutables` | `[]`       | Exact `argv[0]` values allowed to run. Destructive programs are refused regardless.                                           |
+| `concurrency`        | `4`        | Tasks running at once (1–16).                                                                                                 |
+| `attemptTimeoutMs`   | `1800000`  | Abort an attempt after this many ms (default 30 minutes, `DEFAULT_ATTEMPT_TIMEOUT_MS`); a hung runner ends as `timeout`.      |
+| `modelCallTimeoutMs` | `120000`   | Wall-clock limit for one model call: one `--agent api` try (with its repair round and retries) or one planner call (ADR-040). |
+| `escalation`         | defaults   | Escalation limits and budgets (`@soot/escalation`, e.g. `{ "sameModelRetries": 0 }`).                                         |
+| `fixtures`           | none       | JSON array of extra recorded decompositions `{ id, prompt, tasks }`.                                                          |
+| `acpAgent`           | none       | ACP agent for `--agent acp`: `command`, `args`, `passEnv` (variable names; credential-like names are rejected).               |
+| `decomposer`         | none       | `{ "model": "<provider/modelId>" }`: a model from your registry for prompts with no fixture (see below).                      |
 
 Check entries: `name`, `kind` (`test`, `typecheck`, `lint`, `acceptance`), `argv`, optional
 `timeoutMs` and `required` (default `true`).
@@ -216,6 +217,25 @@ abort cannot block a run forever: the attempt ends as a `timeout` failure and th
 rules decide what happens next. An explicit `attemptTimeoutMs` always wins. `soot config` shows
 the effective value. Separately, the ACP driver waits 2 s for an agent to stop after
 `session/cancel` before it gives up on it (unchanged).
+
+### Model call limit (ADR-040)
+
+`modelCallTimeoutMs` (default 120,000 ms = 120 s) is a wall-clock limit on one model call:
+
+- **`--agent api`:** one try, meaning both of its rounds (the reply and the one repair round)
+  and the provider adapter's own transient retries. When it expires soot aborts the HTTP
+  request and the try ends as a `timeout`. The escalation rules then retry the same model (up
+  to `transientRetries`, default 2) and after that fall back to another provider. The attempt
+  history, `soot status` and the dashboard's timeline say, for example, "timed out after 120s
+  waiting for xai/grok-4.7". A timeout is not counted as a failed result in routing history,
+  which measures whether soot verified the work.
+- **Planner:** the decomposer model call. On expiry the run stops before any task runs, with
+  "the planner model … timed out after 120s".
+
+`attemptTimeoutMs` still bounds the whole attempt, including soot's checks. Requests are not
+streamed, so there is no separate idle timeout. Usage of an aborted request is not reported by
+the provider, so a timed-out try has no token count or cost (the provider may still bill it).
+`soot config` shows the effective limit.
 
 ### What persists across restarts (ADR-030)
 

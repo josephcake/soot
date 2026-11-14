@@ -147,7 +147,7 @@ describe('Scheduler with an AttemptSupervisor (Milestone 4)', () => {
       expect(report.outcomes.get('a')).toMatchObject({ state: 'failed' });
       expect(report.outcomes.get('a')?.attempts[0]?.failure).toMatchObject({
         kind: 'timeout',
-        message: `attempt timed out after ${String(DEFAULT_ATTEMPT_TIMEOUT_MS)} ms`,
+        message: 'attempt timed out after 30 min',
       });
       expect(report.outcomes.get('b')?.state).toBe('succeeded');
     });
@@ -159,7 +159,7 @@ describe('Scheduler with an AttemptSupervisor (Milestone 4)', () => {
       await vi.advanceTimersByTimeAsync(5_000);
       const report = await done;
       expect(report.outcomes.get('a')?.attempts[0]?.failure?.message).toBe(
-        'attempt timed out after 5000 ms',
+        'attempt timed out after 5s',
       );
     });
   });

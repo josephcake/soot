@@ -785,7 +785,9 @@ function timelineBlock(r) {
       bar.style.left = pos(x.start) + '%';
       bar.style.width = Math.max(pos(x.end) - pos(x.start), 0.5) + '%';
       track.append(bar);
-      row.append(track, el('span', 'value', ((x.end - x.start) / 1000).toFixed(1) + ' s ' + x.a.state));
+      const value = el('span', 'value', ((x.end - x.start) / 1000).toFixed(1) + ' s ' + x.a.state + (x.a.why ? ' · ' + x.a.why : ''));
+      if (x.a.why) value.title = x.a.why;
+      row.append(track, value);
     }
     s.append(row);
   }

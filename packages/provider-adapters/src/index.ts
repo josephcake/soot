@@ -35,7 +35,11 @@ export {
   withRetries,
   type RetryPolicy,
 } from './retry.js';
-export { AiSdkModelClient, type AiSdkModelClientOptions } from './ai-sdk-client.js';
+export {
+  AiSdkModelClient,
+  hiddenReasoningTokens,
+  type AiSdkModelClientOptions,
+} from './ai-sdk-client.js';
 export { createModelClient, readApiKey, type CreateClientOptions } from './adapters.js';
 export { discoverModelIds } from './discovery.js';
 export {

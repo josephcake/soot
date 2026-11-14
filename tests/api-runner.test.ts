@@ -15,7 +15,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentTaskInput } from '@soot/agent-runtime';
 import { ModelRegistry, actualCostFromUsage, parseRegistryConfig } from '@soot/model-registry';
 import { createModelClient } from '@soot/provider-adapters';
@@ -69,6 +69,7 @@ const TASK: Task = {
 async function setup(
   replies: (index: number) => FakeReply,
   env: Record<string, string> = { FAKE_KEY },
+  opts: { tryTimeoutMs?: number; retries?: number } = {},
 ) {
   server = await startFakeOpenAi((_r, i) => replies(i));
   root = realpathSync(mkdtempSync(join(tmpdir(), 'soot-api-runner-')));
@@ -79,14 +80,17 @@ async function setup(
       const model = registry.get(ref);
       const provider = registry.provider('fake');
       if (model === undefined || provider === undefined) throw new Error('no model');
-      return createModelClient(provider, model, { env, retry: { maxAttempts: 1 } });
+      return createModelClient(provider, model, {
+        env,
+        retry: { maxAttempts: opts.retries ?? 1, baseDelayMs: 1 },
+      });
     },
     priceUsage: (ref, usage) => {
       const m = registry.get(ref);
       const c = m === undefined ? null : actualCostFromUsage(m, usage).costUsd;
       return c === null ? null : Number(c);
     },
-    requestTimeoutMs: 500,
+    tryTimeoutMs: opts.tryTimeoutMs ?? 500,
   });
   const input: AgentTaskInput = {
     task: TASK,
@@ -157,6 +161,25 @@ describe('ApiAgentRunner', () => {
     expect(readFileSync(join(root, 'styles.css'), 'utf8')).toContain('blue');
   });
 
+  it('counts reasoning tokens a provider reports outside completion_tokens (billed as output)', async () => {
+    const edits = JSON.stringify({ summary: 'none needed', edits: [] });
+    for (const [counted, expected] of [
+      ['outside', 10 + 500],
+      ['inside', 10],
+    ] as const) {
+      await server?.close();
+      const { runner, input } = await setup(() => ({
+        content: edits,
+        promptTokens: 100,
+        completionTokens: 10,
+        reasoning: { tokens: 500, counted },
+      }));
+      const result = parseAgentResult(await runner.run(input, new AbortController().signal));
+      expect(result.usage.outputTokens).toBe(expected);
+      expect(result.usage.costUsd).toBeCloseTo((100 * 2 + expected * 6) / 1e6, 12);
+    }
+  });
+
   it('reports empty edits as success with no change (soot then records no-changes)', async () => {
     const { runner, input, root } = await setup(() => ({
       content: JSON.stringify({ summary: 'already fine', edits: [] }),
@@ -190,10 +213,74 @@ describe('ApiAgentRunner', () => {
 
   it('turns a hung request into a timeout ProviderError the supervisor can act on', async () => {
     const { runner, input } = await setup(() => ({ hang: true }));
+    const error = await runner.run(input, new AbortController().signal).catch((e: unknown) => e);
+    expect(error).toMatchObject({ name: 'ProviderError', kind: 'timeout', provider: 'fake' });
+    expect((error as Error).message).toMatch(
+      /timed out after 500 ms waiting for fake\/coder \(per-try limit "modelCallTimeoutMs"\); the request was aborted/,
+    );
+    await vi.waitFor(() => {
+      expect(server?.aborted()).toBe(1); // the HTTP request itself was aborted, not left running
+    });
+  });
+
+  it('the per-try limit is wall-clock: it covers the adapter retries of a slow model', async () => {
+    // Each request would answer after 400 ms but the adapter's own 300 ms request limit fires
+    // first; without a wall-clock budget, 3 adapter retries would take ~900 ms or more.
+    const { runner, input } = await setup(
+      () => ({ content: '{}', delayMs: 5000 }),
+      { FAKE_KEY },
+      { tryTimeoutMs: 300, retries: 3 },
+    );
+    const started = Date.now();
     await expect(runner.run(input, new AbortController().signal)).rejects.toMatchObject({
-      name: 'ProviderError',
+      kind: 'timeout',
+      message: expect.stringContaining('timed out after 300 ms') as unknown,
+    });
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+
+  it('the per-try limit also covers the repair round', async () => {
+    const { runner, input } = await setup(
+      (i) =>
+        i === 0
+          ? { content: 'not json', promptTokens: 10, completionTokens: 5 }
+          : { content: '{}', delayMs: 5000 },
+      { FAKE_KEY },
+      { tryTimeoutMs: 400 },
+    );
+    await expect(runner.run(input, new AbortController().signal)).rejects.toMatchObject({
       kind: 'timeout',
     });
+    expect(server?.requests).toHaveLength(2);
+  });
+
+  it('a slow reply inside the limit is used as normal', async () => {
+    const reply = JSON.stringify({
+      summary: 'orange',
+      edits: [{ path: 'styles.css', content: '.cta {\n  background: orange;\n}\n' }],
+    });
+    const { runner, input, root } = await setup(
+      () => ({ content: reply, delayMs: 150 }),
+      { FAKE_KEY },
+      { tryTimeoutMs: 2000 },
+    );
+    const result = parseAgentResult(await runner.run(input, new AbortController().signal));
+    expect(result.status).toBe('succeeded');
+    expect(readFileSync(join(root, 'styles.css'), 'utf8')).toContain('orange');
+  });
+
+  it('cancelling the attempt is not reported as a timeout', async () => {
+    const { runner, input } = await setup(
+      () => ({ hang: true }),
+      { FAKE_KEY },
+      { tryTimeoutMs: 5000 },
+    );
+    const stop = new AbortController();
+    setTimeout(() => {
+      stop.abort();
+    }, 100);
+    const error = await runner.run(input, stop.signal).catch((e: unknown) => e);
+    expect(error).not.toMatchObject({ kind: 'timeout' });
   });
 
   it('a missing key is an auth ProviderError and nothing is sent', async () => {
