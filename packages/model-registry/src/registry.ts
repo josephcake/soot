@@ -13,8 +13,12 @@ import { isCallable } from './policy.js';
 export interface ModelEntry extends ModelConfig {
   /** Stable reference `provider/modelId`. */
   readonly ref: string;
-  /** Where the entry came from. Discovered entries have unknown metadata. */
-  readonly origin: 'config' | 'discovered';
+  /**
+   * Where the entry came from. `config`: the user's models file. `auto`: added because the
+   * provider's key variable is set (ADR-043). `discovered`: listed by the provider, metadata
+   * unknown.
+   */
+  readonly origin: 'config' | 'auto' | 'discovered';
   /** Result of the last discovery for this provider; `null` if discovery has not run. */
   readonly listedByProvider: boolean | null;
 }
@@ -69,14 +73,19 @@ export class ModelRegistry {
   readonly #providers: ReadonlyMap<string, ProviderConfig>;
   readonly #models: ModelEntry[];
 
-  constructor(config: RegistryConfig) {
+  /** `options.autoRefs`: refs added by key detection (ADR-043); they get `origin: 'auto'`. */
+  constructor(config: RegistryConfig, options: { readonly autoRefs?: readonly string[] } = {}) {
+    const auto = new Set(options.autoRefs ?? []);
     this.#providers = new Map(config.providers.map((p) => [p.id, p]));
-    this.#models = config.models.map((m) => ({
-      ...m,
-      ref: modelRef(m.provider, m.modelId),
-      origin: 'config' as const,
-      listedByProvider: null,
-    }));
+    this.#models = config.models.map((m) => {
+      const ref = modelRef(m.provider, m.modelId);
+      return {
+        ...m,
+        ref,
+        origin: auto.has(ref) ? ('auto' as const) : ('config' as const),
+        listedByProvider: null,
+      };
+    });
   }
 
   providers(): ProviderConfig[] {
@@ -135,6 +144,7 @@ export class ModelRegistry {
         pricing: null,
         reliability: { ...UNKNOWN_RELIABILITY },
         selectable: false,
+        tier: null,
         ref,
         origin: 'discovered',
         listedByProvider: true,

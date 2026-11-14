@@ -7,7 +7,7 @@
 import { inspect } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseRegistryConfig } from '@soot/model-registry';
-import { createModelClient } from './adapters.js';
+import { createModelClient, hasApiKey } from './adapters.js';
 import { discoverModelIds } from './discovery.js';
 import { ProviderError } from './errors.js';
 import { entry, scriptedFetch, testRegistry, type WireFormat } from './test-fixtures.js';
@@ -190,5 +190,23 @@ describe('credential sourcing', () => {
     const registry = testRegistry();
     expect(deepDump(registry.providers())).not.toMatch(/sk-/);
     expect(deepDump(registry.models())).not.toMatch(/sk-/);
+  });
+});
+
+describe('hasApiKey (ADR-043): presence only', () => {
+  const provider = parseRegistryConfig({
+    version: 1,
+    providers: [{ id: 'anthropic', kind: 'anthropic', apiKeyEnv: 'ANTHROPIC_API_KEY' }],
+    models: [],
+  }).providers[0];
+
+  it('is a boolean: set, unset, blank, or no key variable', () => {
+    if (provider === undefined) throw new Error('fixture');
+    expect(hasApiKey(provider, env)).toBe(true);
+    expect(hasApiKey(provider, {})).toBe(false);
+    expect(hasApiKey(provider, { ANTHROPIC_API_KEY: '   ' })).toBe(false);
+    expect(hasApiKey({ ...provider, apiKeyEnv: undefined }, env)).toBe(false);
+    expect(deepDump(hasApiKey(provider, env))).not.toContain(ANTHROPIC_SECRET);
+    expect(logged.join('\n')).not.toContain(ANTHROPIC_SECRET);
   });
 });

@@ -13,7 +13,7 @@ import {
   type RoutingLog,
   type RoutingLogEntry,
 } from '@soot/observability';
-import type { Complexity, Task } from '@soot/task-graph';
+import { COMPLEXITY_LEVELS, type Complexity, type Task } from '@soot/task-graph';
 import { evaluateTask, type EvaluationOptions, type TaskProfile } from './evaluate.js';
 import { estimateReliability, type ReliabilityEstimate, type SuccessHistory } from './history.js';
 import { resolvePolicy, type BuiltInPolicyName, type RoutingPolicy } from './policy.js';
@@ -108,8 +108,13 @@ interface Working {
   expected: EstimatedUsd | null;
   reliability: ReliabilityEstimate;
   meets: boolean | null;
+  /** Reliability is unknown and the model's `tier` decides instead (ADR-043). */
+  byTier: boolean;
   missing: string[];
 }
+
+const levelRank = (c: Complexity | null): number =>
+  c === null ? -1 : COMPLEXITY_LEVELS.indexOf(c);
 
 const nullsLast = (a: number | null, b: number | null) =>
   a === null ? (b === null ? 0 : 1) : b === null ? -1 : a - b;
@@ -120,15 +125,25 @@ function comparator(policy: RoutingPolicy): (a: Working, b: Working) => number {
   const byCost = (a: Working, b: Working) => nullsLast(cost(a), cost(b));
   const byReliabilityDesc = (a: Working, b: Working) =>
     nullsLast(p(a) === null ? null : -(p(a) ?? 0), p(b) === null ? null : -(p(b) ?? 0));
+  // Only separates models whose reliability ties (in practice: both unknown, both tiered).
+  const byTierDesc = (a: Working, b: Working) => levelRank(b.model.tier) - levelRank(a.model.tier);
   switch (policy.objective) {
     case 'cheapest':
       return (a, b) => byCost(a, b) || byReliabilityDesc(a, b);
     case 'expected-cost':
       return (a, b) => nullsLast(a.expected, b.expected) || byCost(a, b) || byReliabilityDesc(a, b);
     case 'most-reliable':
-      return (a, b) => byReliabilityDesc(a, b) || byCost(a, b);
+      return (a, b) => byReliabilityDesc(a, b) || byTierDesc(a, b) || byCost(a, b);
   }
 }
+
+/** Tier fallback order: strongest tier first, then the higher list price (the stronger proxy). */
+const strongestFirst = (a: Working, b: Working): number =>
+  levelRank(b.model.tier) - levelRank(a.model.tier) ||
+  nullsLast(
+    a.estimate.costUsd === null ? null : -Number(a.estimate.costUsd),
+    b.estimate.costUsd === null ? null : -Number(b.estimate.costUsd),
+  );
 
 function describeTier(profile: TaskProfile): string {
   return profile.highRisk ? 'high-risk work' : `${profile.complexity}-complexity work`;
@@ -186,9 +201,16 @@ export function routeTask(task: Task, ctx: RouteContext): RoutingDecision {
       policy.priorWeight,
       policy.minHistorySamples,
     );
-    if (reliability.value === null && !policy.allowUnknownReliability)
+    // ADR-043: with no reliability data yet, a model's tier stands in for it.
+    const byTier = reliability.value === null && model.tier !== null;
+    if (reliability.value === null && !byTier && !policy.allowUnknownReliability)
       exclusions.push('unknown-reliability');
-    const meets = reliability.value === null ? null : reliability.value >= threshold;
+    const meets =
+      reliability.value === null
+        ? byTier
+          ? levelRank(model.tier) >= levelRank(tier)
+          : null
+        : reliability.value >= threshold;
     const expected =
       costUsd === null || reliability.value === null || reliability.value === 0
         ? null
@@ -200,6 +222,7 @@ export function routeTask(task: Task, ctx: RouteContext): RoutingDecision {
       expected,
       reliability,
       meets,
+      byTier,
       missing,
     };
   });
@@ -213,21 +236,31 @@ export function routeTask(task: Task, ctx: RouteContext): RoutingDecision {
 
   let chosen: Working | undefined = qualifying[0];
   let fallback = false;
+  let tierFallback = false;
   if (chosen === undefined && policy.onNoQualifying === 'most-reliable') {
     chosen = below[0];
     fallback = chosen !== undefined;
+  }
+  if (chosen === undefined && policy.tierFallback) {
+    chosen = below.filter((w) => w.byTier).sort(strongestFirst)[0];
+    tierFallback = chosen !== undefined;
   }
 
   const excludedCount = working.length - open.length;
   const label = `${policy.name.charAt(0).toUpperCase()}${policy.name.slice(1)}`;
   let reason: string;
-  if (chosen === undefined) {
+  if (chosen !== undefined && tierFallback) {
+    reason = `${label}: no available model's tier reaches ${describeTier(profile)} and none has measured reliability; using the strongest tier available (${chosen.model.ref}, tier ${chosen.model.tier ?? '?'}, ${fmtUsd(chosen.estimate.costUsd)}).`;
+  } else if (chosen === undefined) {
     reason = `${label}: no model meets the ${threshold.toFixed(2)} reliability threshold for ${describeTier(profile)} (${below.length} below threshold, ${excludedCount} excluded).`;
   } else if (fallback) {
     reason = `${label}: no model meets the ${threshold.toFixed(2)} threshold for ${describeTier(profile)}; policy allows the most reliable remaining model (${fmtP(chosen.reliability.value)}, ${fmtUsd(chosen.estimate.costUsd)}).`;
   } else {
-    const unknownNote =
-      chosen.reliability.value === null ? ' Reliability is unknown; allowed by policy.' : '';
+    const unknownNote = chosen.byTier
+      ? ` Reliability not measured yet; routed by tier (${chosen.model.tier ?? '?'} model for ${tier} work).`
+      : chosen.reliability.value === null
+        ? ' Reliability is unknown; allowed by policy.'
+        : '';
     reason = `${label}: ${objectiveText(policy, chosen)} among ${qualifying.length} model(s) meeting the ${threshold.toFixed(2)} threshold for ${describeTier(profile)}; ${below.length} below threshold, ${excludedCount} excluded.${unknownNote}`;
   }
 
@@ -249,7 +282,11 @@ export function routeTask(task: Task, ctx: RouteContext): RoutingDecision {
         )
         .join('; ');
     }
+    if (w.meets === false && w.byTier)
+      return `tier ${w.model.tier ?? '?'} is below ${tier}-tier work (reliability not measured yet)`;
     if (w.meets === false) return `below the ${threshold.toFixed(2)} threshold`;
+    if (w.byTier)
+      return `tier ${w.model.tier ?? '?'} covers ${tier}-tier work (reliability not measured yet)`;
     return `reliability from ${w.reliability.source}${w.reliability.samples > 0 ? ` (${w.reliability.samples} recorded attempts)` : ''}`;
   };
   const ordered = [

@@ -35,11 +35,15 @@ import {
   type ConsolidatedReport,
 } from '@soot/integrations';
 import {
+  EMPTY_REGISTRY_CONFIG,
   ModelRegistry,
   ProviderHealth,
   actualCostFromUsage,
+  addAutoModels,
   applyPriceCatalog,
+  describeAutoPool,
   loadRegistryConfigFile,
+  type AutoProviderReport,
   unpricedModels,
   unpricedWarning,
   type ModelEntry,
@@ -84,7 +88,7 @@ import {
   formatLimit,
   withTimeLimit,
 } from './time-limit.js';
-import { createModelClient } from '@soot/provider-adapters';
+import { createModelClient, hasApiKey } from '@soot/provider-adapters';
 
 /*
  * The soot engine behind the CLI and the MCP server: one prompt → recorded-fixture
@@ -146,21 +150,48 @@ export interface EngineOptions {
   readonly priceDate?: string;
 }
 
-/** A loaded registry with soot's catalog prices filled in for unpriced models (ADR-037). */
+/**
+ * A loaded registry: the models file with soot's catalog prices filled in for unpriced models
+ * (ADR-037), plus the auto pool for vendor keys that are set (ADR-043).
+ */
 interface PricedRegistry {
   readonly registry: ModelRegistry;
-  /** Refs priced from soot's catalog. */
+  /** Refs priced from soot's catalog (models-file models only; auto models are always). */
   readonly catalogPriced: readonly string[];
   /** Callable refs with no price at all. */
   readonly unpriced: readonly string[];
+  /** One row per well-known vendor: added, no key, already configured, or off. */
+  readonly auto: readonly AutoProviderReport[];
+  readonly autoRefs: readonly string[];
 }
 
-function loadPricedRegistry(path: string, today?: string): PricedRegistry {
-  const { config, catalogPriced } = applyPriceCatalog(
-    loadRegistryConfigFile(path),
-    today === undefined ? {} : { today },
-  );
-  return { registry: new ModelRegistry(config), catalogPriced, unpriced: unpricedModels(config) };
+function loadPricedRegistry(
+  cfg: LoadedConfig,
+  env: Readonly<Record<string, string | undefined>>,
+  today?: string,
+): PricedRegistry {
+  const file =
+    cfg.modelsPath === null ? EMPTY_REGISTRY_CONFIG : loadRegistryConfigFile(cfg.modelsPath);
+  const day = today === undefined ? {} : { today };
+  const { config: priced, catalogPriced } = applyPriceCatalog(file, day);
+  const pool = addAutoModels(priced, {
+    enabled: cfg.config.autoModels,
+    // Presence only, inside the adapter layer's credential boundary (ADR-022).
+    keyIsSet: (provider) => hasApiKey(provider, env),
+    ...day,
+  });
+  return {
+    registry: new ModelRegistry(pool.config, { autoRefs: pool.autoRefs }),
+    catalogPriced,
+    unpriced: unpricedModels(pool.config),
+    auto: pool.providers,
+    autoRefs: pool.autoRefs,
+  };
+}
+
+/** Where the models came from, for messages: the models file and/or the detected keys. */
+function modelsSource(cfg: LoadedConfig): string {
+  return cfg.modelsPath ?? 'the models soot detected from your keys (no models file)';
 }
 
 /** Where the state directory came from, for `debug` lines. */
@@ -354,7 +385,7 @@ export class SootEngine implements OrchestrationService {
           const model = registry.get(ref);
           const provider = model === undefined ? undefined : registry.provider(model.provider);
           if (model === undefined || provider === undefined)
-            throw new Error(`model "${ref}" is not in ${cfg.modelsPath}`);
+            throw new Error(`model "${ref}" is not in ${modelsSource(cfg)}`);
           return factory(provider, model, { env });
         },
         priceUsage: (ref, usage) => {
@@ -441,7 +472,7 @@ export class SootEngine implements OrchestrationService {
     let fixtures: DecompositionFixture[];
     try {
       cfg = this.#configFor(repoRoot);
-      priced = loadPricedRegistry(cfg.modelsPath, this.#o.priceDate);
+      priced = loadPricedRegistry(cfg, this.#o.modelEnv ?? process.env, this.#o.priceDate);
       registry = priced.registry;
       fixtures = loadFixtures(cfg.fixturesPath);
     } catch (error) {
@@ -467,6 +498,12 @@ export class SootEngine implements OrchestrationService {
 
     const unpricedNote = unpricedWarning(priced.unpriced);
     if (unpricedNote !== null) log.warn(`soot: ${unpricedNote}`);
+    const autoAdded = priced.auto.filter((a) => a.status === 'added');
+    if (autoAdded.length > 0) {
+      log.info(
+        `soot: auto models from ${autoAdded.map((a) => `$${a.apiKeyEnv}`).join(', ')}: ${String(priced.autoRefs.length)} model(s); light work goes to low-tier models, hard work to high-tier ones (see soot models)`,
+      );
+    }
 
     const intake = createPromptIntake({ prompt: request.prompt });
     // Fixtures first; the configured decomposer model only for prompts no fixture matches, and
@@ -675,7 +712,7 @@ export class SootEngine implements OrchestrationService {
         );
       }
       log.debug(
-        `soot: debug: config ${cfg.path}; models ${cfg.modelsPath}; attempt timeout ${String(cfg.config.attemptTimeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS)} ms${cfg.config.attemptTimeoutMs === undefined ? ' (default)' : ''}; audit ${runAudit.file ?? ''}`,
+        `soot: debug: config ${cfg.path}; models ${modelsSource(cfg)}; attempt timeout ${String(cfg.config.attemptTimeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS)} ms${cfg.config.attemptTimeoutMs === undefined ? ' (default)' : ''}; audit ${runAudit.file ?? ''}`,
       );
       // Routing feedback (M5-07): soot-verified outcomes from earlier runs shape this run's routing.
       const outcomes = routingOutcomes(store.modelOutcomes(), this.#o.agent.kind);
@@ -1018,7 +1055,7 @@ export class SootEngine implements OrchestrationService {
     let priced: PricedRegistry;
     try {
       cfg = this.#configFor(this.#o.cwd);
-      priced = loadPricedRegistry(cfg.modelsPath, this.#o.priceDate);
+      priced = loadPricedRegistry(cfg, this.#o.modelEnv ?? process.env, this.#o.priceDate);
       registry = priced.registry;
     } catch (error) {
       return fail((error as Error).message);
@@ -1052,16 +1089,25 @@ export class SootEngine implements OrchestrationService {
               : ('config' as const),
         contextWindow: m.contextWindow,
         reliabilityPrior: json(m.reliability),
+        // ADR-043: `auto` = added because its vendor key is set; tier = hardest work it gets
+        // while its reliability is unmeasured.
+        origin: m.origin,
+        tier: m.tier,
       };
     });
     const usd = (v: number | null | undefined) =>
       v === null || v === undefined ? '?' : `$${String(v)}`;
     const text = [
-      `Models from ${cfg.modelsPath} (policy ${cfg.config.policy}; thresholds low ${String(policy.thresholds.low)} / medium ${String(policy.thresholds.medium)} / high ${String(policy.thresholds.high)})`,
+      `Models from ${modelsSource(cfg)}${priced.autoRefs.length > 0 && cfg.modelsPath !== null ? ' plus your keys' : ''} (policy ${cfg.config.policy}; thresholds low ${String(policy.thresholds.low)} / medium ${String(policy.thresholds.medium)} / high ${String(policy.thresholds.high)})`,
       ...rows.map(
         (r) =>
-          `- ${r.ref} (${r.kind ?? '?'}) ${r.eligible ? 'eligible' : `excluded: ${r.excludedBecause.join(', ')}`}; price in/out per MTok ${r.pricing === null ? 'price not set' : `${usd(r.pricing.inputPerMTokUsd)}/${usd(r.pricing.outputPerMTokUsd)} (${r.priceFrom === 'catalog' ? 'soot catalog' : 'your config'}, ${r.pricing.asOf})`}; context ${r.contextWindow === null ? 'unknown' : String(r.contextWindow)}`,
+          `- ${r.ref} (${r.kind ?? '?'}) ${r.eligible ? 'eligible' : `excluded: ${r.excludedBecause.join(', ')}`}; price in/out per MTok ${r.pricing === null ? 'price not set' : `${usd(r.pricing.inputPerMTokUsd)}/${usd(r.pricing.outputPerMTokUsd)} (${r.priceFrom === 'catalog' ? 'soot catalog' : 'your config'}, ${r.pricing.asOf})`}; context ${r.contextWindow === null ? 'unknown' : String(r.contextWindow)}${r.tier === null ? '' : `; tier ${r.tier}`}${r.origin === 'auto' ? ` (auto from $${priced.auto.find((a) => a.id === r.provider)?.apiKeyEnv ?? '?'})` : ''}`,
       ),
+      ...(priced.autoRefs.length > 0
+        ? [
+            'Auto models: tiers come from list output price (low under $2.5/MTok, high from $15/MTok). While a model has no reliability data, it gets work up to its tier, cheapest first; measured history then takes over. Configure a vendor in your models file to override.',
+          ]
+        : []),
       "Reliability comes from your config. Prices come from your config, else from soot's sourced price catalog for the vendor's own API.",
       ...(unpricedWarning(priced.unpriced) === null
         ? []
@@ -1074,6 +1120,7 @@ export class SootEngine implements OrchestrationService {
         modelsFile: cfg.modelsPath,
         policy: cfg.config.policy,
         models: rows,
+        autoModels: { enabled: cfg.config.autoModels, providers: [...priced.auto] },
         unpricedModels: [...priced.unpriced],
       }) as Record<string, JsonValue>,
     };
@@ -1116,7 +1163,7 @@ export class SootEngine implements OrchestrationService {
     let priced: PricedRegistry;
     try {
       cfg = this.#configFor(repoRoot);
-      priced = loadPricedRegistry(cfg.modelsPath, this.#o.priceDate);
+      priced = loadPricedRegistry(cfg, this.#o.modelEnv ?? process.env, this.#o.priceDate);
       registry = priced.registry;
     } catch (error) {
       return fail((error as Error).message, { dataDir: this.#o.dataDir });
@@ -1153,6 +1200,7 @@ export class SootEngine implements OrchestrationService {
       allowedExecutables: [...cfg.policy.allowedExecutables],
       providers: json(providers),
       models: registry.models().length,
+      autoModels: { enabled: cfg.config.autoModels, providers: [...priced.auto] },
       pricing: {
         catalogPriced: [...priced.catalogPriced],
         unpriced: [...priced.unpriced],
@@ -1162,7 +1210,9 @@ export class SootEngine implements OrchestrationService {
     const text = [
       `Config: ${cfg.path}`,
       `State dir: ${this.#o.dataDir}`,
-      `Models: ${cfg.modelsPath} (${String(data.models)} models)`,
+      `Models: ${modelsSource(cfg)} (${String(data.models)} models${priced.autoRefs.length > 0 ? `, ${String(priced.autoRefs.length)} auto-added from your keys` : ''})`,
+      `Auto models${cfg.config.autoModels ? '' : ' (off: "autoModels": false)'} (key variables checked for presence only; values are never printed):`,
+      ...describeAutoPool(priced.auto),
       `Prices: ${String(registry.models().filter((m) => m.pricing !== null).length)} of ${String(data.models)} priced${priced.catalogPriced.length > 0 ? ` (${String(priced.catalogPriced.length)} from soot's price catalog)` : ''}${pricingNote === null ? '' : `. ${pricingNote}`}`,
       `Policy: ${cfg.config.policy}; concurrency ${String(cfg.config.concurrency)}`,
       `Attempt timeout: ${String(data.effectiveAttemptTimeoutMs)} ms${cfg.config.attemptTimeoutMs === undefined ? ' (default; set "attemptTimeoutMs" to change)' : ''}`,

@@ -2,7 +2,7 @@
  * @soot/model-registry
  *
  * Milestone 2: thin model registry (ADR-019). Loads the user's model config (no built-in model
- * names; ADR-037 adds a sourced price catalog that fills in prices only), overlays provider discovery and availability, selects models by requirements, and
+ * names; ADR-037 adds a sourced price catalog that fills in prices; ADR-043 adds catalog models for vendors whose key is set), overlays provider discovery and availability, selects models by requirements, and
  * computes costs from sourced list prices. Unknown metadata stays unknown.
  */
 
@@ -20,7 +20,9 @@ export {
   CapabilitiesSchema,
   DEFAULT_STRUCTURED_OUTPUT_MODE,
   LongContextPricingSchema,
+  MODEL_TIERS,
   ModelConfigSchema,
+  ModelTierSchema,
   PROVIDER_KINDS,
   PricingSchema,
   ProviderConfigSchema,
@@ -36,6 +38,7 @@ export {
   type Capabilities,
   type Capability,
   type ModelConfig,
+  type ModelTier,
   type Pricing,
   type ProviderConfig,
   type ProviderKind,
@@ -81,3 +84,16 @@ export {
   type CatalogEntry,
   type PricedConfig,
 } from './price-catalog.js';
+export {
+  EMPTY_REGISTRY_CONFIG,
+  KNOWN_PROVIDERS,
+  TIER_BANDS,
+  addAutoModels,
+  describeAutoPool,
+  tierFromPrice,
+  type AutoModelReport,
+  type AutoPoolOptions,
+  type AutoPoolResult,
+  type AutoProviderReport,
+  type KnownProvider,
+} from './auto-pool.js';

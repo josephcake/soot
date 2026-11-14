@@ -40,7 +40,7 @@ export {
   hiddenReasoningTokens,
   type AiSdkModelClientOptions,
 } from './ai-sdk-client.js';
-export { createModelClient, readApiKey, type CreateClientOptions } from './adapters.js';
+export { createModelClient, hasApiKey, readApiKey, type CreateClientOptions } from './adapters.js';
 export { discoverModelIds } from './discovery.js';
 export {
   AllCandidatesFailedError,

@@ -58,7 +58,11 @@ describe('soot.config.json "decomposer" (ADR-034)', () => {
     ).toEqual({ model: 'local/qwen3:8b' });
     expect(() =>
       loadProjectConfig(file('g.json', { version: 1, models: 'm', decomposer: { model: 'x' } })),
-    ).toThrow(/decomposer\.model: must be a model reference/);
+    ).toThrow(/decomposer\.model: must be "auto" or a model reference/);
+    expect(
+      loadProjectConfig(file('i.json', { version: 1, models: 'm', decomposer: { model: 'auto' } }))
+        .config.decomposer,
+    ).toEqual({ model: 'auto' });
     expect(() =>
       loadProjectConfig(
         file('h.json', {
@@ -68,6 +72,19 @@ describe('soot.config.json "decomposer" (ADR-034)', () => {
         }),
       ),
     ).toThrow(/Unrecognized key.*apiKey/);
+  });
+});
+
+describe('soot.config.json models and autoModels (ADR-043)', () => {
+  it('makes the models file optional and turns the auto pool on by default', () => {
+    const none = loadProjectConfig(file('j.json', { version: 1 }));
+    expect(none.modelsPath).toBeNull();
+    expect(none.config.autoModels).toBe(true);
+    const off = loadProjectConfig(file('k.json', { version: 1, models: 'm', autoModels: false }));
+    expect(off.config.autoModels).toBe(false);
+    expect(() => loadProjectConfig(file('l.json', { version: 1, autoModels: 'yes' }))).toThrow(
+      /autoModels/,
+    );
   });
 });
 

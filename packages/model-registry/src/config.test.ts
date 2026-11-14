@@ -60,6 +60,7 @@ describe('registry config (M2-04, M2-06)', () => {
       pricing: null,
       reliability: { low: null, medium: null, high: null, source: null },
       selectable: true,
+      tier: null,
     });
   });
 

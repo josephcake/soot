@@ -142,6 +142,17 @@ export const ReliabilitySchema = z
       });
   });
 
+/**
+ * Model tiers (ADR-043), the same three levels as task complexity. A model's `tier` is the
+ * hardest task complexity soot routes to it WHILE its reliability for that complexity is
+ * unknown (no prior, too little history): a `low` model takes only low-complexity work, a
+ * `high` model takes anything. Once reliability is known, the policy threshold decides
+ * instead. `null` (the default) = no tier: unknown reliability is excluded as before.
+ */
+export const MODEL_TIERS = ['low', 'medium', 'high'] as const;
+export type ModelTier = (typeof MODEL_TIERS)[number];
+export const ModelTierSchema = z.enum(MODEL_TIERS);
+
 export const UNKNOWN_RELIABILITY = Object.freeze({
   low: null,
   medium: null,
@@ -170,6 +181,8 @@ export const ModelConfigSchema = z
     reliability: ReliabilitySchema.default(UNKNOWN_RELIABILITY),
     /** Set false to keep a model listed but out of automatic selection. */
     selectable: z.boolean().default(true),
+    /** Hardest task complexity routed here while reliability is unknown (ADR-043). */
+    tier: ModelTierSchema.nullable().default(null),
     /** Wire format for structured output; omitted = inherit from the provider, else `json_schema`. */
     structuredOutputMode: StructuredOutputModeSchema.optional(),
   })

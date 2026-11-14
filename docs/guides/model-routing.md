@@ -29,7 +29,28 @@ These are untuned defaults, not measurements. If nothing qualifies, the task is 
 with a reason (no silent fallback).
 
 A model needs a reliability prior in your models file (`reliability: {low, medium, high,
-source}`) or enough recorded history; soot ships no priors. A hosted model with no
+source}`), enough recorded history, or a **tier**; soot ships no priors.
+
+### Tiers (ADR-043)
+
+A model's `tier` (`low`, `medium`, `high`) is the hardest work soot gives it while its
+reliability for that work is unknown. Models soot adds from your keys get a tier from their
+list output price (under $2.50/MTok `low`, from $15 `high`, `medium` between); you can set one
+on any model in your models file.
+
+- A tiered model with unknown reliability qualifies for tasks at or below its tier and is
+  ranked by the policy objective (cheapest first under Economy and Balanced; highest tier
+  first under Quality). Models with measured or configured reliability rank ahead of it
+  under Balanced and Quality.
+- If no model's tier reaches the task, soot uses the strongest tier available (and within it
+  the higher list price) and says so in the reason. A custom policy can set
+  `tierFallback: false` to make such tasks unroutable instead.
+- Once soot has recorded enough outcomes for a model at a tier (3 without a prior), measured
+  reliability and the policy threshold take over from the tier.
+
+Example with only `XAI_API_KEY` and `DEEPSEEK_API_KEY` set, Balanced: a small CSS change goes
+to `deepseek/deepseek-flash`, a medium React task to `xai/grok-4.3`, a hard debugging task to
+`xai/grok-4.7` (no high-tier model, so the strongest available). A hosted model with no
 `contextWindow` is assumed to take 32,000 tokens (`HOSTED_CONTEXT_FLOOR`), so ordinary tasks
 can route to it; local endpoints and larger tasks need the window configured (ADR-039).
 
@@ -55,7 +76,7 @@ in the run's report and appended to its audit log (ADR-030).
 ## Inspect
 
 ```sh
-soot models   # every configured model: eligible, or why it is excluded
+soot models   # every model (yours and auto-added): eligible or why not, price, tier
 soot status <run-id>   # the model path of each task and every decision
 ```
 

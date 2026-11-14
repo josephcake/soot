@@ -853,3 +853,74 @@ the old one.
 - **Consequences:** Bookmarked `#/prompts` links keep working. New links the dashboard
   writes use `#/history`.
 - **Reversible:** Yes.
+
+## ADR-043: Auto models from the keys that are set; tiers stand in for unmeasured reliability
+
+- **Date:** 2026-11-14
+- **Status:** Accepted (Mochi, on Joseph's request: "allowing users to have multiple
+  tokens/models/agents for lower tier/task work. we should auto select for them based on their
+  token"). Implemented; verified with unit tests, fake keys and mock clients only. Amends
+  ADR-019 / ADR-022 / ADR-037 ("no built-in model list"; the catalog "adds no models"),
+  ADR-023 (unknown reliability is always excluded) and ADR-034 (no automatic decomposer).
+- **Context:** A user with several keys had to hand-write a models file with providers,
+  capabilities and reliability priors before soot would route anything. Without priors every
+  model was excluded as `unknown-reliability`, so cheap models never got light work by
+  themselves. soot already had a sourced price catalog per vendor API host (ADR-037), a
+  tier-aware router (ADR-023), and live-verified xAI and DeepSeek wiring (ADR-036, ADR-039).
+- **Decision:**
+  - **Detection.** `KNOWN_PROVIDERS` (`@soot/model-registry`) lists four vendors soot has
+    exercised end to end: `ANTHROPIC_API_KEY` (anthropic), `OPENAI_API_KEY` (openai),
+    `XAI_API_KEY` (xai, `https://api.x.ai/v1`) and `DEEPSEEK_API_KEY` (deepseek,
+    `https://api.deepseek.com/v1`, `json_object`). Presence is checked by `hasApiKey` in the
+    adapter layer, the only place keys are read (ADR-022); it returns a boolean. The registry
+    module is pure and never reads the environment.
+  - **Pool.** For each detected vendor, soot adds every model the price catalog has for that
+    vendor's API host on the run's day, with the catalog price (official `source` URL and
+    `asOf`), `tools` and `structuredOutput` true (soot's API runner needs both), and
+    everything else unknown: no vision, reasoning, context window or reliability is guessed.
+    These entries have `origin: 'auto'`.
+  - **Tiers.** New model field `tier` (`low` | `medium` | `high`, default `null`): the hardest
+    task complexity soot routes to the model while its reliability for that complexity is
+    unknown. Auto models are tiered by list output price per million tokens: under $2.50
+    `low`, $2.50 to under $15 `medium`, $15 and up `high` (`TIER_BANDS`). Users may set a
+    tier on any model in their file.
+  - **Routing.** A tiered model with unknown reliability is not excluded; it qualifies for
+    tasks whose reliability tier is at or below its own, and is ranked by the policy
+    objective (unknown reliability still ranks after known under Balanced and Quality;
+    Quality prefers the higher tier). Lower-tier models are shown as below threshold with the
+    reason. If nothing qualifies, the new policy field `tierFallback` (default true) picks the
+    strongest tier available, highest list price within it, and the decision reason says so;
+    `tierFallback: false` keeps such tasks unroutable. Once reliability is known (a prior, or
+    3+ recorded outcomes), the threshold decides as before.
+  - **Override.** The models file always wins: a known vendor whose provider id or key
+    variable the file configures gets nothing added. `"autoModels": false` in
+    soot.config.json turns the pool off. `models` in soot.config.json is now optional.
+  - **Decomposer.** `"decomposer": { "model": "auto" }` picks the cheapest priced callable
+    model with structured output whose client can be built (key set), skipping `low`-tier
+    models when another exists. Absent `decomposer`, decomposition stays fixtures-only
+    (ADR-034's "no default that spends money" stands for planning).
+  - **Visible.** `soot config` lists each known vendor as added / no key / configured / off,
+    by variable name only; `soot models` shows `origin` and `tier`; `soot run` logs which
+    key variables added models.
+- **Verification:** unit tests for tier bands, merge and override rules, router tiers
+  (light → cheapest low tier, medium → cheapest medium tier, hard → high tier or strongest
+  fallback, measured history takes over, unknown `reasoning` stays unroutable), `hasApiKey`;
+  CLI/engine tests with fake key strings and a rejecting `fetch` (no request, no key value in
+  any output): with xAI + DeepSeek, `soot run` on spec Test 2 routes the button task to
+  `deepseek/deepseek-flash`, the dropdown to `xai/grok-4.3` and the auth bug to
+  `xai/grok-4.7`. Not yet run live.
+- **Alternatives:** a hand-curated tier per model (more accurate, but a judgement soot would
+  have to keep up to date; price is sourced and mechanical); shipping reliability priors per
+  vendor model (rejected in ADR-023 and ADR-039 as guesses); treating unknown reliability as
+  qualifying for everything (would send hard work to the cheapest model); discovering models
+  over the network (`GET /models`, adds unpriced models with unknown capabilities); including
+  Gemini, Mistral, OpenRouter and FreeLLMAPI (not exercised end to end; they still work
+  through a models file, where a `tier` can be set).
+- **Consequences:** soot works with nothing but keys. Price is only a proxy for strength:
+  a cheap model may be strong, and an expensive one weak at a given task; measured history
+  corrects this over time. Security and architecture work, which needs `reasoning`, stays
+  unroutable on auto models until the user declares the capability. Users who already had a
+  models file and also export another vendor's key now get that vendor's models in the pool
+  (set `"autoModels": false` to keep the old behavior).
+- **Reversible:** Yes. `"autoModels": false` restores the previous behavior per project;
+  removing the merge call in the CLI removes it everywhere.

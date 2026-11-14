@@ -158,7 +158,9 @@ describe('"decomposer" configured but not usable: no client, no network, clear f
     const r = (repo = demoWithDecomposer('just-a-name'));
     const out = await cli(r, ['config']);
     expect(out.code).toBe(1);
-    expect(out.stderr).toMatch(/decomposer\.model: must be a model reference "provider\/modelId"/);
+    expect(out.stderr).toMatch(
+      /decomposer\.model: must be "auto" or a model reference "provider\/modelId"/,
+    );
   });
 });
 

@@ -24,10 +24,55 @@ export type ModelClientFactory = (
 export type DecomposerModel =
   /** No `decomposer` in the config: fixture-only, nothing is resolved. */
   | { readonly status: 'not-configured' }
-  /** A client exists. It has not been called. */
-  | { readonly status: 'usable'; readonly ref: string; readonly client: ModelClient }
+  /** A client exists. It has not been called. `auto`: picked by `"model": "auto"` (ADR-043). */
+  | {
+      readonly status: 'usable';
+      readonly ref: string;
+      readonly client: ModelClient;
+      readonly auto?: boolean;
+    }
   /** Configured, but no client could be built; `reason` says why (never a key value). */
   | { readonly status: 'unusable'; readonly ref: string; readonly reason: string };
+
+/**
+ * `"model": "auto"` (ADR-043): the cheapest priced, callable model with structured output whose
+ * client can be built (its key is set), preferring models not tiered `low`: planning a whole
+ * prompt is not light work. Building a client makes no request.
+ */
+function pickAutoDecomposer(
+  registry: ModelRegistry,
+  env: Readonly<Record<string, string | undefined>>,
+  factory: ModelClientFactory,
+): DecomposerModel {
+  const ranked = registry
+    .select({ capabilities: ['structuredOutput'] })
+    .candidates.filter((m) => m.pricing !== null)
+    .sort((a, b) => {
+      const weak = (m: typeof a) => (m.tier === 'low' ? 1 : 0);
+      const price = (m: typeof a) =>
+        (m.pricing?.inputPerMTokUsd ?? 0) + (m.pricing?.outputPerMTokUsd ?? 0);
+      return weak(a) - weak(b) || price(a) - price(b) || a.ref.localeCompare(b.ref);
+    });
+  for (const model of ranked) {
+    const provider = registry.provider(model.provider);
+    if (provider === undefined) continue;
+    try {
+      return {
+        status: 'usable',
+        ref: model.ref,
+        client: factory(provider, model, { env }),
+        auto: true,
+      };
+    } catch {
+      // No key (or refused): try the next model.
+    }
+  }
+  return {
+    status: 'unusable',
+    ref: 'auto',
+    reason: 'no priced model with structured output has its key set',
+  };
+}
 
 export function resolveDecomposerModel(
   cfg: LoadedConfig,
@@ -37,9 +82,13 @@ export function resolveDecomposerModel(
 ): DecomposerModel {
   const ref = cfg.config.decomposer?.model;
   if (ref === undefined) return { status: 'not-configured' };
+  if (ref === 'auto') return pickAutoDecomposer(registry, env, factory);
   const unusable = (reason: string): DecomposerModel => ({ status: 'unusable', ref, reason });
   const model = registry.get(ref);
-  if (model === undefined) return unusable(`model "${ref}" is not in ${cfg.modelsPath}`);
+  if (model === undefined)
+    return unusable(
+      `model "${ref}" is not in ${cfg.modelsPath ?? 'the models soot detected from your keys (no models file)'}`,
+    );
   const provider = registry.provider(model.provider);
   if (provider === undefined) return unusable(`provider "${model.provider}" is not configured`);
   if (model.capabilities.structuredOutput === false) {
@@ -58,7 +107,7 @@ export function describeDecomposerModel(d: DecomposerModel): string {
     case 'not-configured':
       return 'recorded fixtures only (no "decomposer" model configured)';
     case 'usable':
-      return `fixtures first, then ${d.ref} for prompts with no fixture (client can be built; not called by this command)`;
+      return `fixtures first, then ${d.ref}${d.auto === true ? ' (picked by "auto": cheapest priced model with structured output whose key is set)' : ''} for prompts with no fixture (client can be built; not called by this command)`;
     case 'unusable':
       return `fixtures only: ${d.ref} is configured but not usable (${d.reason})`;
   }

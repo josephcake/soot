@@ -5,6 +5,24 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (auto models from your keys, ADR-043)
+
+- Several keys, one pool: when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY` or
+  `DEEPSEEK_API_KEY` is set, soot adds that vendor's models from its sourced price catalog
+  (presence check only; no key value is read outside the adapter layer or printed). Your
+  models file wins for any vendor it configures; `"autoModels": false` turns this off. The
+  `models` file in soot.config.json is now optional.
+- Model `tier` (`low` / `medium` / `high`): the hardest work a model gets while its
+  reliability is unmeasured. Auto models are tiered by list output price (under $2.50/MTok
+  low, from $15 high). The router sends light tasks to the cheapest low-tier model and hard
+  ones to a high-tier model; with no high-tier model it uses the strongest available and says
+  so. Measured history takes over once it exists. Custom policies can set
+  `tierFallback: false`.
+- `"decomposer": { "model": "auto" }` picks the cheapest priced structured-output model whose
+  key is set, skipping low-tier models when another exists.
+- `soot config` lists each known vendor (added, no key, configured by you, off); `soot models`
+  shows `origin` and `tier`, in text and `--json`.
+
 ### Changed (dashboard History tab, ADR-042)
 
 - The tab that listed past runs is now **History** (`#/history`), so it is not confused with
