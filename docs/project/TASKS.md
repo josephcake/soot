@@ -217,7 +217,7 @@ M7 notes (2026-11-12, ADR-029; real-editor run 2026-11-14, ADR-041):
   showed the same tasks, states, verdicts and models as `soot status`, and the same estimate
   ($0.000750) and actual ($0.001630, mock usage) as `soot cost`. The sidebar truncates long
   labels; the board shows them in full.
-- **M7-02, M7-03 In Progress; M7-04 Not Started (ADR-070, 2026-11-14):** the extension is
+- **M7-02, M7-03 In Progress; M7-04 Not Started (ADR-044, 2026-11-14):** the extension is
   prepared for VS Code-based editors but nothing is claimed until it runs in each one. The floor
   stays `engines.vscode ^1.100.0` (ESM extensions need 1.100; every API used is older).
   Cursor reports VS Code API 1.128.0 (Cursor forum, staff reply) and Windsurf 1.141.2 (its
@@ -232,7 +232,7 @@ M7 notes (2026-11-12, ADR-029; real-editor run 2026-11-14, ADR-041):
   failures, escalate/retry/fallback/downgrade events (from the run's new
   `reports/<run>.events.jsonl`), estimate vs actual cost. Text blocks only (ADR-009). **M7-06
   stays Implemented:** per-attempt models showed correctly in VS Code, but no mock run escalated
-  or retried, so escalation events were not seen in the editor. ADR-070 gives escalations their
+  or retried, so escalation events were not seen in the editor. ADR-044 gives escalations their
   own **Escalations (N)** section in the tree and the board: task, new attempt, `from ──▶ to`
   model, escalation level, the engine's reason and each trigger, with orange theme-colored
   icons. It is tested against a real escalated mock run through the CLI

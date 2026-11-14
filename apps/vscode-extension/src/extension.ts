@@ -38,7 +38,7 @@ export const ENABLED_STATE_KEY = 'soot.enabled';
 /**
  * Theme colors contributed in package.json (`contributes.colors`): soot's locked palette
  * (ADR-009) on dark themes, orange #ff7a1a and cream #e8dcc8, with darker variants on light
- * and high-contrast-light themes so the text stays readable (ADR-070). The editor keeps its own
+ * and high-contrast-light themes so the text stays readable (ADR-044). The editor keeps its own
  * background; soot only tints icons.
  */
 export const ESCALATION_COLOR = 'soot.escalation';

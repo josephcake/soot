@@ -173,7 +173,7 @@ describe('escalations and failures are visible', () => {
         model: 'openai/gpt-6.1-terra',
       });
       const run = ext.tree.getChildren()[1];
-      // M7-06 (ADR-070): the escalation names task, attempt, from ──▶ to, level, why, trigger.
+      // M7-06 (ADR-044): the escalation names task, attempt, from ──▶ to, level, why, trigger.
       expect(ext.view?.escalations).toMatchObject([
         {
           taskId: 'update-button-color',

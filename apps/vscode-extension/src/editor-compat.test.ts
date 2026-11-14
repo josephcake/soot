@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 /*
  * Invariants that keep one .vsix installable in VS Code and in VS Code-based editors (Cursor,
- * Windsurf) from a file or from Open VSX (M7-02…M7-04, ADR-070). These read package.json and
+ * Windsurf) from a file or from Open VSX (M7-02…M7-04, ADR-044). These read package.json and
  * the source; they do not run any editor, so they do not show that the extension works there.
  */
 
@@ -125,7 +125,7 @@ describe('portable to VS Code-based editors and Open VSX', () => {
   });
 });
 
-describe('run view colors (ADR-009 palette, ADR-070)', () => {
+describe('run view colors (ADR-009 palette, ADR-044)', () => {
   const color = (id: string) => pkg.contributes.colors.find((c) => c.id === id)?.defaults;
 
   it('uses orange #ff7a1a and cream #e8dcc8 on dark themes, darker shades on light themes', () => {

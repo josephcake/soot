@@ -5,7 +5,7 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
-### Added (editor support and an Escalations view, ADR-070; M7-02…M7-04 prepared, M7-06)
+### Added (editor support and an Escalations view, ADR-044; M7-02…M7-04 prepared, M7-06)
 
 - The VS Code extension's tree and board have an **Escalations (N)** section: one entry per
   escalation naming the task, the new attempt, `from ──▶ to` model, the escalation level, the

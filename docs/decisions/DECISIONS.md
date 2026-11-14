@@ -926,11 +926,13 @@ the old one.
 - **Reversible:** Yes. `"autoModels": false` restores the previous behavior per project;
   removing the merge call in the CLI removes it everywhere.
 
-## ADR-070: One .vsix for VS Code-based editors (floor VS Code API 1.100), and a dedicated Escalations view
+## ADR-044: One .vsix for VS Code-based editors (floor VS Code API 1.100), and a dedicated Escalations view
 
 - **Date:** 2026-11-14
-- **Status:** Proposed (Prism for Mochi; awaiting Joseph's review). Number 070 was assigned
-  by Mochi so parallel work can take 044 onward without a clash. Covers M7-02…M7-04
+- **Status:** Accepted (Mochi, on Joseph's standing grant to merge gap-work once CI is green).
+  Implemented; the Escalations view is unit-tested and tested through the CLI on an escalated
+  mock run, but has not been seen in an editor. Cursor and Windsurf are prepared, not run.
+  Renumbered from 070 to 044 at merge so ADRs stay sequential on main. Covers M7-02…M7-04
   (preparation only) and M7-06.
 - **Context:** M7-02…M7-04 ask for Cursor, Windsurf and Kilo Code. The extension was only
   ever run in VS Code 1.144 (M7-01), and its README said other editors were "not claimed".
