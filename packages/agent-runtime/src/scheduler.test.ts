@@ -270,3 +270,31 @@ describe('scheduler (M1-05)', () => {
     await expect(scheduler.run()).rejects.toThrow(/only be called once/);
   });
 });
+
+describe('restored outcomes (ADR-054 resume)', () => {
+  it('held tasks are reported as restored, never run, and their dependents are skipped', async () => {
+    const graph = graphOf(task('a'), task('b', ['a']), task('c'));
+    const runner = new MockAgentRunner({});
+    const finished: string[] = [];
+    const report = await runTaskGraph(graph, {
+      runner,
+      restored: new Map([
+        ['a', { state: 'failed' as const, attempt: 1, result: null, error: 'held on resume' }],
+      ]),
+      journal: {
+        taskStarted: () => undefined,
+        taskFinished: (o) => finished.push(`${o.taskId}:${o.state}`),
+      },
+    });
+    expect(report.outcomes.get('a')).toMatchObject({
+      state: 'failed',
+      resumed: true,
+      error: 'held on resume',
+    });
+    expect(report.outcomes.get('b')).toMatchObject({ state: 'skipped', resumed: false });
+    expect(report.outcomes.get('c')?.state).toBe('succeeded');
+    expect(runner.calls.map((c) => c.taskId)).toEqual(['c']);
+    // The held task is not journaled again; its skipped dependent and the new work are.
+    expect(finished.sort()).toEqual(['b:skipped', 'c:succeeded']);
+  });
+});

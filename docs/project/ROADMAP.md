@@ -26,6 +26,10 @@ The process sandbox for commands soot launches for an agent (ADR-051, TASKS SB-0
 `bwrap` on Linux, `sandbox-exec` on macOS, an honest `none` fallback) is Implemented and changes
 no milestone status. Only the Linux backend has been exercised for real.
 
+`soot resume` (ADR-054: continue an interrupted, stopped or blocked run from `soot.sqlite`,
+schema v7) is tracked in `docs/project/TASKS.md` (R-01, Implemented, mock agents only). It
+changes no milestone status.
+
 The MVP (MVP-01…MVP-08) is reached at the end of M5 for the engine and M6 for the first
 harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-009.
 

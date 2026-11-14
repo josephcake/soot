@@ -10,6 +10,7 @@ import {
   type ApprovalGate,
   type Sandbox,
   type SandboxHost,
+  type RestoredOutcome,
   type Scheduler,
 } from '@soot/agent-runtime';
 import {
@@ -22,7 +23,18 @@ import {
   type HarnessId,
 } from '@soot/harness-adapters';
 import { SILENT_LOGGER, parseEnv, type LogLevel, type Logger } from '@soot/core';
-import { openExecutionStore, type ExecutionStore, type ModelOutcome } from '@soot/context-manager';
+import {
+  DEFAULT_RUN_LOCK_TTL_MS,
+  latestAttempt,
+  openExecutionStore,
+  pidAlive,
+  type ConfigChange,
+  type ExecutionStore,
+  type LockState,
+  type ModelOutcome,
+  type PersistedRun,
+  type PersistedVerification,
+} from '@soot/context-manager';
 import {
   AdaptiveSupervisor,
   escalationConfig,
@@ -39,8 +51,13 @@ import {
   auditLogPath,
   renderConsolidatedReport,
   runCodebaseWorkflow,
+  type CheckEvidence,
   type ConsolidatedReport,
+  type TaskVerification,
+  type Verdict,
+  type WorkflowResume,
 } from '@soot/integrations';
+import { buildTaskGraph, type TaskGraph } from '@soot/task-graph';
 import {
   EMPTY_REGISTRY_CONFIG,
   ModelRegistry,
@@ -95,7 +112,14 @@ import {
   type DecomposerModel,
   type ModelClientFactory,
 } from './decomposer-model.js';
-import { holdRun, requestStop, requestTaskStop, runningInfo } from './control.js';
+import { holdRun, requestStop, requestTaskStop, runningInfo, type RunControl } from './control.js';
+import {
+  fileHash,
+  fingerprintChanges,
+  planResume,
+  textHash,
+  type TaskResumeDecision,
+} from './resume-plan.js';
 import { loadMockScript } from './mock-script.js';
 import { ApiAgentRunner } from './api-runner.js';
 import {
@@ -183,6 +207,11 @@ export interface EngineOptions {
    * (`process.platform`, `os.homedir()`, `dataDir`, `$PATH`, a real one-off backend probe).
    */
   readonly sandboxHost?: Partial<SandboxHost>;
+  /**
+   * Run lock lease (ADR-054): an owner that has not refreshed its heartbeat for this long is
+   * stale. Default `DEFAULT_RUN_LOCK_TTL_MS` (2 minutes); the heartbeat runs every quarter.
+   */
+  readonly runLockTtlMs?: number;
 }
 
 /** The effective sandbox as `soot config`, `soot run` and reports show it (ADR-051). */
@@ -225,6 +254,19 @@ export function sandboxLine(s: Sandbox): string {
     ? `${s.backend} (OS isolation: writes only in the task worktree and temp${s.settings.writePaths.length > 0 ? ` plus ${String(s.settings.writePaths.length)} configured path(s)` : ''}; network ${s.network ? 'allowed' : 'off'})`
     : 'none: NOT isolation (fallback: scrubbed env, worktree cwd, no shell, timeouts, process-group kill, output cap; the process runs with your rights and network)';
   return `${what}; ${s.reason}${s.blocked === null ? '' : `; BLOCKED: tasks will not run (${s.blocked})`}`;
+}
+
+/** `soot resume` (ADR-054). */
+export interface ResumeRequest {
+  readonly runId?: string;
+  /** Resume the newest run (by creation time). */
+  readonly latest?: boolean;
+  /** Repository; default: the one the run started in. */
+  readonly repo?: string;
+  /** Resume even though the config, models, routes or agent changed (the change is recorded). */
+  readonly allowConfigChange?: boolean;
+  /** Re-run tasks held as blocked, budget-stopped or escalation-exhausted (the person resolved it). */
+  readonly retryBlocked?: boolean;
 }
 
 /**
@@ -525,8 +567,8 @@ export class SootEngine implements OrchestrationService {
     registry: ModelRegistry,
     onRoute: (r: AcpRouteRecord) => void,
     sandbox: Sandbox,
+    agent: AgentMode = this.#o.agent,
   ): AgentRunner | string {
-    const { agent } = this.#o;
     if (agent.kind === 'none') {
       return (
         'no agent runner selected: pick --agent api (each task goes to its routed model; needs ' +
@@ -585,6 +627,49 @@ export class SootEngine implements OrchestrationService {
     return new MockAgentRunner(loadMockScript(resolve(this.#o.cwd, agent.script)));
   }
 
+  /** The agent mode as stored with a session: a mock script path made absolute. */
+  #recordableAgent(agent: AgentMode): AgentMode {
+    return agent.kind === 'mock'
+      ? { kind: 'mock', script: resolve(this.#o.cwd, agent.script) }
+      : agent;
+  }
+
+  #lockTtl(): number {
+    return this.#o.runLockTtlMs ?? DEFAULT_RUN_LOCK_TTL_MS;
+  }
+
+  #liveCheck(): (store: ExecutionStore, runId: string) => LockState {
+    const ttlMs = this.#lockTtl();
+    return (store, runId) => store.runLockState(runId, { ttlMs, isAlive: pidAlive });
+  }
+
+  /**
+   * What a run's behaviour depends on, one hash per part (ADR-054): the project config, models
+   * and fixtures files, the agent (and mock script), and the routable model refs (which also
+   * change when keys or local runtimes come and go). Compared on resume.
+   */
+  #fingerprint(
+    cfg: LoadedConfig,
+    agent: AgentMode,
+    registry: ModelRegistry,
+  ): Record<string, string> {
+    return {
+      config: fileHash(cfg.path),
+      models: fileHash(cfg.modelsPath),
+      fixtures: fileHash(cfg.fixturesPath),
+      agent:
+        agent.kind === 'acp' && agent.harness !== undefined ? `acp:${agent.harness}` : agent.kind,
+      mockScript: agent.kind === 'mock' ? fileHash(resolve(this.#o.cwd, agent.script)) : 'none',
+      routes: textHash(
+        registry
+          .models()
+          .map((m) => m.ref)
+          .sort()
+          .join('\n'),
+      ),
+    };
+  }
+
   #decomposerModel(cfg: LoadedConfig, registry: ModelRegistry): DecomposerModel {
     return resolveDecomposerModel(
       cfg,
@@ -594,8 +679,7 @@ export class SootEngine implements OrchestrationService {
     );
   }
 
-  #agentLabel(cfg: LoadedConfig): string {
-    const { agent } = this.#o;
+  #agentLabel(cfg: LoadedConfig, agent: AgentMode = this.#o.agent): string {
     if (agent.kind === 'acp' && agent.harness !== undefined) {
       const spec = cfg.config.harnesses?.[agent.harness];
       if (spec !== undefined) {
@@ -614,13 +698,13 @@ export class SootEngine implements OrchestrationService {
   }
 
   /** The config file, models file and fixtures file are protected when they live in the repo. */
-  #protectedPaths(repoRoot: string, cfg: LoadedConfig): string[] {
+  #protectedPaths(repoRoot: string, cfg: LoadedConfig, agent: AgentMode = this.#o.agent): string[] {
     const extra = [cfg.path, cfg.modelsPath, cfg.fixturesPath]
       .filter((p): p is string => p !== null)
       .map((p) => insideRepo(repoRoot, p))
       .filter((p): p is string => p !== null);
-    if (this.#o.agent.kind === 'mock') {
-      const script = insideRepo(repoRoot, resolve(this.#o.cwd, this.#o.agent.script));
+    if (agent.kind === 'mock') {
+      const script = insideRepo(repoRoot, resolve(this.#o.cwd, agent.script));
       if (script !== null) extra.push(script);
     }
     return [...new Set([...cfg.config.protectedPaths, ...extra])];
@@ -911,53 +995,23 @@ export class SootEngine implements OrchestrationService {
     if (USED_PLANS.has(plan)) return fail(`plan for run ${plan.runId} was already run`);
     USED_PLANS.add(plan);
     const log = this.#o.log ?? SILENT_LOGGER;
-    const progress = log.info;
-    const {
-      runId,
-      repoRoot,
-      graph,
-      source,
-      planning,
-      fixtureId,
-      planLabel,
-      agentLabel,
-      cfg,
-      registry,
-      intake,
-      runner,
-      sandbox,
-    } = plan;
-    const acpRoutes = plan.acp.routes;
-    const request = { prompt: plan.prompt };
-    const isAcp = this.#o.agent.kind === 'acp';
-
+    const { runId, repoRoot, graph, source, planning, intake, cfg, registry } = plan;
+    const agent = this.#recordableAgent(this.#o.agent);
     const store = this.#store();
-    let control;
-    // Task cancellation requests (`soot stop <run> --task <id>`) arriving before or during the run.
-    let scheduler: Scheduler | null = null;
-    const pendingTaskStops: string[] = [];
-    const cancelTask = (taskId: string) => {
-      if (scheduler === null) {
-        pendingTaskStops.push(taskId);
-        return;
-      }
-      try {
-        scheduler.cancel(taskId);
-        progress(`soot: ${taskId} cancelled by request`);
-      } catch (error) {
-        log.warn(`soot: cannot cancel ${taskId}: ${(error as Error).message}`);
-      }
-    };
+    const canceller = new TaskCanceller(log, store, runId);
     mkdirSync(join(this.#o.dataDir, 'reports'), { recursive: true, mode: 0o700 });
-    const eventsPath = this.#eventsPath(runId);
-    writeFileSync(eventsPath, '', { mode: 0o600 });
+    writeFileSync(this.#eventsPath(runId), '', { mode: 0o600 });
+    let control: RunControl;
     try {
-      control = holdRun(this.#o.dataDir, runId, signal, 200, cancelTask);
+      control = holdRun(this.#o.dataDir, runId, signal, 200, (id) => {
+        canceller.cancel(id);
+      });
     } catch (error) {
       store.close();
       return fail((error as Error).message);
     }
     const planningLine = planningCostInput(source, planning);
+    let session: { session: number; owner: string };
     try {
       store.createRun({ runId, intake, graph });
       if (planningLine !== null) {
@@ -969,9 +1023,119 @@ export class SootEngine implements OrchestrationService {
           priced: planningLine.priced,
         });
       }
+      const begun = store.beginSession(runId, {
+        kind: 'run',
+        repoRoot,
+        fingerprint: this.#fingerprint(cfg, agent, registry),
+        agent,
+        meta: {
+          fixtureId: plan.fixtureId,
+          planLabel: plan.planLabel,
+          decomposition: json({ ...source, ...planning }),
+          planningText: source.kind === 'model' ? describePlanningCost(source, planning) : null,
+        } satisfies SessionMeta,
+        ttlMs: this.#lockTtl(),
+      });
+      if (!begun.ok) throw new Error(`run ${runId} is already held: ${begun.lock.reason}`);
+      session = begun;
+    } catch (error) {
+      control.release();
+      store.close();
+      return fail(`run ${runId} failed: ${(error as Error).message}`, { runId });
+    }
+    return this.#execute({
+      runId,
+      repoRoot,
+      graph,
+      cfg,
+      registry,
+      runner: plan.runner,
+      sandbox: plan.sandbox,
+      agent,
+      agentLabel: plan.agentLabel,
+      acp: plan.acp,
+      prompt: plan.prompt,
+      planningLine,
+      meta: {
+        fixtureId: plan.fixtureId,
+        planLabel: plan.planLabel,
+        decomposition: json({ ...source, ...planning }),
+        planningText: source.kind === 'model' ? describePlanningCost(source, planning) : null,
+      },
+      store,
+      control,
+      canceller,
+      session: session.session,
+      owner: session.owner,
+      resume: null,
+      earlierDecisions: [],
+      hooks,
+    });
+  }
+
+  /**
+   * The shared body of `soot run` and `soot resume` (ADR-054): one code path from the audit log
+   * to the saved report, so every workflow option (including the process sandbox, ADR-051)
+   * applies to resumed runs exactly as to fresh ones. Releases the locks and the store.
+   */
+  async #execute(x: ExecContext): Promise<CommandOutput> {
+    const log = this.#o.log ?? SILENT_LOGGER;
+    const progress = log.info;
+    const {
+      runId,
+      repoRoot,
+      graph,
+      cfg,
+      registry,
+      runner,
+      sandbox,
+      agentLabel,
+      store,
+      control,
+      meta,
+    } = x;
+    const acpRoutes = x.acp.routes;
+    const isAcp = x.agent.kind === 'acp';
+    const eventsPath = this.#eventsPath(runId);
+    // The lease: refreshed while the run lives. Losing it (another process took over after it
+    // expired) aborts this run so two owners never work on it at once.
+    const lost = new AbortController();
+    const ttl = this.#lockTtl();
+    const heartbeat = setInterval(
+      () => {
+        if (!store.heartbeatRunLock(runId, x.owner)) {
+          log.error(`soot: run ${runId} lock was taken over by another process; stopping`);
+          lost.abort();
+        }
+      },
+      Math.max(50, Math.floor(ttl / 4)),
+    );
+    heartbeat.unref();
+    const runSignal = AbortSignal.any([control.signal, lost.signal]);
+    let finalStatus = 'error';
+    try {
       const runAudit = new AuditLog({ runId, file: auditLogPath(this.#o.dataDir, runId) });
-      plan.acp.audit = runAudit;
-      hooks.onRunStarted?.(runId);
+      x.acp.audit = runAudit;
+      if (x.resume !== null) {
+        if (x.resume.reclaimedLock !== null) {
+          runAudit.record('run-lock-reclaimed', null, {
+            session: x.session,
+            previousOwnerPid: x.resume.reclaimedLock.holder.pid,
+            previousSession: x.resume.reclaimedLock.holder.session,
+            reason: x.resume.reclaimedLock.reason,
+          });
+        }
+        runAudit.record('run-resumed', null, {
+          session: x.session,
+          kept: x.resume.decisions.filter((d) => d.action === 'keep').map((d) => d.taskId),
+          rerun: x.resume.decisions.filter((d) => d.action === 'rerun').map((d) => d.taskId),
+          held: x.resume.decisions.filter((d) => d.action === 'hold').map((d) => d.taskId),
+          interrupted: [...x.resume.interrupted],
+          configChanges: x.resume.changes.map((c) => c.part),
+          decisions: json(x.resume.decisions),
+        });
+      }
+      x.hooks.onRunStarted?.(runId);
       // Provider cooldowns recorded by earlier runs still apply (ADR-030).
       const health = new ProviderHealth({ store });
       for (const c of store.providerCooldowns(Date.now())) {
@@ -983,7 +1147,7 @@ export class SootEngine implements OrchestrationService {
         `soot: debug: config ${cfg.path}; models ${modelsSource(cfg)}; attempt timeout ${String(cfg.config.attemptTimeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS)} ms${cfg.config.attemptTimeoutMs === undefined ? ' (default)' : ''}; audit ${runAudit.file ?? ''}`,
       );
       // Routing feedback (M5-07): soot-verified outcomes from earlier runs shape this run's routing.
-      const outcomes = routingOutcomes(store.modelOutcomes(), this.#o.agent.kind);
+      const outcomes = routingOutcomes(store.modelOutcomes(), x.agent.kind);
       const history = historyFromAttempts(
         outcomes.map((o) => ({
           model: o.model,
@@ -997,10 +1161,11 @@ export class SootEngine implements OrchestrationService {
         history,
         runId,
         health,
-        // Run-budget spend is kept per attempt in soot.sqlite and reloaded on restart (ADR-030).
+        // Run-budget spend is kept per attempt in soot.sqlite and reloaded on restart (ADR-030),
+        // so a resumed run's budget already counts every earlier attempt (ADR-054).
         spend: store.spendLedger(runId),
         // Priced planning counts against the run budget (ADR-046); unknown is never guessed.
-        ...(planningLine?.costUsd == null ? {} : { planningSpendUsd: planningLine.costUsd }),
+        ...(x.planningLine?.costUsd == null ? {} : { planningSpendUsd: x.planningLine.costUsd }),
         ...(cfg.config.escalation === undefined ? {} : { config: cfg.config.escalation }),
         onEvent: (e) => {
           progress(`soot: ${eventLine(e).slice(2)}`);
@@ -1023,7 +1188,7 @@ export class SootEngine implements OrchestrationService {
         runner,
         checks: cfg.checks,
         acceptance: cfg.acceptance,
-        protectedPaths: this.#protectedPaths(repoRoot, cfg),
+        protectedPaths: this.#protectedPaths(repoRoot, cfg, x.agent),
         retryCheckOutputBytes: cfg.config.retryCheckOutputBytes,
         retryDiffBytes: cfg.config.retryDiffBytes,
         policy: cfg.policy,
@@ -1033,13 +1198,20 @@ export class SootEngine implements OrchestrationService {
         ...(cfg.config.attemptTimeoutMs === undefined
           ? {}
           : { attemptTimeoutMs: cfg.config.attemptTimeoutMs }),
-        journal: store.journal(runId),
+        journal: store.journal(runId, x.session),
         audit: runAudit,
-        signal: control.signal,
+        signal: runSignal,
         onScheduler: (s) => {
-          scheduler = s;
-          for (const id of pendingTaskStops.splice(0)) cancelTask(id);
+          x.canceller.attach(s);
         },
+        onRepository: (repo) => {
+          store.setSessionBase(runId, x.session, repo.baseCommit);
+        },
+        // soot's verdicts are persisted so a later `soot resume` can integrate this work.
+        onVerification: (v) => {
+          store.saveVerification(runId, persistVerification(v));
+        },
+        ...(x.resume === null ? {} : { resume: x.resume.workflow }),
         // Routing history is credited to a model only when that model did the work: always for
         // the api runner, for ACP only where the agent applied the route; mock outcomes are kept
         // but tagged, and only mock runs read them back.
@@ -1058,11 +1230,11 @@ export class SootEngine implements OrchestrationService {
               if (applied) store.recordModelOutcome({ ...o, runner: 'acp' });
               return;
             }
-            store.recordModelOutcome({ ...o, runner: this.#o.agent.kind });
+            store.recordModelOutcome({ ...o, runner: x.agent.kind });
           },
         },
-        prompt: request.prompt,
-        planning: planningLine,
+        prompt: x.prompt,
+        planning: x.planningLine,
         ...(this.#o.gitEnv === undefined ? {} : { gitEnv: this.#o.gitEnv }),
         // ADR-051: every soot-run check runs under the sandbox and is stored with its backend.
         sandbox,
@@ -1080,13 +1252,37 @@ export class SootEngine implements OrchestrationService {
         },
       });
       const { report } = result;
-      const decisions = supervisor.events.map(eventLine);
+      let resumeDecisions: readonly ResumeDecisionRecord[] = [];
+      if (x.resume !== null) {
+        const dropped = new Set(result.dropped);
+        resumeDecisions = x.resume.decisions.map((d) =>
+          dropped.has(d.taskId)
+            ? {
+                ...d,
+                action: 'rerun' as const,
+                reason: `${d.reason}; but its verified commit is gone from the repository, so it ran again`,
+              }
+            : d,
+        );
+        store.setSessionDecisions(runId, x.session, [
+          ...resumeDecisions,
+          ...result.reclaimed.map((a) => ({
+            worktree: a.action,
+            taskId: a.taskId,
+            detail: a.detail,
+          })),
+        ]);
+      }
+      const decisions = [...x.earlierDecisions, ...supervisor.events.map(eventLine)];
+      finalStatus = report.status;
+      store.finishSession(runId, x.session, report.status);
+      const sessions = sessionSummaries(store, runId, this.#liveCheck());
       // Cost records with the router's estimate per attempt, written automatically (ADR-030).
       const costRecords = this.#costRecords(store, runId);
       const saved = {
         runId,
-        fixtureId,
-        decomposition: json({ ...source, ...planning }),
+        fixtureId: meta.fixtureId,
+        decomposition: meta.decomposition,
         agent: runner.kind,
         agentLabel,
         policy: cfg.config.policy,
@@ -1096,6 +1292,18 @@ export class SootEngine implements OrchestrationService {
         ...(isAcp ? { acpRoutes } : {}),
         stopRequested: control.stopRequested(),
         sandbox: describeSandbox(sandbox),
+        // Every session of the run, oldest first: the resume history (ADR-054).
+        session: x.session,
+        sessions: json(sessions),
+        ...(x.resume === null
+          ? {}
+          : {
+              resume: json({
+                decisions: resumeDecisions,
+                configChanges: x.resume.changes,
+                reclaimed: result.reclaimed,
+              }),
+            }),
         report,
         costRecords,
         costSummary: summarizeCosts(costRecords),
@@ -1103,13 +1311,30 @@ export class SootEngine implements OrchestrationService {
       writeFileSync(this.#reportPath(runId), `${JSON.stringify(saved, null, 2)}\n`, {
         mode: 0o600,
       });
+      const planSource = meta.planningText === null ? 'fixture' : 'model';
       const text = [
-        `soot run ${runId} (${report.status.toUpperCase()})`,
-        `Plan: ${source.kind === 'fixture' ? `${planLabel} (no model-backed decomposition)` : planLabel}; agent: ${agentLabel}; policy: ${cfg.config.policy}; routing history: ${String(outcomes.length)} stored outcomes; peak concurrency ${String(result.run.maxObservedConcurrency)}`,
+        `soot run ${runId} (${report.status.toUpperCase()})${x.resume === null ? '' : ` — resumed, session ${String(x.session)}`}`,
+        `Plan: ${planSource === 'fixture' ? `${meta.planLabel} (no model-backed decomposition)` : meta.planLabel}; agent: ${agentLabel}; policy: ${cfg.config.policy}; routing history: ${String(outcomes.length)} stored outcomes; peak concurrency ${String(result.run.maxObservedConcurrency)}`,
         `Sandbox: ${sandboxLine(sandbox)}`,
-        ...(source.kind === 'model'
-          ? [`Planning call: ${describePlanningCost(source, planning)}`]
-          : []),
+        ...(meta.planningText === null ? [] : [`Planning call: ${meta.planningText}`]),
+        ...(x.resume === null
+          ? []
+          : [
+              'Resume:',
+              ...resumeDecisions.map(
+                (d) => `- ${d.taskId}: ${d.action} (was ${d.previous}): ${d.reason}`,
+              ),
+              ...result.reclaimed.map(
+                (a) =>
+                  `- worktree ${a.action}${a.taskId === null ? '' : ` ${a.taskId}`}: ${a.detail}`,
+              ),
+              ...(x.resume.changes.length === 0
+                ? []
+                : [
+                    `Config changes accepted (--allow-config-change): ${x.resume.changes.map((c) => c.part).join(', ')}`,
+                  ]),
+            ]),
+        ...(sessions.length > 1 ? ['Sessions:', ...sessions.map(sessionLine)] : []),
         'Decisions:',
         ...decisions,
         ...(isAcp
@@ -1137,10 +1362,216 @@ export class SootEngine implements OrchestrationService {
         }) as Record<string, JsonValue>,
       };
     } catch (error) {
+      store.finishSession(runId, x.session, finalStatus);
       return fail(`run ${runId} failed: ${(error as Error).message}`, { runId });
     } finally {
+      clearInterval(heartbeat);
+      store.releaseRunLock(runId, x.owner);
       control.release();
       store.close();
+    }
+  }
+
+  /**
+   * `soot resume <run-id>` / `--latest` (ADR-054): continue an interrupted, stopped, crashed or
+   * blocked run from soot.sqlite and its branches instead of starting over. Refuses a run that a
+   * live process holds, refuses config drift unless `allowConfigChange`, keeps done work, re-runs
+   * unfinished tasks on fresh worktrees, keeps blocked tasks blocked unless `retryBlocked`, and
+   * asks every approval again (nothing is auto-approved). A complete run is a no-op.
+   */
+  async resume(
+    request: ResumeRequest,
+    signal?: AbortSignal,
+    hooks: { readonly onRunStarted?: (runId: string) => void } = {},
+  ): Promise<CommandOutput> {
+    const log = this.#o.log ?? SILENT_LOGGER;
+    if (request.runId !== undefined && !RUN_ID.test(request.runId))
+      return fail(`invalid run id: ${request.runId}`);
+    const store = this.#store();
+    let handedOff = false;
+    try {
+      const ids = store.listRunIds();
+      const runId = request.runId ?? (request.latest === true ? ids.at(-1) : undefined);
+      if (runId === undefined) {
+        return fail(request.latest === true ? 'no runs yet' : 'resume needs a run id or --latest', {
+          refused: 'no-run',
+        });
+      }
+      if (!ids.includes(runId)) return fail(`unknown run ${runId}`, { runId, refused: 'unknown' });
+      const live = store.runLockState(runId, { ttlMs: this.#lockTtl() });
+      const fileLock = runningInfo(this.#o.dataDir, runId);
+      if (live.state === 'live' || fileLock !== null) {
+        const why =
+          live.state === 'live' ? live.reason : `pid ${String(fileLock?.pid)} holds its run lock`;
+        return fail(
+          `run ${runId} is live in another soot process (${why}); not resumed. Stop it with "soot stop ${runId}" first, or wait for it to finish.`,
+          { runId, refused: 'live' },
+        );
+      }
+      const sessions = store.sessions(runId);
+      const last = sessions.at(-1);
+      const saved = this.#savedReport(runId);
+      const complete =
+        last !== undefined
+          ? last.status === 'complete'
+          : sessions.length === 0 && saved?.report.status === 'complete';
+      if (complete) {
+        return {
+          ok: true,
+          text: `Run ${runId} is already complete; nothing to resume (no task was run, nothing was changed).`,
+          data: { runId, noop: true, reason: 'complete', reportStatus: 'complete' },
+        };
+      }
+      // The agent the run used, unless the caller names one (a change is config drift).
+      const recorded = (last?.agent ?? null) as AgentMode | null;
+      const agent = this.#o.agent.kind !== 'none' ? this.#recordableAgent(this.#o.agent) : recorded;
+      if (agent === null || agent.kind === 'none') {
+        return fail(
+          `run ${runId} has no recorded agent (it predates resume support); pass --agent as for soot run`,
+          { runId, refused: 'no-agent' },
+        );
+      }
+      const repoRoot =
+        request.repo !== undefined
+          ? resolve(this.#o.cwd, request.repo)
+          : (sessions[0]?.repoRoot ?? resolve(this.#o.cwd, '.'));
+      await this.probeLocalModels(repoRoot);
+      let cfg: LoadedConfig;
+      let registry: ModelRegistry;
+      try {
+        cfg = this.#configFor(repoRoot);
+        registry = loadPricedRegistry(
+          cfg,
+          this.#o.modelEnv ?? process.env,
+          this.#o.priceDate,
+          this.#probed,
+        ).registry;
+      } catch (error) {
+        return fail((error as Error).message, { runId });
+      }
+      const changes = fingerprintChanges(
+        last?.fingerprint ?? null,
+        this.#fingerprint(cfg, agent, registry),
+      );
+      if (changes.length > 0 && request.allowConfigChange !== true) {
+        return fail(
+          [
+            `run ${runId} was not resumed: what it depends on changed since it ${last === undefined ? 'started' : `last ran (session ${String(last.session)})`}:`,
+            ...changes.map((c) => `- ${describeChange(c)}`),
+            'Restore the previous setup, or pass --allow-config-change to resume with the new one (the change is recorded).',
+          ].join('\n'),
+          { runId, refused: 'config-changed', changes: json(changes) },
+        );
+      }
+      const acp: PlanAcpState = { routes: [], audit: null };
+      // A resumed session resolves the sandbox from today's config and host, like `soot run`.
+      const sandbox = this.#sandbox(cfg);
+      const runner = this.#runner(
+        cfg,
+        registry,
+        (r) => {
+          acp.routes.push(r);
+          acp.audit?.record('model-route', r.taskId, {
+            attempt: r.attempt,
+            routed: r.routed,
+            applied: r.applied,
+            agentValue: r.agentValue,
+            reason: r.reason,
+          });
+        },
+        sandbox,
+        agent,
+      );
+      if (typeof runner === 'string') return fail(runner, { runId });
+      (sandbox.blocked !== null || !sandbox.isolation ? log.warn : log.info)(
+        `soot: sandbox: ${sandboxLine(sandbox)}`,
+      );
+      const agentLabel = this.#agentLabel(cfg, agent);
+      const meta = (sessions[0]?.meta ?? null) as SessionMeta | null;
+      const prompt = store.loadRun(runId).originalPrompt;
+
+      // Take the run: the lock and a new session row in one transaction. Losing the race to
+      // another `soot resume` is the same refusal as a live run.
+      const canceller = new TaskCanceller(log, store, runId);
+      const begun = store.beginSession(runId, {
+        kind: 'resume',
+        repoRoot,
+        fingerprint: this.#fingerprint(cfg, agent, registry),
+        agent,
+        changes,
+        ttlMs: this.#lockTtl(),
+      });
+      if (!begun.ok) {
+        return fail(
+          `run ${runId} is live in another soot process (${begun.lock.reason}); not resumed.`,
+          { runId, refused: 'live' },
+        );
+      }
+      let control: RunControl;
+      try {
+        control = holdRun(this.#o.dataDir, runId, signal, 200, (id) => {
+          canceller.cancel(id);
+        });
+      } catch (error) {
+        store.finishSession(runId, begun.session, 'error');
+        store.releaseRunLock(runId, begun.owner);
+        return fail((error as Error).message, { runId, refused: 'live' });
+      }
+      // Attempts the dead owner left `running` are closed as interrupted (stale task leases).
+      const interrupted = new Set(store.recoverInterrupted(runId));
+      const run = store.loadRun(runId);
+      const verifications = store.verifications(runId);
+      const decisions = planResume({
+        run,
+        verifications,
+        cancelledByUser: new Set(store.taskCancellations(runId)),
+        interrupted,
+        retryBlocked: request.retryBlocked === true,
+      });
+      store.setSessionDecisions(runId, begun.session, decisions);
+      for (const d of decisions) {
+        log.info(`soot: resume ${runId}: ${d.taskId} ${d.action} (was ${d.previous}): ${d.reason}`);
+      }
+      const workflow = workflowResume(run, verifications, decisions, last?.baseCommit ?? null);
+      const planning = store.planningCost(runId);
+      mkdirSync(join(this.#o.dataDir, 'reports'), { recursive: true, mode: 0o700 });
+      handedOff = true;
+      return await this.#execute({
+        runId,
+        repoRoot,
+        graph: buildTaskGraph(run.tasks, run.graphRevision),
+        cfg,
+        registry,
+        runner,
+        sandbox,
+        agent,
+        agentLabel,
+        acp,
+        prompt,
+        planningLine: planningFromStore(planning),
+        meta: meta ?? {
+          fixtureId: null,
+          planLabel: 'plan restored from soot.sqlite',
+          decomposition: saved?.decomposition ?? null,
+          planningText: null,
+        },
+        store,
+        control,
+        canceller,
+        session: begun.session,
+        owner: begun.owner,
+        resume: {
+          workflow,
+          decisions,
+          changes,
+          interrupted,
+          reclaimedLock: begun.reclaimed,
+        },
+        earlierDecisions: saved?.decisions ?? [],
+        hooks,
+      });
+    } finally {
+      if (!handedOff) store.close();
     }
   }
 
@@ -1220,6 +1651,24 @@ export class SootEngine implements OrchestrationService {
     };
   }
 
+  /** A live soot process holds the run (run lock in soot.sqlite, or the control lock file). */
+  #isLive(store: ExecutionStore, runId: string): boolean {
+    return (
+      runningInfo(this.#o.dataDir, runId) !== null ||
+      this.#liveCheck()(store, runId).state === 'live'
+    );
+  }
+
+  /**
+   * A run nobody holds: its last session's status, or the saved report's for runs from before
+   * schema v7; `interrupted` when the last session never finished (the process died).
+   */
+  #settledState(store: ExecutionStore, runId: string, reportStatus: string | null): string {
+    const last = store.sessions(runId).at(-1);
+    if (last === undefined) return reportStatus ?? 'interrupted';
+    return last.status ?? 'interrupted';
+  }
+
   status(runId?: string): Promise<CommandOutput> {
     const store = this.#store();
     try {
@@ -1230,10 +1679,9 @@ export class SootEngine implements OrchestrationService {
         const runs = ids.map((id) => {
           const run = store.loadRun(id);
           const saved = this.#savedReport(id);
-          const state =
-            runningInfo(this.#o.dataDir, id) !== null
-              ? 'running'
-              : (saved?.report.status ?? 'interrupted');
+          const state = this.#isLive(store, id)
+            ? 'running'
+            : this.#settledState(store, id, saved?.report.status ?? null);
           return {
             runId: id,
             createdAt: run.createdAt,
@@ -1254,10 +1702,11 @@ export class SootEngine implements OrchestrationService {
       if (!ids.includes(runId)) return Promise.resolve(fail(`unknown run ${runId}`));
       const run = store.loadRun(runId);
       const saved = this.#savedReport(runId);
-      const running = runningInfo(this.#o.dataDir, runId) !== null;
+      const running = this.#isLive(store, runId);
+      const sessions = sessionSummaries(store, runId, this.#liveCheck());
       const tasks = run.tasks.map((t) => {
         const attempts = run.attempts.filter((a) => a.taskId === t.id && a.attempt > 0);
-        const last = run.attempts.filter((a) => a.taskId === t.id).at(-1);
+        const last = latestAttempt(run.attempts, t.id);
         const verdict = saved?.report.tasks.find((r) => r.taskId === t.id);
         return {
           taskId: t.id,
@@ -1285,10 +1734,15 @@ export class SootEngine implements OrchestrationService {
             error: a.error,
             startedAt: a.startedAt,
             finishedAt: a.finishedAt,
+            // Run session that ran this attempt (ADR-054); null before schema v7.
+            session: a.session,
           })),
         };
       });
-      const state = running ? 'running' : (saved?.report.status ?? 'interrupted');
+      const state = running
+        ? 'running'
+        : this.#settledState(store, runId, saved?.report.status ?? null);
+      const resumable = !running && state !== 'complete';
       const text = [
         `Run ${runId}: ${state}`,
         `Prompt: ${run.originalPrompt}`,
@@ -1297,6 +1751,8 @@ export class SootEngine implements OrchestrationService {
           (t) =>
             `- ${t.taskId} [${t.complexity}] ${t.state}, ${String(t.attempts)} attempt(s)${t.models.length > 0 ? ` (${t.models.map((m) => m ?? 'no model').join(' → ')})` : ''}${t.verdict === null ? '' : `, verdict ${t.verdict}${t.complete ? ' (complete)' : ''}`}`,
         ),
+        ...(sessions.length > 0 ? ['Sessions:', ...sessions.map(sessionLine)] : []),
+        ...(resumable ? [`Resume with: soot resume ${runId}`] : []),
         ...(saved === null
           ? []
           : ['', ...(saved.decisions.length > 0 ? ['Decisions:', ...saved.decisions] : [])]),
@@ -1308,8 +1764,11 @@ export class SootEngine implements OrchestrationService {
           runId,
           state,
           running,
+          resumable,
           prompt: run.originalPrompt,
           createdAt: run.createdAt,
+          // Every session (the first run, then each resume), oldest first (ADR-054).
+          sessions,
           tasks,
           events: this.#events(runId),
           reportStatus: saved?.report.status ?? null,
@@ -1794,4 +2253,238 @@ export function buildPlanPreview(
     policy: plan.cfg.config.policy,
     agentLabel: plan.agentLabel,
   };
+}
+
+/** Plan metadata stored with session 1, so a resumed run's report says how it was planned. */
+interface SessionMeta {
+  readonly fixtureId: string | null;
+  readonly planLabel: string;
+  readonly decomposition: JsonValue;
+  /** "model, tokens, cost" line for model plans; `null` for fixtures. */
+  readonly planningText: string | null;
+}
+
+type ResumeDecisionRecord = TaskResumeDecision;
+
+interface ExecContext {
+  readonly runId: string;
+  readonly repoRoot: string;
+  readonly graph: TaskGraph;
+  readonly cfg: LoadedConfig;
+  readonly registry: ModelRegistry;
+  readonly runner: AgentRunner;
+  /** Process sandbox for checks and the ACP agent (ADR-051), resolved for this session. */
+  readonly sandbox: Sandbox;
+  readonly agent: AgentMode;
+  readonly agentLabel: string;
+  readonly acp: PlanAcpState;
+  readonly prompt: string;
+  readonly planningLine: PlanningCostInput | null;
+  readonly meta: SessionMeta;
+  readonly store: ExecutionStore;
+  readonly control: RunControl;
+  readonly canceller: TaskCanceller;
+  readonly session: number;
+  readonly owner: string;
+  readonly resume: {
+    readonly workflow: WorkflowResume;
+    readonly decisions: readonly TaskResumeDecision[];
+    readonly changes: readonly ConfigChange[];
+    readonly interrupted: ReadonlySet<string>;
+    readonly reclaimedLock: Extract<LockState, { state: 'stale' }> | null;
+  } | null;
+  /** Supervisor decision lines from earlier sessions (kept in the saved report). */
+  readonly earlierDecisions: readonly string[];
+  readonly hooks: { readonly onRunStarted?: (runId: string) => void };
+}
+
+/**
+ * `soot stop <run> --task <id>` requests: queued until the scheduler exists, and recorded in
+ * soot.sqlite so a later resume keeps the task cancelled (ADR-054).
+ */
+class TaskCanceller {
+  readonly #log: Logger;
+  readonly #store: ExecutionStore;
+  readonly #runId: string;
+  #scheduler: Scheduler | null = null;
+  readonly #pending: string[] = [];
+
+  constructor(log: Logger, store: ExecutionStore, runId: string) {
+    this.#log = log;
+    this.#store = store;
+    this.#runId = runId;
+  }
+
+  attach(scheduler: Scheduler): void {
+    this.#scheduler = scheduler;
+    for (const id of this.#pending.splice(0)) this.cancel(id);
+  }
+
+  cancel(taskId: string): void {
+    if (this.#scheduler === null) {
+      this.#pending.push(taskId);
+      return;
+    }
+    try {
+      this.#scheduler.cancel(taskId);
+      this.#store.recordTaskCancellation(this.#runId, taskId);
+      this.#log.info(`soot: ${taskId} cancelled by request`);
+    } catch (error) {
+      this.#log.warn(`soot: cannot cancel ${taskId}: ${(error as Error).message}`);
+    }
+  }
+}
+
+/** A verdict as stored in soot.sqlite: check output tails (untrusted text) are left out. */
+function persistVerification(v: TaskVerification): PersistedVerification {
+  return {
+    taskId: v.taskId,
+    attempt: v.attempt,
+    model: v.model,
+    verdict: v.verdict,
+    reason: v.reason,
+    branch: v.branch,
+    base: v.base,
+    commit: v.commit,
+    files: v.files.map((f) => ({ path: f.path, status: f.status })),
+    checks: v.checks.map((c) => ({
+      name: c.name,
+      kind: c.kind,
+      argv: [...c.argv],
+      status: c.status,
+      required: c.required,
+      exitCode: c.exitCode,
+      durationMs: c.durationMs,
+      reason: c.reason,
+      commit: c.commit,
+    })),
+  };
+}
+
+/** A stored verdict back as the task runner's own record (no worktree: it was removed). */
+function restoredVerification(v: PersistedVerification): TaskVerification {
+  return {
+    taskId: v.taskId,
+    attempt: v.attempt,
+    model: v.model,
+    verdict: v.verdict as Verdict,
+    reason: `${v.reason} (verified in an earlier session)`,
+    worktree: null,
+    branch: v.branch,
+    base: v.base,
+    commit: v.commit,
+    files: v.files.map((f) => ({ path: f.path, status: f.status as 'added' })),
+    outOfScope: [],
+    checks: v.checks.map((c) => ({ ...c, outputTail: '' }) as unknown as CheckEvidence),
+    claims: { status: 'succeeded', evidence: [], patchFiles: [] },
+  };
+}
+
+/** The workflow's resume input from the per-task decisions. */
+function workflowResume(
+  run: PersistedRun,
+  verifications: readonly PersistedVerification[],
+  decisions: readonly TaskResumeDecision[],
+  baseCommit: string | null,
+): WorkflowResume {
+  const completed = new Map<string, NonNullable<ReturnType<PersistedRun['completed']['get']>>>();
+  const kept = new Map<string, TaskVerification>();
+  const restored = new Map<string, RestoredOutcome>();
+  const rerun = new Set<string>();
+  const records = new Map(run.attemptRecords);
+  for (const d of decisions) {
+    const last = latestAttempt(run.attempts, d.taskId);
+    if (d.action === 'keep') {
+      const result = run.completed.get(d.taskId);
+      const v = verifications.find((x) => x.taskId === d.taskId && x.attempt === last?.attempt);
+      if (result !== undefined && v !== undefined) {
+        completed.set(d.taskId, result);
+        kept.set(d.taskId, restoredVerification(v));
+        continue;
+      }
+      rerun.add(d.taskId);
+    } else if (d.action === 'hold') {
+      restored.set(d.taskId, {
+        state: d.hold === 'cancelled-by-user' ? 'cancelled' : 'failed',
+        attempt: d.attempt,
+        result: last?.result ?? null,
+        error: `held on resume (${d.hold ?? 'held'}): ${last?.error ?? d.reason}`,
+      });
+    } else {
+      rerun.add(d.taskId);
+      // A task that runs again after its decisions had ended (a final "fail" review, then
+      // --retry-blocked, possibly followed by another crash) starts its decisions afresh: the
+      // supervisor would otherwise replay that "fail" as "stop" without asking anything.
+      // Attempt numbers and the spend ledger still continue, so budgets keep counting every
+      // earlier attempt. A history that ended in "retry" is kept (retry and escalation
+      // limits continue across the crash).
+      const reviewed = records.get(d.taskId);
+      if (reviewed !== undefined && reviewed.at(-1)?.review?.action !== 'retry') {
+        records.delete(d.taskId);
+      }
+    }
+  }
+  return {
+    baseCommit,
+    completed,
+    verifications: kept,
+    restored,
+    rerun,
+    previousAttempts: run.attemptCounts,
+    previousAttemptRecords: records,
+  };
+}
+
+/** One row per session for status and reports (`crashed`: unfinished and no live owner). */
+export interface SessionSummary {
+  readonly session: number;
+  readonly kind: string;
+  readonly state: string;
+  readonly startedAt: string;
+  readonly finishedAt: string | null;
+  readonly pid: number;
+  readonly baseCommit: string | null;
+  readonly kept: number;
+  readonly rerun: number;
+  readonly held: number;
+  readonly configChanges: readonly string[];
+}
+
+function sessionSummaries(
+  store: ExecutionStore,
+  runId: string,
+  live: (store: ExecutionStore, runId: string) => LockState,
+): SessionSummary[] {
+  const sessions = store.sessions(runId);
+  const lock = live(store, runId);
+  return sessions.map((s) => {
+    const decided = s.decisions.filter(
+      (d): d is TaskResumeDecision => typeof d === 'object' && d !== null && 'action' in d,
+    );
+    const owned = lock.state === 'live' && lock.holder.session === s.session;
+    return {
+      session: s.session,
+      kind: s.kind,
+      state: s.status ?? (owned ? 'running' : 'crashed'),
+      startedAt: s.startedAt,
+      finishedAt: s.finishedAt,
+      pid: s.pid,
+      baseCommit: s.baseCommit,
+      kept: decided.filter((d) => d.action === 'keep').length,
+      rerun: decided.filter((d) => d.action === 'rerun').length,
+      held: decided.filter((d) => d.action === 'hold').length,
+      configChanges: s.changes.map((c) => c.part),
+    };
+  });
+}
+
+function sessionLine(s: SessionSummary): string {
+  return `- #${String(s.session)} ${s.kind} ${s.state} ${s.startedAt}${s.kind === 'resume' ? ` (kept ${String(s.kept)}, re-ran ${String(s.rerun)}, held ${String(s.held)}${s.configChanges.length === 0 ? '' : `; config changed: ${s.configChanges.join(', ')}`})` : ''}`;
+}
+
+function describeChange(c: ConfigChange): string {
+  const short = (v: string | null) =>
+    v === null ? 'none' : /^[0-9a-f]{64}$/.test(v) ? v.slice(0, 12) : v;
+  if (c.before === null && c.part === 'fingerprint') return c.after ?? 'not recorded';
+  return `${c.part}: ${short(c.before)} → ${short(c.after)}`;
 }

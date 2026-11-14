@@ -17,8 +17,16 @@ export const PLANNED_MILESTONE = 1;
 
 export {
   ExecutionStore,
+  SCHEMA_VERSION,
   STATE_DB_FILE,
   openExecutionStore,
+  pidAlive,
+  type BeginSessionInput,
+  type BeginSessionResult,
+  type ConfigChange,
+  type PersistedVerification,
+  type RunSession,
+  type RunSessionKind,
   type AttemptSpend,
   type AttemptSpendLedger,
   type RunPlanningCost,
@@ -30,6 +38,14 @@ export {
   type PersistedRun,
   type PersistedTaskState,
 } from './execution-store.js';
+export {
+  DEFAULT_RUN_LOCK_TTL_MS,
+  latestAttempt,
+  lockState,
+  type LockCheck,
+  type LockState,
+  type RunLockRow,
+} from './run-lock.js';
 export {
   buildAgentContext,
   failedCheckLines,

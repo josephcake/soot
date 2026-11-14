@@ -3,14 +3,16 @@ import {
   Scheduler,
   type AgentRunner,
   type ApprovalGate,
+  type AttemptRecord,
   type AttemptSupervisor,
   type ExecutionJournal,
+  type RestoredOutcome,
   type RunReport,
   type Sandbox,
 } from '@soot/agent-runtime';
 import type { ModelOutcome } from '@soot/context-manager';
 import { AuditLog, type PlanningCostInput } from '@soot/observability';
-import type { TaskGraph } from '@soot/task-graph';
+import type { AgentResult, TaskGraph } from '@soot/task-graph';
 import { runCheck, type CheckCommand, type CheckEvidence, type CommandPolicy } from './commands.js';
 import {
   integrateSerially,
@@ -22,7 +24,7 @@ import {
   type ConsolidatedReport,
   type WorkingTreeUpdate,
 } from './report.js';
-import { Repository, type GitIdentity } from './repository.js';
+import { Repository, type GitIdentity, type ReclaimAction } from './repository.js';
 import { IsolatedTaskRunner, type TaskVerification } from './runner.js';
 import { findDiffOverlaps } from './scope.js';
 
@@ -36,6 +38,26 @@ import { findDiffOverlaps } from './scope.js';
 
 export interface OutcomeSink {
   recordModelOutcome(outcome: ModelOutcome): void;
+}
+
+/**
+ * Continue a run from its persisted state (ADR-054). The caller (the engine) has classified
+ * every task; the workflow pins the original base, cleans up what the dead process left, checks
+ * that kept work still exists, and runs only the rest.
+ */
+export interface WorkflowResume {
+  /** The run's original base commit; `null` (runs from before schema v7) pins the current HEAD. */
+  readonly baseCommit: string | null;
+  /** Tasks kept as done: their succeeded results (not re-run). */
+  readonly completed: ReadonlyMap<string, AgentResult>;
+  /** soot's verdicts for the kept tasks, restored into the task runner. */
+  readonly verifications: ReadonlyMap<string, TaskVerification>;
+  /** Tasks held in a final non-success state (blocked, failed, cancelled by a person). */
+  readonly restored: ReadonlyMap<string, RestoredOutcome>;
+  /** Tasks that run again (their leftover branch is deleted first). */
+  readonly rerun: ReadonlySet<string>;
+  readonly previousAttempts: ReadonlyMap<string, number>;
+  readonly previousAttemptRecords: ReadonlyMap<string, readonly AttemptRecord[]>;
 }
 
 export interface CodebaseWorkflowOptions {
@@ -85,6 +107,12 @@ export interface CodebaseWorkflowOptions {
     attempt: number | null,
     evidence: CheckEvidence,
   ) => void;
+  /** Resume an earlier run instead of starting fresh (ADR-054). */
+  readonly resume?: WorkflowResume;
+  /** Every verdict as it is recorded (the engine persists them for a later resume). */
+  readonly onVerification?: (v: TaskVerification) => void;
+  /** Called once the repository is open and the base is pinned. */
+  readonly onRepository?: (repo: Repository) => void;
 }
 
 /** The audit log file of a run. */
@@ -98,6 +126,9 @@ export interface CodebaseRunResult {
   readonly verifications: ReadonlyMap<string, readonly TaskVerification[]>;
   readonly audit: AuditLog;
   readonly repository: Repository;
+  /** Resume only: what was cleaned up or restored, and kept tasks re-run because their commit was gone. */
+  readonly reclaimed: readonly ReclaimAction[];
+  readonly dropped: readonly string[];
 }
 
 /** Map soot's verdicts to model outcomes. Only verdicts that say something about the model count. */
@@ -151,7 +182,9 @@ export async function runCodebaseWorkflow(o: CodebaseWorkflowOptions): Promise<C
     runId: o.runId,
     ...(o.identity === undefined ? {} : { identity: o.identity }),
     ...(o.gitEnv === undefined ? {} : { gitEnv: o.gitEnv }),
+    ...(o.resume?.baseCommit == null ? {} : { baseCommit: o.resume.baseCommit }),
   });
+  o.onRepository?.(repo);
   const audit = o.audit ?? new AuditLog({ runId: o.runId, file: auditLogPath(o.dataDir, o.runId) });
   audit.record('run-started', null, {
     repository: repo.root,
@@ -159,7 +192,34 @@ export async function runCodebaseWorkflow(o: CodebaseWorkflowOptions): Promise<C
     base: repo.baseCommit,
     tasks: o.graph.tasks.map((t) => t.id),
     approvals: o.approvals.mode,
+    resumed: o.resume !== undefined,
   });
+  // Resume: remove what the dead process left, restore kept tasks' branches, and re-run kept
+  // tasks whose verified commit no longer exists.
+  let reclaimed: ReclaimAction[] = [];
+  const dropped: string[] = [];
+  const completed = new Map(o.resume?.completed ?? []);
+  const keptVerifications = new Map(o.resume?.verifications ?? []);
+  if (o.resume !== undefined) {
+    const keep = new Map<string, string>();
+    for (const [taskId, v] of keptVerifications) if (v.commit !== null) keep.set(taskId, v.commit);
+    reclaimed = await repo.reclaimRun(keep, o.resume.rerun);
+    for (const a of reclaimed) {
+      audit.record(
+        a.action === 'worktree-removed' ? 'worktree-reclaimed' : 'branch-reset',
+        a.taskId,
+        {
+          action: a.action,
+          detail: a.detail,
+        },
+      );
+      if (a.action === 'commit-missing' && a.taskId !== null) {
+        completed.delete(a.taskId);
+        keptVerifications.delete(a.taskId);
+        dropped.push(a.taskId);
+      }
+    }
+  }
   const isolated = new IsolatedTaskRunner({
     repo,
     graph: o.graph,
@@ -176,7 +236,9 @@ export async function runCodebaseWorkflow(o: CodebaseWorkflowOptions): Promise<C
     audit,
     ...(o.sandbox === undefined ? {} : { sandbox: o.sandbox }),
     ...(o.onCheck === undefined ? {} : { onCheck: o.onCheck }),
+    ...(o.onVerification === undefined ? {} : { onVerification: o.onVerification }),
   });
+  for (const v of keptVerifications.values()) isolated.restore(v);
 
   let run: RunReport | undefined;
   let integration: IntegrationResult | null = null;
@@ -191,11 +253,22 @@ export async function runCodebaseWorkflow(o: CodebaseWorkflowOptions): Promise<C
       ...(o.attemptTimeoutMs === undefined ? {} : { attemptTimeoutMs: o.attemptTimeoutMs }),
       ...(o.journal === undefined ? {} : { journal: o.journal }),
       ...(o.signal === undefined ? {} : { signal: o.signal }),
+      ...(o.resume === undefined
+        ? {}
+        : {
+            completed,
+            restored: o.resume.restored,
+            previousAttempts: o.resume.previousAttempts,
+            previousAttemptRecords: o.resume.previousAttemptRecords,
+          }),
     });
     o.onScheduler?.(scheduler);
     run = await scheduler.run();
-    for (const outcome of outcomesOf(o.runId, run, isolated.verifications))
-      o.outcomes?.recordModelOutcome(outcome);
+    // Carried-over verdicts were recorded as model outcomes by the session that produced them.
+    const fresh = new Map(
+      [...isolated.verifications].filter(([taskId]) => !isolated.restored.has(taskId)),
+    );
+    for (const outcome of outcomesOf(o.runId, run, fresh)) o.outcomes?.recordModelOutcome(outcome);
 
     if (run.status !== 'cancelled' && o.signal?.aborted !== true) {
       const order = o.graph.layers.flat();
@@ -263,7 +336,15 @@ export async function runCodebaseWorkflow(o: CodebaseWorkflowOptions): Promise<C
     incomplete: report.incomplete.map((i) => i.taskId),
     workingTreeUpdated: workingTree.updated,
   });
-  return { report, run, verifications: isolated.verifications, audit, repository: repo };
+  return {
+    report,
+    run,
+    verifications: isolated.verifications,
+    audit,
+    repository: repo,
+    reclaimed,
+    dropped,
+  };
 }
 
 async function applyToWorkingTree(

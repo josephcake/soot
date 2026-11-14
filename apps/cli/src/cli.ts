@@ -33,6 +33,8 @@ export const USAGE = `soot ${VERSION} — task-level orchestration for coding ha
 
 Usage:
   soot run "<prompt>" [--repo <dir>] [--agent api | --agent mock --mock-script <file> | --agent acp | --agent claude-code | --agent codex] [--run-id <id>] [--interactive] [--apply]
+  soot resume <run-id> | --latest [--agent ...] [--repo <dir>] [--allow-config-change] [--retry-blocked] [--interactive] [--apply]
+                                continue an interrupted, stopped or blocked run where it left off
   soot status [<run-id>]
   soot cost [<run-id>]
   soot models
@@ -63,6 +65,12 @@ only; soot never signs in and refuses bypass modes). soot never approves anythin
 you: with --interactive (or a terminal) it asks; otherwise approval-needing work is refused.
 --apply pre-approves one thing only: fast-forwarding your branch to the result once every task
 is verified and final validation passed (refused if your working tree is dirty).
+
+Resume: "soot resume <run-id>" continues a run from soot.sqlite instead of starting over. Done
+tasks are kept; unfinished ones run again on fresh worktrees; blocked ones (sign-in, approval,
+budget, escalation) stay blocked unless you pass --retry-blocked; approvals are asked again. It
+refuses a run another soot process is running, and refuses if the config, models, routes or
+agent changed unless you pass --allow-config-change. A complete run is a no-op.
 
 Decomposition: recorded fixtures. Prompts with no fixture go to the optional "decomposer"
 model in soot.config.json, only when its key variable is set ("soot config" shows whether it
@@ -96,6 +104,9 @@ const OPTIONS = {
   port: { type: 'string' },
   open: { type: 'boolean' },
   apply: { type: 'boolean' },
+  latest: { type: 'boolean' },
+  'allow-config-change': { type: 'boolean' },
+  'retry-blocked': { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
   version: { type: 'boolean' },
 } as const;
@@ -172,11 +183,21 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
       `soot: debug: state dir ${dataDir} (from ${runtime.dataDirSource}); log level ${runtime.logLevel}; command ${command}`,
     );
     const agent = agentMode(values.agent, values['mock-script']);
-    const interactive = command === 'run' && (values.interactive === true || io.stdinIsTTY);
-    if (values.apply === true && command !== 'run' && command !== 'dashboard')
-      throw new UsageError('--apply is only for soot run and soot dashboard');
-    if (values.apply === true && agent.kind === 'none')
+    const runs = command === 'run' || command === 'resume';
+    const interactive = runs && (values.interactive === true || io.stdinIsTTY);
+    if (values.apply === true && !runs && command !== 'dashboard')
+      throw new UsageError('--apply is only for soot run, soot resume and soot dashboard');
+    if (values.apply === true && agent.kind === 'none' && command !== 'resume')
       throw new UsageError('--apply needs --agent');
+    if (
+      command !== 'resume' &&
+      (values.latest !== undefined ||
+        values['allow-config-change'] !== undefined ||
+        values['retry-blocked'] !== undefined)
+    )
+      throw new UsageError(
+        '--latest, --allow-config-change and --retry-blocked are only for soot resume',
+      );
     const base = interactive
       ? interactiveApprovals({ input: io.stdin, ask: io.stderr })
       : { gate: unattendedApprovals(), close: () => undefined };
@@ -214,6 +235,24 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
             io.signal,
           );
           print(io, out, asJson);
+          return runExitCode(out);
+        }
+        case 'resume': {
+          if (rest.length > 1) throw new UsageError('resume takes one run id');
+          const runId = rest[0];
+          if ((runId === undefined) === (values.latest !== true))
+            throw new UsageError('resume needs a run id or --latest (not both)');
+          const out = await engine.resume(
+            {
+              ...(runId === undefined ? { latest: true } : { runId }),
+              ...(values.repo === undefined ? {} : { repo: values.repo }),
+              allowConfigChange: values['allow-config-change'] === true,
+              retryBlocked: values['retry-blocked'] === true,
+            },
+            io.signal,
+          );
+          print(io, out, asJson);
+          if (out.ok && out.data.noop === true) return 0;
           return runExitCode(out);
         }
         case 'status':

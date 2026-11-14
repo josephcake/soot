@@ -109,6 +109,8 @@ export interface IsolatedRunnerOptions {
    * `rejectedChange`, so it can build on the earlier change. Default 8192; `0` turns it off.
    */
   readonly retryDiffBytes?: number;
+  /** Called with every verdict as it is recorded (persisted for resume, ADR-054). */
+  readonly onVerification?: (v: TaskVerification) => void;
 }
 
 /** `failedCheck` and `rejectedChange` are soot's to set: drop any an agent supplied. */
@@ -132,6 +134,19 @@ export class IsolatedTaskRunner implements AgentRunner {
   constructor(options: IsolatedRunnerOptions) {
     this.#o = options;
     this.kind = `isolated(${options.inner.kind})`;
+  }
+
+  /** Tasks whose verification was carried over from an earlier session (not re-run). */
+  readonly restored = new Set<string>();
+
+  /**
+   * Resume (ADR-054): seed the verdict of a task that already finished in an earlier session,
+   * so dependents build on its commit and integration includes it. Not re-verified: soot
+   * verified it then, and the commit is checked to still exist before this is called.
+   */
+  restore(v: TaskVerification): void {
+    this.verifications.set(v.taskId, [...(this.verifications.get(v.taskId) ?? []), v]);
+    this.restored.add(v.taskId);
   }
 
   latest(taskId: string): TaskVerification | undefined {
@@ -271,6 +286,7 @@ export class IsolatedTaskRunner implements AgentRunner {
         },
       };
       this.verifications.set(task.id, [...(this.verifications.get(task.id) ?? []), v]);
+      this.#o.onVerification?.(v);
       audit.record(verdict === 'verified' ? 'task-verified' : 'task-not-verified', task.id, {
         attempt: input.attempt,
         verdict,

@@ -34,9 +34,13 @@ soot run "<the user's prompt, verbatim>"
 soot status            # runs, or: soot status <run-id>
 soot cost <run-id>     # estimates and reported actuals, never mixed
 soot stop <run-id>
+soot resume <run-id>   # continue an interrupted or stopped run (or --latest)
 ```
 
 Add `--json` for machine-readable output.
+
+`soot resume` keeps blocked tasks blocked. Pass `--retry-blocked` or `--allow-config-change`
+only when the user asks you to. There is no MCP resume tool yet.
 
 ## Rules
 

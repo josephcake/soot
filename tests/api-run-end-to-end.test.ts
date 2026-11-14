@@ -256,7 +256,7 @@ describe('routing history and flags (ADR-039)', () => {
     expect(routingOutcomes(all, 'mock')).toHaveLength(5);
   });
 
-  it('--apply needs --agent and only applies to run and dashboard; --agent api takes no mock script', async () => {
+  it('--apply needs --agent and only applies to run, resume and dashboard; --agent api takes no mock script', async () => {
     const r = (repo = createDemoRepo());
     const { main } = await import('../apps/cli/src/cli.js');
     const call = async (args: string[]) => {
@@ -279,7 +279,7 @@ describe('routing history and flags (ADR-039)', () => {
     await refused(['run', 'x', '--apply'], /--apply needs --agent/);
     await refused(
       ['status', '--agent', 'api', '--apply'],
-      /--apply is only for soot run and soot dashboard/,
+      /--apply is only for soot run, soot resume and soot dashboard/,
     );
     await refused(
       ['run', 'x', '--agent', 'api', '--mock-script', 'm.json'],

@@ -1646,3 +1646,129 @@ file-write*` on git internals last; `(allow network*)` only when configured. Eve
   redacted and fenced, and `0` turns it off. An out-of-scope diff is shown too, so the next
   attempt can see what not to touch. soot's finding already names the files outside the lease.
 - **Reversible:** Yes. Set `retryDiffBytes: 0`, or remove the field and the prompt lines.
+
+## ADR-054: `soot resume` continues an interrupted run from soot.sqlite and its branches
+
+- **Date:** 2026-11-14
+- **Status:** Accepted. Implemented and tested with the scripted mock agent and built-binary
+  subprocesses only. Not Verified in a real harness or editor. Renumbered from ADR-052 to
+  ADR-054 at merge (ADR-050 benchmark, ADR-051 sandbox, ADR-052 and ADR-053 retry context),
+  with the schema bumped to v7.
+- **Context:** Runs die: someone presses Ctrl-C, a machine crashes, a task waits on a sign-in or
+  approval nobody answers, or the budget runs out. Before this ADR, `soot status` showed such a
+  run as `interrupted`, and the only way forward was a new `soot run` that started over.
+  It redid work soot had already verified and spent money a second time. Most of what a resume
+  needs was already persisted: the attempt journal (M1-07, M4-05), the spend ledger (H-02), and
+  per-task branches `soot/<run>/<task>` (M5-01). Three pieces were missing: who owns a run right
+  now, what the run depended on, and soot's verdict for each done task.
+- **Decision:**
+  1. **Command.** `soot resume <run-id> | --latest` (`--latest` is the newest run) with
+     `--allow-config-change`, `--retry-blocked`, `--interactive`, `--apply`, `--agent`, `--repo`.
+     These new flags are refused outside `resume`. The command reuses `soot run`'s execution
+     path (`#execute` → `runCodebaseWorkflow`), so everything a run does (gates, protected
+     paths, checks, integration, report, audit) applies unchanged to a resumed run.
+  2. **Sessions.** Every `soot run` and `soot resume` is a numbered session in `run_sessions`.
+     A session records its kind, pid, host, start and finish times, status, repository root,
+     base commit, a config fingerprint, the agent, its decisions and any accepted config changes.
+     `task_attempts.session` links each attempt to the session that made it. A resumed attempt
+     is a new attempt number on the same run, never a rewrite of an old one.
+  3. **Crash-safe run lock.** A `run_locks` row (random owner token, pid, host, heartbeat) is
+     taken inside `BEGIN IMMEDIATE`, so two racing processes cannot both win. The owner
+     refreshes its heartbeat every TTL/4 (TTL 2 minutes). If a refresh finds that another owner
+     took the row, the run aborts instead of working as a second owner. On the same host, a row
+     is **stale** if its pid is gone, or if the pid exists but the heartbeat is older than the TTL
+     (a reused pid or a frozen owner). Otherwise it is **live**. For another host (a shared state
+     directory) the pid is never probed and only the lease decides. A stale row is reclaimed and
+     audited as `run-lock-reclaimed`. A live row is refused. Before taking the row, `soot resume`
+     also refuses when the legacy `control/<run>.lock` file is held. The two checks overlap on
+     purpose.
+  4. **State rules.** For each task, the latest attempt decides. An attempt-0 row (a run-level
+     stop such as a budget stop) wins only if it is newer than the last numbered attempt:
+
+     | Last state                               | Action | Notes                                                                  |
+     | ---------------------------------------- | ------ | ---------------------------------------------------------------------- |
+     | none (pending)                           | re-run | never started                                                          |
+     | succeeded, verdict persisted for it      | keep   | branch restored to the verified commit; not re-run, not re-billed      |
+     | succeeded, no persisted verdict          | re-run | pre-v7 runs; soot never trusts an unverified success                   |
+     | running (process died)                   | re-run | `recoverInterrupted` marks it interrupted; stale lease reclaimed       |
+     | interrupted                              | re-run | fresh worktree; the branch is deleted first                            |
+     | retried (waiting for its retry)          | re-run | the retry runs now                                                     |
+     | skipped (a prerequisite failed)          | re-run | re-evaluated against the new outcomes                                  |
+     | cancelled because the run stopped        | re-run |                                                                        |
+     | cancelled by `soot stop --task`          | hold   | always, even with `--retry-blocked` (a person chose it)                |
+     | failed: blocked on sign-in               | hold   | re-run only with `--retry-blocked`                                     |
+     | failed: blocked on approval              | hold   | re-run only with `--retry-blocked`; the gate asks again, never assumes |
+     | failed: other block                      | hold   | re-run only with `--retry-blocked`                                     |
+     | failed: budget exhausted                 | hold   | raise the budget (config drift) and pass `--retry-blocked`             |
+     | failed: retries and escalation exhausted | hold   | re-run only with `--retry-blocked`                                     |
+
+     A held task is fed to the scheduler as a restored outcome. It is not journaled again, its
+     dependents are skipped, and the report says "held on resume (<reason>)". soot does not
+     detect on its own that a block was resolved. The user says so with `--retry-blocked`.
+
+  5. **Worktrees and branches.** On resume, `reclaimRun` removes every leftover worktree of the
+     run and prunes. Kept tasks keep or restore their branch at the verified commit
+     (`branch --force`). A re-run task's branch is deleted. If a kept task's commit is gone from
+     the repository, the task is reported `commit-missing` and re-run. Every action is recorded
+     in the session's decisions and audited as `worktree-reclaimed` or `branch-reset`. The
+     pinned base commit is reused and must still exist; otherwise resume refuses.
+  6. **Idempotency.** A run whose last session finished `complete` (or a pre-v7 run whose
+     report says complete) is a no-op that prints "already complete; nothing to resume" and
+     exits 0. A live run, and a second concurrent resume, are refused with the holder's pid and
+     reason.
+  7. **Config drift.** The fingerprint covers hashes of the config file, models file, fixtures,
+     agent, mock script and the sorted route refs from the registry. A change is refused with a
+     list of `part: before → after` lines unless `--allow-config-change` is passed. In that
+     case the list is stored on the session and shown in status, report and audit. Runs from
+     before v7 have no fingerprint and no recorded agent, so they need `--allow-config-change` and
+     `--agent`.
+  8. **Cost.** The spend ledger (`attempt_spend`) and the planning cost carry over, so the run
+     budget counts what earlier sessions spent. Cost records come from attempts, and each
+     attempt exists once, so `soot cost` and the dashboard count nothing twice. An interrupted
+     attempt has no reported actual and shows as unknown. soot never invents one.
+  9. **Visibility.** `soot status <run>` shows a `Sessions:` section (run, resume #n, state
+     complete / incomplete / cancelled / error / running / crashed, kept / re-run / held,
+     config changes), a per-attempt session column and "Resume with: soot resume <id>". The
+     report has `session`, `sessions` and `resume {decisions, configChanges, reclaimed}`, with
+     matching text sections. New audit events are `run-resumed`, `run-lock-reclaimed`,
+     `worktree-reclaimed` and `branch-reset`. Audit `seq` continues across sessions.
+  10. **Schema v7.** The migration from v6 (ADR-051's `command_runs`) or older adds
+      `run_sessions`, `run_locks`, `task_verifications` and `task_cancellations` and the
+      `task_attempts.session` column. It only adds tables and a column, and the column is added
+      only if missing (checked with PRAGMA). The branch was written as v6 in parallel with the
+      sandbox; the sandbox merged first with v6, so this became v7 at merge. Every table and
+      column is created only if missing, so a database at any earlier version (including one a
+      pre-merge build of this branch labelled v6) still gets them.
+  11. **Sandbox (ADR-051).** A resumed run goes through the same `#execute` /
+      `runCodebaseWorkflow` path as `soot run`. Each session resolves the sandbox from the
+      current config and host and passes it to the runner and every check, so resumed attempts
+      run under the same sandbox rules as fresh ones.
+  12. **Never auto-approve.** Resume adds no approval path. `--apply` pre-approves only
+      updating the working tree, exactly as for `soot run`. An approval that was pending when
+      the run died is asked again through the normal gate (and refused when unattended).
+- **Alternatives:** Re-run everything with a "skip done" flag (re-bills, and trusts unverified
+  successes). Resume from the report JSON (not crash-safe, and the report is written only at
+  the end). File locks only (they cannot tell a reused pid from a live owner, and they are not
+  atomic with the session row). Auto-detect resolved blocks by probing sign-in or budgets (no
+  reliable signal today, and it could look like auto-approval). Allow drift silently (the
+  routes and agent could change under a half-done run).
+- **Consequences:**
+  - Schema v7 (see 10).
+  - The heartbeat writes to `soot.sqlite` every 30 s per running run.
+  - A pid that is alive with a stale heartbeat counts as stale. A run frozen for over 2 minutes
+    (for example a suspended laptop) can be taken over. When it wakes, its next heartbeat fails
+    and it aborts.
+  - Not done: no MCP `soot_resume` tool, no dashboard or VS Code resume button, no automatic
+    detection that a block was resolved. Pre-v7 runs re-run their succeeded tasks because no
+    verdict was persisted. Only mock agents are tested.
+- **Tests:** `packages/context-manager/src/run-lock.test.ts` (lock rules, sessions, a
+  two-process race for a stale lock, heartbeat loss, v5→v7 migration, latest attempt),
+  `execution-store.test.ts` (v6→v7 keeps the sandbox's `command_runs`; refuses v8), `apps/cli/src/resume-plan.test.ts` (state
+  rules), `packages/agent-runtime/src/scheduler.test.ts` (restored outcomes),
+  `packages/integrations/src/repository.test.ts` (reclaim), `tests/resume-lock-loss.test.ts`
+  (a run whose lock was taken over stops), and `tests/resume-end-to-end.test.ts` (built binary:
+  a SIGKILL mid-task then resume, live and double-resume refusal, stopped-run drift, an
+  approval-blocked task held then asked again, budget carry-over and hold, flag errors).
+  Mutation checks on the guards are recorded in `docs/project/TASKS.md` (R-01).
+- **Reversible:** Yes. Remove the command and its helpers. The v7 tables are additive, and older
+  code ignores them, but the database version cannot go back down without a migration.

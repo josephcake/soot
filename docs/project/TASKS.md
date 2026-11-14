@@ -389,3 +389,30 @@ Hardening notes (2026-11-12):
   unchanged. Tests: `packages/agent-runtime/src/scheduler-attempts.test.ts` (fake timers).
 - **H-05:** `apps/vscode-extension/README.md#sideloading-the-local-build-unverified`. M7-01 and
   M7-02 stay as they were.
+
+## Resume (cross-cutting, ADR-054)
+
+Continues an interrupted, stopped, crashed or blocked run instead of starting over. Mock agents
+only. This row changes no milestone status.
+
+| ID   | Description                                                                   | Priority | Milestone  | Dependencies       | Status      | Component                                                        | Acceptance criteria                                                                                                                                                                                            |
+| ---- | ----------------------------------------------------------------------------- | -------- | ---------- | ------------------ | ----------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R-01 | `soot resume <run-id>` / `--latest`: sessions, crash-safe run lock, schema v7 | P1       | M6 (cross) | M1-07, M4-05, H-02 | Implemented | cli, context-manager, integrations, agent-runtime, observability | Done work kept; unfinished work re-run on fresh worktrees; blocked work held unless `--retry-blocked`; live and double resume refused; drift refused without `--allow-config-change`; cost not double-counted. |
+
+R-01 evidence (2026-11-14, local, scripted mock agent, built `soot` binary in child processes):
+
+- Tests: `packages/context-manager/src/run-lock.test.ts`, `execution-store.test.ts` (v5→v7, v6→v7, v8
+  refused), `apps/cli/src/resume-plan.test.ts`, `packages/agent-runtime/src/scheduler.test.ts`
+  (restored outcomes), `packages/integrations/src/repository.test.ts` (reclaim),
+  `tests/resume-lock-loss.test.ts`, `tests/resume-end-to-end.test.ts` (SIGKILL mid-task, live
+  and double-resume refusal, drift, approval held then asked again, budget carry-over, flag
+  errors; passed 3 runs in a row).
+- Mutation checks (each guard broken by hand, the named tests run, then the change reverted):
+  dead pid treated live; stale heartbeat ignored on the same host; another host's lease
+  ignored; `beginSession` live refusal removed; the complete-run no-op removed; the drift
+  refusal removed; keep without a persisted verdict; blocked tasks always retried; a user
+  cancellation re-run; heartbeat loss ignored. **All 10 killed.** Removing the engine's live
+  pre-check alone **survives**, because `beginSession` refuses too (an intended overlap).
+  Removing both is killed by the live-run end-to-end test.
+- Not done: MCP `soot_resume`, a dashboard or VS Code resume button, and automatic detection
+  of a resolved block. Not Verified: no real harness, provider or editor was used.

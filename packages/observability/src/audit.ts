@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 /*
@@ -38,6 +38,12 @@ export const AUDIT_EVENT_TYPES = [
   'model-route',
   // Process sandbox (ADR-051): a task blocked because required isolation is unavailable.
   'sandbox-blocked',
+  // Resume (ADR-054): a session continued the run (with its per-task decisions and any
+  // accepted config changes); stale worktrees and task branches it cleaned up or restored.
+  'run-resumed',
+  'run-lock-reclaimed',
+  'worktree-reclaimed',
+  'branch-reset',
 ] as const;
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
 
@@ -92,12 +98,20 @@ export class AuditLog {
   readonly file: string | null;
   readonly #entries: AuditEntry[] = [];
   readonly #now: () => Date;
+  /** Entries already in the file from earlier sessions of the run (resume keeps `seq` unique). */
+  readonly #offset: number;
 
   constructor(options: AuditLogOptions) {
     this.runId = options.runId;
     this.file = options.file ?? null;
     this.#now = options.now ?? (() => new Date());
     if (this.file !== null) mkdirSync(dirname(this.file), { recursive: true, mode: 0o700 });
+    this.#offset =
+      this.file !== null && existsSync(this.file)
+        ? readFileSync(this.file, 'utf8')
+            .split('\n')
+            .filter((l) => l.trim() !== '').length
+        : 0;
   }
 
   record(
@@ -106,7 +120,7 @@ export class AuditLog {
     detail: Readonly<Record<string, AuditValue>> = {},
   ): AuditEntry {
     const entry: AuditEntry = Object.freeze({
-      seq: this.#entries.length + 1,
+      seq: this.#offset + this.#entries.length + 1,
       at: this.#now().toISOString(),
       runId: this.runId,
       type,
