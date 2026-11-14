@@ -188,34 +188,51 @@ M6 notes (2026-11-12, ADR-026):
 
 | ID    | Description                                                              | Priority | Milestone | Dependencies | Status      | Component                  | Acceptance criteria                                                                |
 | ----- | ------------------------------------------------------------------------ | -------- | --------- | ------------ | ----------- | -------------------------- | ---------------------------------------------------------------------------------- |
-| M7-01 | VS Code extension (thin adapter over the soot CLI)                       | P2       | M7        | M6-01        | Implemented | apps/vscode-extension      | Loaded and used in a real VS Code; core orchestration stays outside the extension. |
+| M7-01 | VS Code extension (thin adapter over the soot CLI)                       | P2       | M7        | M6-01        | Verified    | apps/vscode-extension      | Loaded and used in a real VS Code; core orchestration stays outside the extension. |
 | M7-02 | Cursor compatibility                                                     | P2       | M7        | M7-01        | Not Started | apps/vscode-extension      | Verified individually in a real Cursor before any claim.                           |
 | M7-03 | Windsurf compatibility                                                   | P3       | M7        | M7-01        | Not Started | apps/vscode-extension      | Verified individually in a real Windsurf before any claim.                         |
 | M7-04 | Kilo Code compatibility                                                  | P3       | M7        | M7-01        | Not Started | apps/vscode-extension      | Verified individually in a real Kilo Code before any claim.                        |
-| M7-05 | Task visualization: task graph by layer, active agents, execution status | P2       | M7        | M7-01        | Implemented | apps/vscode-extension      | Graph and status match the engine's `soot status` for a run.                       |
+| M7-05 | Task visualization: task graph by layer, active agents, execution status | P2       | M7        | M7-01        | Verified    | apps/vscode-extension      | Graph and status match the engine's `soot status` for a run.                       |
 | M7-06 | Model assignment visibility: models per attempt, escalation/retry events | P2       | M7        | M7-01        | Implemented | apps/vscode-extension, cli | Each attempt's model and each escalation shown as the engine recorded them.        |
-| M7-07 | Cost reporting: estimate and actual, per run                             | P2       | M7        | M7-01        | Implemented | apps/vscode-extension      | Same numbers as `soot cost`; estimates and actuals never mixed.                    |
+| M7-07 | Cost reporting: estimate and actual, per run                             | P2       | M7        | M7-01        | Verified    | apps/vscode-extension      | Same numbers as `soot cost`; estimates and actuals never mixed.                    |
 | M7-08 | Task cancellation and orchestration on/off from the IDE (`stop --task`)  | P2       | M7        | M7-01        | Implemented | apps/vscode-extension, cli | Cancelling one task skips its dependents; other tasks continue.                    |
 
-M7 notes (2026-11-12, ADR-029):
+M7 notes (2026-11-12, ADR-029; real-editor run 2026-11-14, ADR-041):
 
-- **M7-01 Implemented, not verified in an editor:** `apps/vscode-extension` (`soot-vscode`,
-  private, unpublished) is an ESM extension for VS Code ^1.100 with no runtime dependencies. It
-  runs the soot CLI (`run`, `status`, `cost`, `stop`, all `--json`) and imports no soot package.
-  It is tested only against a fake `vscode` module (`src/test-support/fake-vscode.ts`) and the
-  real built CLI with `--agent mock` (`tests/m7-vscode-extension.test.ts`). A `.vsix` builds
-  locally (`pnpm --filter soot-vscode package:vsix`, `vsce package` through `pnpm dlx`, never
-  `publish`). **It has not been loaded in VS Code or Cursor**, so the M7 exit criterion "at least
-  one functional IDE extension" is not met.
+- **M7-01 Verified in VS Code (2026-11-14):** `apps/vscode-extension` (`soot-vscode`, private,
+  unpublished) is an ESM extension for VS Code ^1.100 with no runtime dependencies. It runs the
+  soot CLI (`run`, `status`, `cost`, `stop`, all `--json`) and imports no soot package. Unit
+  tests use a fake `vscode` module (`src/test-support/fake-vscode.ts`) and the real built CLI
+  with `--agent mock` (`tests/m7-vscode-extension.test.ts`). A `.vsix` builds locally (`pnpm
+--filter soot-vscode package:vsix`, `vsce package` through `pnpm dlx`, never `publish`). The
+  `.vsix` was installed with `code --install-extension` in **VS Code 1.144.0 on macOS** and used
+  on a copy of `examples/demo-app` with `soot.agent: mock`: the soot view appeared in the
+  Explorer, Enable turned it on, Run a prompt ran both Test 1 tasks to verified on
+  `anthropic/claude-haiku-5-5`, and the run ended incomplete only because nobody approved the
+  working-tree update (as designed). **Found:** Enable wrote `"soot.enabled": true` to
+  `.vscode/settings.json`, a tracked file, so the next run was refused ("working tree … has
+  uncommitted changes"); fixed by ADR-041, unit-tested, not yet re-run in the editor. The fake
+  `vscode` module never wrote files, which is why the unit tests missed it.
+- **M7-05 and M7-07 Verified in VS Code:** for run `ide-20261114-081608-7c21` the tree and board
+  showed the same tasks, states, verdicts and models as `soot status`, and the same estimate
+  ($0.000750) and actual ($0.001630, mock usage) as `soot cost`. The sidebar truncates long
+  labels; the board shows them in full.
 - **M7-02…M7-04 Not Started:** nothing is claimed for Cursor, Windsurf or Kilo Code (or GitHub
   Copilot). Each needs its own run in that editor.
-- **M7-05…M7-07 Implemented:** the tree view and the plain-text board show what `soot status
-<run>` and `soot cost <run>` report: task graph by layer, per-attempt models, escalation level
-  and failures, escalate/retry/fallback/downgrade events (from the run's new
-  `reports/<run>.events.jsonl`), estimate vs actual cost. Text blocks only (ADR-009).
-- **M7-08 Implemented:** `soot stop <run> --task <id>` (and MCP `soot_stop` with `taskId`)
-  cancels one task through the scheduler; its dependents are skipped and other tasks continue.
-  Runs started from the IDE are unattended: approvals are refused, never given.
+- **M7-05…M7-07:** the tree view and the plain-text board show what `soot status <run>` and
+  `soot cost <run>` report: task graph by layer, per-attempt models, escalation level and
+  failures, escalate/retry/fallback/downgrade events (from the run's new
+  `reports/<run>.events.jsonl`), estimate vs actual cost. Text blocks only (ADR-009). **M7-06
+  stays Implemented:** per-attempt models showed correctly in VS Code, but no mock run escalated
+  or retried, so escalation events were not seen in the editor.
+- **M7-08 Implemented (cancel and stop seen in VS Code):** `soot stop <run> --task <id>` (and MCP
+  `soot_stop` with `taskId`) cancels one task through the scheduler; its dependents are skipped
+  and other tasks continue. In VS Code, right-click **Cancel task** cancelled both tasks of run
+  `ide-20261114-082748-f749` (`cancelled by request`) and right-click **Stop run** cancelled run
+  `ide-20261114-083954-69c4` (`run cancelled`). "Other tasks continue" was checked from the CLI
+  on the same build (`cli-cancel-test`); "dependents are skipped" was not exercised in the
+  editor. Stays Implemented until the ADR-041 on/off fix is re-run in the editor. Runs started
+  from the IDE are unattended: approvals are refused, never given.
 
 ## Planner: model-backed decomposition (cross-cutting, ADR-033)
 

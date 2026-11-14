@@ -5,6 +5,20 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Verified (VS Code extension in a real editor, M7-01)
+
+- The extension was installed from the local `.vsix` and used in VS Code 1.144.0 on macOS
+  with `--agent mock`: run a prompt, the tree, the task board, cancel task and stop run worked.
+  The tree, board and cost matched `soot status` and `soot cost` (M7-01, M7-05 and M7-07
+  Verified). Escalation events were not exercised in the editor. Cursor is still not run.
+
+### Fixed (VS Code extension on/off, ADR-041)
+
+- `soot: Enable orchestration` no longer writes `.vscode/settings.json`. Where that file is
+  tracked, the write dirtied the repository and soot refused the next run. On/off now lives in
+  VS Code's workspace storage; a committed `soot.enabled` setting is still the default.
+- The extension README now names the command `soot: Show task board`, as the editor shows it.
+
 ### Added (model call limit, Anthropic and OpenAI verified, ADR-040)
 
 - `modelCallTimeoutMs` in soot.config.json (default 120 s): a wall-clock limit for one

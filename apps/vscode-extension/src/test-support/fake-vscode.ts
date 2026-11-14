@@ -43,6 +43,13 @@ export enum ConfigurationTarget {
 
 export const fake = {
   settings: new Map<string, unknown>(),
+  /**
+   * Every `getConfiguration(..).update(..)` call, as `section.key`. In VS Code a Workspace
+   * update writes `.vscode/settings.json` into the repository; tests assert it stays empty.
+   */
+  settingWrites: [] as string[],
+  /** Backing store for `extensionContext().workspaceState` (VS Code's own storage, not a file). */
+  workspaceState: new Map<string, unknown>(),
   commands: new Map<string, (...args: unknown[]) => unknown>(),
   treeProviders: new Map<string, unknown>(),
   messages: [] as { level: 'info' | 'warning' | 'error'; text: string }[],
@@ -54,6 +61,8 @@ export const fake = {
   workspaceFolder: null as string | null,
   reset(): void {
     this.settings.clear();
+    this.settingWrites.length = 0;
+    this.workspaceState.clear();
     this.commands.clear();
     this.treeProviders.clear();
     this.messages.length = 0;
@@ -78,6 +87,7 @@ export const workspace = {
       },
       update(key: string, value: unknown): Promise<void> {
         fake.settings.set(`${section}.${key}`, value);
+        fake.settingWrites.push(`${section}.${key}`);
         return Promise.resolve();
       },
     };
@@ -114,6 +124,24 @@ export const window = {
   },
   showTextDocument: () => Promise.resolve(undefined),
 };
+
+/** A stand-in `ExtensionContext`: subscriptions and a `workspaceState` Memento. */
+export function extensionContext() {
+  return {
+    subscriptions: [] as unknown[],
+    workspaceState: {
+      keys: () => [...fake.workspaceState.keys()],
+      get<T>(key: string, fallback?: T): T | undefined {
+        return fake.workspaceState.has(key) ? (fake.workspaceState.get(key) as T) : fallback;
+      },
+      update(key: string, value: unknown): Promise<void> {
+        if (value === undefined) fake.workspaceState.delete(key);
+        else fake.workspaceState.set(key, value);
+        return Promise.resolve();
+      },
+    },
+  };
+}
 
 export const commands = {
   registerCommand: (id: string, handler: (...args: unknown[]) => unknown) => {

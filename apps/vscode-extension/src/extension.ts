@@ -14,8 +14,8 @@ import { toRunView, type RunView } from './core/view-model.js';
 /*
  * Thin VS Code / Cursor adapter (ADR-029). It runs the soot CLI and shows what the engine
  * reports as stacked text blocks in one tree view and one plain-text board. No orchestration
- * happens here, nothing is approved here, and nothing is published. Not yet run inside a real
- * editor: tested with a fake `vscode` module only.
+ * happens here, nothing is approved here, and nothing is published. Run in a real VS Code
+ * (1.144, macOS, `--agent mock`) for M7-01; unit tests use a fake `vscode` module.
  */
 
 export const COMMANDS = [
@@ -29,6 +29,9 @@ export const COMMANDS = [
 ] as const;
 
 const POLL_MS = 500;
+
+/** Key for orchestration on/off in VS Code's per-workspace storage (ADR-041). */
+export const ENABLED_STATE_KEY = 'soot.enabled';
 
 export class SootNode extends vscode.TreeItem {
   declare label: string;
@@ -161,10 +164,20 @@ export function activate(context: vscode.ExtensionContext): SootController {
   const tree = new SootTree();
   let currentRun: string | null = null;
   let refreshing: Promise<void> | null = null;
+  // On/off lives in VS Code's per-workspace storage, never in a settings file (ADR-041):
+  // writing `.vscode/settings.json` dirtied the repository, and soot refuses to run on a dirty
+  // working tree, so Enable broke the next Run in the first real VS Code run. A committed
+  // `soot.enabled` setting is still the default until Enable/Disable is used here.
+  const enabled = () =>
+    context.workspaceState.get<boolean>(ENABLED_STATE_KEY) ?? settings().enabled;
+  const setEnabled = async (on: boolean) => {
+    await context.workspaceState.update(ENABLED_STATE_KEY, on);
+    await controller.refresh();
+  };
   const refreshOnce = async () => {
     const cli = cliFor();
     if (typeof cli === 'string') {
-      tree.set(treeFor(settings().enabled, controller.view));
+      tree.set(treeFor(enabled(), controller.view));
       return;
     }
     if (currentRun === null) {
@@ -180,7 +193,7 @@ export function activate(context: vscode.ExtensionContext): SootController {
         controller.view = toRunView(status.data, cost);
       }
     }
-    tree.set(treeFor(settings().enabled, controller.view));
+    tree.set(treeFor(enabled(), controller.view));
   };
   // One refresh at a time: polling never stacks CLI processes.
   const startRefresh = (): Promise<void> => {
@@ -204,21 +217,11 @@ export function activate(context: vscode.ExtensionContext): SootController {
   };
 
   const handlers: Record<(typeof COMMANDS)[number], (...args: unknown[]) => unknown> = {
-    'soot.enable': async () => {
-      await vscode.workspace
-        .getConfiguration('soot')
-        .update('enabled', true, vscode.ConfigurationTarget.Workspace);
-      await controller.refresh();
-    },
-    'soot.disable': async () => {
-      await vscode.workspace
-        .getConfiguration('soot')
-        .update('enabled', false, vscode.ConfigurationTarget.Workspace);
-      await controller.refresh();
-    },
+    'soot.enable': () => setEnabled(true),
+    'soot.disable': () => setEnabled(false),
     'soot.run': async () => {
       const s = settings();
-      if (!s.enabled) {
+      if (!enabled()) {
         void vscode.window.showWarningMessage(
           'soot orchestration is off for this workspace (soot: Enable orchestration).',
         );
@@ -325,7 +328,7 @@ export function activate(context: vscode.ExtensionContext): SootController {
     context.subscriptions.push(vscode.commands.registerCommand(id, handlers[id]));
   }
   context.subscriptions.push(vscode.window.registerTreeDataProvider('soot.runs', tree), out);
-  tree.set(treeFor(settings().enabled, null));
+  tree.set(treeFor(enabled(), null));
   return controller;
 }
 

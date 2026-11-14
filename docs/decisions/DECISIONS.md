@@ -390,17 +390,17 @@ the old one.
 ## ADR-029: Thin VS Code / Cursor extension over the soot CLI
 
 - **Date:** 2026-11-12
-- **Status:** Accepted (Mochi authorised starting M7 locally; Sweed chose the details under ADR-012).
+- **Status:** Accepted (Mochi authorised starting M7 locally; Sweed chose the details under ADR-012). The on/off bullet is superseded by ADR-041.
 - **Context:** Milestone 7 asks for IDE visibility and control while core orchestration stays independent of any IDE. Spec §8.B lists what the extension should show: orchestration on/off, task graph, active agents, assigned models, execution status, escalation events, estimated and actual cost, retries and failures, task cancellation. ADR-009 keeps UI simple and block-shaped.
 - **Decision:**
   - `apps/vscode-extension` (`soot-vscode`, private, version 0.0.0) is an ESM extension (`"type": "module"`, VS Code `^1.100`). It has **no runtime dependencies** and imports no `@soot/*` package. It runs `node <soot.cliPath> <command> --json` in the workspace folder (no shell) and reads the JSON. Orchestration stays in the engine; a test asserts the extension imports nothing from it.
   - Runs started from the editor are **unattended** (no terminal on stdin): soot refuses approval-needing work and leaves results on the integration branch. The extension never approves, has no approve-all, and does not change host approval settings.
   - View: one tree (`soot.runs`) and one plain-text board (`soot: Show board`), built from stacked text blocks (`[■ task · demo-small→demo-mid · 2x]`, graph by dependency layer). No webview, no dashboard. Status is polled from `soot status <run>`, one call at a time.
   - Engine additions the extension needs, usable from the CLI and MCP too: `soot stop <run> --task <id>` / `soot_stop {runId, taskId}` cancels one task through `Scheduler.cancel(taskId)` (dependents skipped, other tasks continue), signalled by a `<run>.stop-task.<id>` control file; the run's routing events are appended live to `reports/<run>.events.jsonl`; `soot status <run>` adds per-attempt details, `running`, and the events.
-  - Orchestration on/off is a workspace setting (`soot.enabled`, default off); runs are refused while off.
+  - Orchestration on/off is a workspace setting (`soot.enabled`, default off); runs are refused while off. _(Superseded by ADR-041: the commands keep on/off in VS Code's workspace storage; the setting is only a default.)_
   - A `.vsix` can be built locally with `pnpm dlx @vscode/vsce@4.1.0 package` (not a devDependency, so no publishing tool sits in the lockfile). Nothing is published.
 - **Alternatives:** importing the engine into the extension host (couples the IDE to the engine, and native SQLite in Electron); talking to `soot mcp` over stdio (needs an MCP client dependency in the extension; the CLI JSON is simpler); a webview dashboard (against ADR-009); file watching instead of polling (deferred).
-- **Consequences:** The same extension should load in VS Code-compatible editors, but each editor counts only after its own verified run. It needs a local soot checkout and Node 24 on the machine. Tested only with a fake `vscode` module; not yet run in any real editor.
+- **Consequences:** The same extension should load in VS Code-compatible editors, but each editor counts only after its own verified run. It needs a local soot checkout and Node 24 on the machine. First run in a real editor on 2026-11-14 (VS Code 1.144.0, macOS, M7-01); not run in Cursor or any other editor.
 - **Reversible:** Yes.
 
 ## ADR-030: Engine hardening: env-driven runtime, persisted health and spend, audited routing, default timeout
@@ -800,3 +800,35 @@ the old one.
   need a larger `modelCallTimeoutMs`. A timed-out request has no reported usage, so its tokens
   (which the provider may bill) are missing from soot's cost. Grok costs recorded before this
   change are under-counted by their hidden reasoning tokens.
+
+## ADR-041: VS Code extension keeps on/off in workspace storage, not settings files
+
+- **Date:** 2026-11-14
+- **Status:** Proposed (skier537, from the first real-editor run of the extension, M7-01;
+  awaiting Joseph's review). Supersedes the on/off bullet of ADR-029.
+- **Context:** ADR-029 made orchestration on/off a workspace setting, and
+  `soot: Enable orchestration` wrote it with `ConfigurationTarget.Workspace`. In VS Code that
+  writes `"soot.enabled": true` to `.vscode/settings.json` in the repository. Many projects
+  track that file, and so did the demo copy used for M7-01. The repository became dirty, and
+  the next `soot: Run a prompt` was refused: "working tree … has uncommitted changes; commit or
+  stash them first: M .vscode/settings.json". The unit tests missed it because the fake
+  `vscode` module keeps settings in memory and writes no file.
+- **Decision:**
+  - `soot.enable` / `soot.disable` store on/off in `context.workspaceState` (key
+    `soot.enabled`): VS Code's per-workspace storage, kept outside the repository. They never
+    call `getConfiguration().update`.
+  - The `soot.enabled` setting stays as a default, so a team can still commit "on" on
+    purpose. The value in workspace storage wins once Enable or Disable has been used in that
+    workspace.
+  - The fake `vscode` module records every settings write (`fake.settingWrites`) and provides
+    a `workspaceState` Memento (`extensionContext()`). Tests assert that Enable and Disable
+    write no settings.
+- **Alternatives:** `ConfigurationTarget.Global` (turns soot on in every workspace at once);
+  having soot ignore `.vscode/` when checking for a dirty tree (hides real edits and changes the
+  engine's safety rule to suit one adapter); removing the setting entirely (breaks teams that
+  commit it, and the setting is a useful default).
+- **Consequences:** Turning soot on or off never touches the repository. On/off is now per
+  machine and per workspace: it is not shared through git unless the team commits the setting.
+  Workspaces that already have the setting committed keep working as before. Unit-tested;
+  not yet re-run in a real editor.
+- **Reversible:** Yes.

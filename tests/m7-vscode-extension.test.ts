@@ -2,8 +2,9 @@
  * Milestone 7 (local, mock-backed): the thin VS Code / Cursor extension (ADR-029) driving the
  * real built soot CLI in a child process, against a temporary copy of examples/demo-app with
  * `--agent mock`. The `vscode` module is a FAKE (apps/vscode-extension/src/test-support), so
- * these tests show the extension's logic against the real engine, NOT that it works in VS Code
- * or Cursor; it has not been run in a real editor.
+ * these tests show the extension's logic against the real engine, NOT that it works in an
+ * editor. The real-editor check is separate: VS Code 1.144 on macOS (M7-01, 2026-11-14);
+ * Cursor and other editors are not run.
  */
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,7 +15,11 @@ import {
   type SootNode,
 } from '../apps/vscode-extension/src/extension.js';
 import { SootCli } from '../apps/vscode-extension/src/core/soot-cli.js';
-import { commands, fake } from '../apps/vscode-extension/src/test-support/fake-vscode.js';
+import {
+  commands,
+  extensionContext,
+  fake,
+} from '../apps/vscode-extension/src/test-support/fake-vscode.js';
 import {
   REPO_ROOT,
   TEST_1,
@@ -57,7 +62,7 @@ function setUp(mockScript = 'mock-agent.json'): { r: DemoRepo; ext: SootControll
   fake.settings.set('soot.agent', 'mock');
   fake.settings.set('soot.mockScript', mockScript);
   fake.settings.set('soot.dataDir', r.dataDir);
-  return { r, ext: activate({ subscriptions: [] } as never) };
+  return { r, ext: activate(extensionContext() as never) };
 }
 
 const child = (n: SootNode | undefined, label: string) =>

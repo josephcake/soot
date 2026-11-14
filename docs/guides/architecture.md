@@ -89,7 +89,7 @@ final validation in a detached worktree → approval → fast-forward user's tre
 consolidated report (incomplete first, overlaps, integration, validation, cost) + model_outcomes → routing
 ```
 
-## Milestone 7 IDE flow (partial, not run in a real editor)
+## Milestone 7 IDE flow (partial; run in VS Code, not in Cursor)
 
 ```
 VS Code / Cursor ──► apps/vscode-extension ──spawn──► node apps/cli/dist/bin.js <cmd> --json
