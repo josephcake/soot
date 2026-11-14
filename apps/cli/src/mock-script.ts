@@ -6,7 +6,7 @@ import { z } from 'zod';
  * Scripted mock agents for fixture runs (`soot run --agent mock --mock-script <file>`). This is
  * a TEST DOUBLE, labelled as such in every result ("[mock]"): no model is called. It exists so
  * the full workflow can be exercised locally without providers (M2-07 Blocked) or harness
- * runners (M6-04/05 not implemented).
+ * runners (M6-04/05 are implemented as ACP profiles but tested against simulated adapters only).
  */
 
 const ScriptSchema = z.looseObject({

@@ -366,7 +366,7 @@ the old one.
   - **soot's file methods enforce the lease.** Reads only inside the worktree; writes only inside the task's write lease (never `.git`), size-capped. Everything else is a JSON-RPC error and an `issue` finding. soot's diff check, protected paths and checks still apply to whatever the agent changed by other means.
   - **Cancellation.** Abort sends `session/cancel`; an agent that does not stop within a grace period (2 s) is cut off and its process ended.
   - **Spawn only what the user configured.** `soot run --agent acp` (and `soot mcp --agent acp`) spawn `acpAgent.command` from `soot.config.json` (protected from task edits) with `args`, no shell, cwd = the worktree, and an environment scrubbed to PATH, HOME, locale, temp, USER, SHELL plus the variable names in `passEnv`; credential-like names are rejected. soot never searches for, installs or picks an agent binary. The default path is unchanged: without `--agent`, `run` refuses.
-  - **No vendor claims.** The driver is generic. Claude Code (M6-04) and Codex (M6-05) would connect through it later via their ACP modes or adapters the user installs and signs in to, but neither has been run; `HARNESS_SUPPORT` still says `not-implemented`.
+  - **No vendor claims.** The driver is generic. Claude Code (M6-04) and Codex (M6-05) would connect through it later via their ACP modes or adapters the user installs and signs in to, but neither has been run; `HARNESS_SUPPORT` still says `not-implemented`. (Refined by ADR-047.)
   - **Routing honesty.** The agent picks its own model, so ACP outcomes are not recorded as routing history and the run output says routed models are not applied. (Refined by ADR-028.)
   - **Test double.** `createMockAcpAgent` and `mock-agent-bin.js` (official SDK, agent side) script permission requests, file reads and writes, stop reasons, slow or cancel-ignoring turns, auth-required, and cost, and log what they receive (method names, env var names only).
 - **Alternatives:** a hand-written JSON-RPC client (risks drifting from the real protocol); vendor-specific runners for each CLI (forbidden for this slice and more surface); the AI SDK `-acp` harness package (experimental, not adopted by ADR-019); answering permissions from a policy file (would be auto-approval); a long-lived agent process across tasks (shared state between tasks; harder isolation).
@@ -1115,3 +1115,97 @@ the old one.
   still not counted (the error carries no usage).
 - **Reversible:** Yes. Drop the `planning` argument and the supervisor option; the table is
   additive.
+
+## ADR-047: Claude Code and Codex runners are profiles over the generic ACP driver
+
+- **Date:** 2026-11-14
+- **Status:** Accepted (Mochi authorised the slice on Joseph's request; Sweed chose the details
+  under ADR-012). Implemented; tested against simulated adapters only. Renumbered from
+  ADR-050 on merge. Refines ADR-027 and ADR-028.
+- **Context:** M6-04 / M6-05 (GitHub issues #1, #2) ask for a way to run each task _through_
+  Claude Code and Codex. Both harnesses have ACP adapters that a user can install and sign in
+  to (the Claude Agent SDK adapter, `agentclientprotocol/claude-agent-acp`, and the Codex
+  adapter, `zed-industries/codex-acp` → `agentclientprotocol/codex-acp`). soot already has a
+  generic ACP driver that answers permissions only through its approval gate, enforces the
+  worktree and write lease on ACP file calls, applies routed models through a `model` option,
+  and never signs in. The issues say: use that driver, keep any wrapper thin, vendor no SDK,
+  and claim nothing without a recorded real run. This box must not install or run any vendor
+  binary or use any login.
+- **Decision:**
+  - **ACP profiles, not dedicated CLI runners.** `createHarnessRunner('claude-code' | 'codex')`
+    (`@soot/harness-adapters`) builds an `AcpAgentRunner` with a per-harness profile. A
+    dedicated runner per CLI (for example a non-interactive JSON-output mode) would need its
+    own output parser per vendor, its own permission plumbing (CLI modes have no
+    per-call approval round trip that soot's gate could answer, so the choice would be "skip
+    approvals" or "refuse every action"), and its own file guard; ACP already gives all three in
+    one tested path. So the profiles reuse the driver and add only what differs per harness.
+  - **What a profile adds.** (1) Its own config entry: `harnesses.claude-code` /
+    `harnesses.codex` in soot.config.json (`command`, `args`, `passEnv`, optional `models`,
+    `allowedModes`, `startupTimeoutMs`, `cancelGraceMs`), selected with
+    `--agent claude-code` / `--agent codex` (engine `AgentMode` `{ kind: 'acp', harness }`, so
+    routing history and route records behave as for `--agent acp`). (2) Known bypass mode ids
+    from the adapters' public sources: Claude Code `bypassPermissions`
+    (`claude-agent-acp` `src/session-mode.ts`); Codex `agent-full-access` (approval policy
+    `never`, `danger-full-access` sandbox; `codex-acp` `src/AgentMode.ts`), plus `full-access`
+    defensively. (3) Self-approving modes for an honest note (Claude Code `auto`,
+    `acceptEdits`; Codex `agent` (auto review, its default), `workspace-write`). (4) A sign-in
+    hint naming the harness.
+  - **Modes: read, never change.** The generic driver now reads the session mode the agent
+    reports (`modes.currentModeId`, a `mode`-category select option, and later
+    `current_mode_update` / `config_option_update`). A bypass mode (the profile's list plus
+    `KNOWN_BYPASS_MODES`, applied to `--agent acp` too) refuses the task before the prompt
+    (`blocked`); an agent that switches into one mid-turn is sent `session/cancel` and the task
+    is refused. With `allowedModes`, any other (or an unreported) mode is refused. soot still
+    never calls `session/set_mode` or sets a `mode` option; the user changes modes in the
+    harness. Self-approving modes run, with a `decision` finding that the harness may approve
+    some actions itself by the user's own setting.
+  - **Approvals unchanged.** Same gate as ADR-027: approved → the adapter's `allow_once` option
+    (whatever its id), never `allow_always`; denied or unattended → `reject_once`, the task is
+    refused.
+  - **Bypass arguments refused in config.** `--dangerously-*`, `--allow-dangerously-*`,
+    `--yolo`, `--full-auto`, anything containing `bypassPermissions`, `danger-full-access` or
+    `agent-full-access`, `-a never` / `--ask-for-approval never`, and `approval_policy="never"`
+    are rejected by the config schema for `harnesses.*` and for `acpAgent`.
+  - **Spawn only what the user configured.** `harnesses.*.command` must be an absolute path
+    (no `PATH` lookup by soot), no shell, cwd = worktree, the ADR-027 scrubbed environment,
+    credential-like `passEnv` names rejected.
+  - **Sign-in.** ACP `auth_required` at `session/new` _or_ at the first `session/prompt` blocks
+    the task with "sign in to <harness> yourself"; soot never calls `authenticate`. New in the
+    driver for every ACP agent: `initialize` + `session/new` must finish within
+    `startupTimeoutMs` (default 60 s), and an abort during startup ends the process, so an
+    adapter waiting for a login cannot hang an attempt.
+  - **Model routing.** As ADR-028, plus an optional user-provided `models` map (soot ref →
+    adapter value, e.g. an alias). A mapped value the adapter does not offer is "route not
+    applied" with the reason. No token counts are invented (ACP v1 reports none); cost only from
+    an agent `usage_update` in USD.
+  - **Status.** `HARNESS_SUPPORT` uses a new value `acp-profile-simulated` for both;
+    `verifiedEndToEnd` stays `false`. M6-04 / M6-05 are "Implemented (simulated only)";
+    Milestone 6 stays In Progress.
+  - **Test doubles.** `simulatedHarnessScript(id)` scripts soot's mock ACP agent to look like
+    each adapter: its mode ids (from the sources above), and illustrative agent names, model
+    values and permission option ids. The mock agent gained session modes (as `modes` and/or a
+    `mode` config option), mid-turn mode switches, custom permission options, auth-required
+    at prompt, and a startup hang.
+- **Verification:** unit tests per harness against the simulated adapters (in process): runs a
+  task, allow-once picks the adapter's own allow-once id, deny and unattended reject, sign-in at
+  `session/new` and at prompt, bypass mode at start and mid-turn, self-approving note,
+  `allowedModes`, cancel, startup timeout, abort during startup, models map applied / not
+  offered, bare-id match, refusing adapter, bypass-argument guard. CLI end to end over stdio
+  with the mock ACP agent binary as the configured adapter: spec Test 1 with each harness
+  (permission refused, other task verified and merged, env scrubbed, only the `model` option
+  set), bypass mode (no prompt sent), sign-in needed, config refusals. Mutation checks on the
+  allow-once choice, bypass check, mid-turn watch, auth-at-prompt, startup timer, startup abort,
+  argument guard and models map each fail tests.
+- **Alternatives:** dedicated runners driving each CLI's non-interactive JSON mode (reasons
+  above); vendor SDKs as optional peers (not needed: the ACP adapters are the user's own
+  install, and soot speaks only the open protocol); switching the adapter into an asking mode
+  (would change the user's settings); treating self-approving modes as bypass (would make the
+  Codex default unusable; the user can require asking modes with `allowedModes`).
+- **Consequences:** a user with either adapter installed and signed in can point soot at it.
+  Nothing about the real adapters is verified: their model values, permission option ids,
+  error codes for sign-in and whether they use the client's file methods or their own tools
+  are unknown until a recorded run. Adapter-side edits made with the harness's own tools bypass
+  soot's ACP file guard; soot's diff, write-lease check, protected paths and checks still apply
+  inside the worktree, and there is still no OS sandbox outside it.
+- **Reversible:** Yes. The profiles are one module and one optional config key; removing them
+  leaves `--agent acp` as before (the mode guard, startup limit and argument guard can stay).
