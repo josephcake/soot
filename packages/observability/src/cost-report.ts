@@ -91,12 +91,15 @@ function taskLine(input: CostTaskInput): TaskCostLine {
       outputTokens: a.result?.usage.outputTokens ?? null,
       actualUsd: a.result?.usage.costUsd == null ? null : actualUsd(a.result.usage.costUsd),
     }));
+  
   const reported = attempts.filter((a) => a.status !== 'no-result');
   const estimated = sumOrNull(attempts.map((a) => a.estimatedUsd));
-  const actual = sumOrNull(attempts.map((a) => a.actualUsd));
+  const actual = sumOrNull(reported.map((a) => a.actualUsd)); // Only sum actuals from reported attempts
+  
   const modelPath: string[] = [];
   for (const a of attempts)
     if (a.model !== null && modelPath.at(-1) !== a.model) modelPath.push(a.model);
+  
   return {
     taskId: input.taskId,
     estimated: {
