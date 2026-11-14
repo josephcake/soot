@@ -38,8 +38,8 @@ on macOS (M7-01 Verified) with `--agent mock` on `examples/demo-app`: run a prom
 the task board, cancel task and stop run worked, and the tree, board and cost matched `soot
 status` and `soot cost` (M7-05, M7-07 Verified). That run found that `soot: Enable
 orchestration` wrote `.vscode/settings.json`, which dirtied the repository so soot refused the
-next run; ADR-041 moves on/off to VS Code's workspace storage (unit-tested, not yet re-run in
-the editor, so M7-08 stays Implemented). Escalation events were not exercised in the editor
+next run; ADR-041 moves on/off to VS Code's workspace storage, and a re-run in the editor the
+same day left the repository clean (M7-08 Verified: cancel task, stop run, on/off). Escalation events were not exercised in the editor
 (M7-06 Implemented). Cursor, Windsurf, Kilo Code and Copilot are not run or claimed, so M7 stays
 In Progress.
 
@@ -165,7 +165,7 @@ Node 26 (M0-11 Completed).
 - [ ] Milestone 2. M2-03 (local endpoint) is Implemented: covered by mocked HTTP, but the live test skipped because no Ollama or LM Studio was running. M2-07 is Blocked.
 - [ ] Milestone 6. M6-01, M6-03 and M6-09 (generic ACP driver, mock ACP agent only) Completed; M6-02 and M6-06 Implemented; M6-04, M6-05, M6-08 Not Started; M6-07 Blocked on M2-07. Exit criteria not met.
 
-- [ ] Milestone 7. M7-01 (VS Code extension), M7-05 (graph) and M7-07 (cost) Verified in a real VS Code (2026-11-14, mock agent); M7-06 (models, escalation events) and M7-08 (cancellation, on/off; ADR-041 fix not yet re-run in the editor) Implemented; M7-02…M7-04 (Cursor, Windsurf, Kilo Code) Not Started. Exit criteria not met.
+- [ ] Milestone 7. M7-01 (VS Code extension), M7-05 (graph), M7-07 (cost) and M7-08 (cancellation, on/off after the ADR-041 fix) Verified in a real VS Code (2026-11-14, mock agent); M7-06 (models, escalation events) Implemented; M7-02…M7-04 (Cursor, Windsurf, Kilo Code) Not Started. Exit criteria not met.
 
 ## Not Started
 

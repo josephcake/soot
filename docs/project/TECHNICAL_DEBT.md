@@ -229,8 +229,8 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   still unverified and not claimed.
 - **[Resolved 2026-11-14] Enable dirtied the repository** (ADR-041). `soot: Enable
 orchestration` wrote `.vscode/settings.json`; where that file is tracked, soot then refused
-  the next run. The commands now use VS Code's workspace storage. Unit-tested; not yet re-run in
-  the editor.
+  the next run. The commands now use VS Code's workspace storage. Unit-tested, and re-run in VS Code
+  the same day: Disable and Enable left the repository clean.
 - **[Defect] A run refused before it starts looks interrupted.** When soot refuses a run on a
   dirty working tree, `soot status` (and so the extension's tree) shows it as `interrupted` with
   its tasks `pending` and an actual cost of $0, not as failed with the refusal reason. Only the
