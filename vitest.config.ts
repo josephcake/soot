@@ -41,6 +41,9 @@ export default defineConfig({
     ],
   },
   test: {
+    // Engines built with the default environment never probe this machine's local runtimes
+    // (ADR-044); tests that cover probing use a fake server and opt in.
+    env: { SOOT_LOCAL_MODELS: 'off' },
     projects: [
       ...workspaceProjects,
       {

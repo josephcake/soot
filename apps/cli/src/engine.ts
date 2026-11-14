@@ -40,8 +40,15 @@ import {
   ProviderHealth,
   actualCostFromUsage,
   addAutoModels,
+  addLocalModels,
   applyPriceCatalog,
   describeAutoPool,
+  describeLocalPool,
+  localProbeSettings,
+  type LocalProbeSettings,
+  type LocalRuntime,
+  type LocalRuntimeProbe,
+  type LocalRuntimeReport,
   loadRegistryConfigFile,
   type AutoProviderReport,
   unpricedModels,
@@ -88,7 +95,7 @@ import {
   formatLimit,
   withTimeLimit,
 } from './time-limit.js';
-import { createModelClient, hasApiKey } from '@soot/provider-adapters';
+import { createModelClient, hasApiKey, probeLocalRuntimes } from '@soot/provider-adapters';
 
 /*
  * The soot engine behind the CLI and the MCP server: one prompt → recorded-fixture
@@ -148,6 +155,11 @@ export interface EngineOptions {
   readonly modelClientFactory?: ModelClientFactory;
   /** Day (YYYY-MM-DD) used to pick dated catalog prices (ADR-037). Default: today (UTC). */
   readonly priceDate?: string;
+  /**
+   * Probes local runtimes for keyless models (ADR-044). Default `probeLocalRuntimes`
+   * (`GET <baseURL>/models`, short limit, no key). Tests pass one bound to a fake server.
+   */
+  readonly localProbe?: (runtimes: readonly LocalRuntime[]) => Promise<LocalRuntimeProbe[]>;
 }
 
 /**
@@ -162,13 +174,35 @@ interface PricedRegistry {
   readonly unpriced: readonly string[];
   /** One row per well-known vendor: added, no key, already configured, or off. */
   readonly auto: readonly AutoProviderReport[];
+  /** Refs added from keys and from local runtimes (`origin: 'auto'`). */
   readonly autoRefs: readonly string[];
+  /** One row per local runtime (ADR-044): added, not running, configured, off, ... */
+  readonly local: readonly LocalRuntimeReport[];
+  readonly localRefs: readonly string[];
+  readonly localSettings: LocalProbeSettings;
 }
+
+/** Local probe settings for a loaded config (ADR-044). Throws on a bad URL. */
+function localSettingsFor(
+  cfg: LoadedConfig,
+  env: Readonly<Record<string, string | undefined>>,
+): LocalProbeSettings {
+  return localProbeSettings({
+    autoModels: cfg.config.autoModels,
+    localModels: cfg.config.localModels,
+    env,
+  });
+}
+
+/** Cache key for one set of probed runtimes. */
+const probeKey = (runtimes: readonly LocalRuntime[]) =>
+  runtimes.map((r) => `${r.id}=${r.baseURL}`).join(',');
 
 function loadPricedRegistry(
   cfg: LoadedConfig,
   env: Readonly<Record<string, string | undefined>>,
-  today?: string,
+  today: string | undefined,
+  probed: ReadonlyMap<string, readonly LocalRuntimeProbe[]>,
 ): PricedRegistry {
   const file =
     cfg.modelsPath === null ? EMPTY_REGISTRY_CONFIG : loadRegistryConfigFile(cfg.modelsPath);
@@ -180,12 +214,23 @@ function loadPricedRegistry(
     keyIsSet: (provider) => hasApiKey(provider, env),
     ...day,
   });
+  const localSettings = localSettingsFor(cfg, env);
+  const local = addLocalModels(pool.config, {
+    settings: localSettings,
+    probes: probed.get(probeKey(localSettings.runtimes)) ?? null,
+    fileProviders: file.providers,
+    ...day,
+  });
+  const autoRefs = [...pool.autoRefs, ...local.localRefs];
   return {
-    registry: new ModelRegistry(pool.config, { autoRefs: pool.autoRefs }),
+    registry: new ModelRegistry(local.config, { autoRefs }),
     catalogPriced,
-    unpriced: unpricedModels(pool.config),
+    unpriced: unpricedModels(local.config),
     auto: pool.providers,
-    autoRefs: pool.autoRefs,
+    autoRefs,
+    local: local.runtimes,
+    localRefs: local.localRefs,
+    localSettings,
   };
 }
 
@@ -331,8 +376,38 @@ const USED_PLANS = new WeakSet<EnginePlan>();
 export class SootEngine implements OrchestrationService {
   readonly #o: EngineOptions;
 
+  /** Local runtime probes from this engine's async commands, by runtime list (ADR-044). */
+  readonly #probed = new Map<string, readonly LocalRuntimeProbe[]>();
+
   constructor(options: EngineOptions) {
     this.#o = options;
+  }
+
+  /**
+   * Probe the local runtimes the project's config and environment name (ADR-044), so the
+   * next registry load includes their models. `plan`/`run` and `models` call it; call it before
+   * the synchronous `config()` to see local models there. Never throws: a config error is
+   * reported by the command itself, and a runtime that is not running is just not running.
+   */
+  async probeLocalModels(repo = '.'): Promise<void> {
+    let settings: LocalProbeSettings;
+    try {
+      settings = localSettingsFor(
+        this.#configFor(resolve(this.#o.cwd, repo)),
+        this.#o.modelEnv ?? process.env,
+      );
+    } catch {
+      return;
+    }
+    if (!settings.enabled) return;
+    const probe = this.#o.localProbe ?? ((r) => probeLocalRuntimes(r));
+    try {
+      this.#probed.set(probeKey(settings.runtimes), await probe(settings.runtimes));
+    } catch (error) {
+      (this.#o.log ?? SILENT_LOGGER).warn(
+        `soot: local model probe failed: ${(error as Error).message}`,
+      );
+    }
   }
 
   #configFor(repoRoot: string): LoadedConfig {
@@ -470,9 +545,15 @@ export class SootEngine implements OrchestrationService {
     let registry: ModelRegistry;
     let priced: PricedRegistry;
     let fixtures: DecompositionFixture[];
+    await this.probeLocalModels(repoRoot);
     try {
       cfg = this.#configFor(repoRoot);
-      priced = loadPricedRegistry(cfg, this.#o.modelEnv ?? process.env, this.#o.priceDate);
+      priced = loadPricedRegistry(
+        cfg,
+        this.#o.modelEnv ?? process.env,
+        this.#o.priceDate,
+        this.#probed,
+      );
       registry = priced.registry;
       fixtures = loadFixtures(cfg.fixturesPath);
     } catch (error) {
@@ -501,7 +582,13 @@ export class SootEngine implements OrchestrationService {
     const autoAdded = priced.auto.filter((a) => a.status === 'added');
     if (autoAdded.length > 0) {
       log.info(
-        `soot: auto models from ${autoAdded.map((a) => `$${a.apiKeyEnv}`).join(', ')}: ${String(priced.autoRefs.length)} model(s); light work goes to low-tier models, hard work to high-tier ones (see soot models)`,
+        `soot: auto models from ${autoAdded.map((a) => `$${a.apiKeyEnv}`).join(', ')}: ${String(priced.autoRefs.length - priced.localRefs.length)} model(s); light work goes to low-tier models, hard work to high-tier ones (see soot models)`,
+      );
+    }
+    const localAdded = priced.local.filter((r) => r.status === 'added');
+    if (localAdded.length > 0) {
+      log.info(
+        `soot: local models from ${localAdded.map((r) => r.label).join(', ')}: ${String(priced.localRefs.length)} model(s) at $0, tier low; light work that fits their ${String(priced.localSettings.contextWindow)}-token context goes there first (see soot models)`,
       );
     }
 
@@ -1044,8 +1131,9 @@ export class SootEngine implements OrchestrationService {
     }
   }
 
-  models(): Promise<CommandOutput> {
-    return Promise.resolve(this.modelsReport());
+  async models(): Promise<CommandOutput> {
+    await this.probeLocalModels(this.#o.cwd);
+    return this.modelsReport();
   }
 
   /** `soot models`, synchronously (the dashboard's project setup reads it too). */
@@ -1055,7 +1143,12 @@ export class SootEngine implements OrchestrationService {
     let priced: PricedRegistry;
     try {
       cfg = this.#configFor(this.#o.cwd);
-      priced = loadPricedRegistry(cfg, this.#o.modelEnv ?? process.env, this.#o.priceDate);
+      priced = loadPricedRegistry(
+        cfg,
+        this.#o.modelEnv ?? process.env,
+        this.#o.priceDate,
+        this.#probed,
+      );
       registry = priced.registry;
     } catch (error) {
       return fail((error as Error).message);
@@ -1097,17 +1190,24 @@ export class SootEngine implements OrchestrationService {
     });
     const usd = (v: number | null | undefined) =>
       v === null || v === undefined ? '?' : `$${String(v)}`;
+    const autoFrom = (provider: string) => {
+      const runtime = priced.local.find((l) => l.id === provider && l.status === 'added');
+      if (runtime !== undefined) return ` (auto: local runtime at ${runtime.baseURL}, no key)`;
+      return ` (auto from $${priced.auto.find((a) => a.id === provider)?.apiKeyEnv ?? '?'})`;
+    };
     const text = [
-      `Models from ${modelsSource(cfg)}${priced.autoRefs.length > 0 && cfg.modelsPath !== null ? ' plus your keys' : ''} (policy ${cfg.config.policy}; thresholds low ${String(policy.thresholds.low)} / medium ${String(policy.thresholds.medium)} / high ${String(policy.thresholds.high)})`,
+      `Models from ${modelsSource(cfg)}${priced.autoRefs.length > priced.localRefs.length && cfg.modelsPath !== null ? ' plus your keys' : ''}${priced.localRefs.length > 0 ? ' plus local runtimes' : ''} (policy ${cfg.config.policy}; thresholds low ${String(policy.thresholds.low)} / medium ${String(policy.thresholds.medium)} / high ${String(policy.thresholds.high)})`,
       ...rows.map(
         (r) =>
-          `- ${r.ref} (${r.kind ?? '?'}) ${r.eligible ? 'eligible' : `excluded: ${r.excludedBecause.join(', ')}`}; price in/out per MTok ${r.pricing === null ? 'price not set' : `${usd(r.pricing.inputPerMTokUsd)}/${usd(r.pricing.outputPerMTokUsd)} (${r.priceFrom === 'catalog' ? 'soot catalog' : 'your config'}, ${r.pricing.asOf})`}; context ${r.contextWindow === null ? 'unknown' : String(r.contextWindow)}${r.tier === null ? '' : `; tier ${r.tier}`}${r.origin === 'auto' ? ` (auto from $${priced.auto.find((a) => a.id === r.provider)?.apiKeyEnv ?? '?'})` : ''}`,
+          `- ${r.ref} (${r.kind ?? '?'}) ${r.eligible ? 'eligible' : `excluded: ${r.excludedBecause.join(', ')}`}; price in/out per MTok ${r.pricing === null ? 'price not set' : `${usd(r.pricing.inputPerMTokUsd)}/${usd(r.pricing.outputPerMTokUsd)} (${r.priceFrom === 'catalog' ? 'soot catalog' : 'your config'}, ${r.pricing.asOf})`}; context ${r.contextWindow === null ? 'unknown' : String(r.contextWindow)}${r.tier === null ? '' : `; tier ${r.tier}`}${r.origin === 'auto' ? autoFrom(r.provider) : ''}`,
       ),
       ...(priced.autoRefs.length > 0
         ? [
             'Auto models: tiers come from list output price (low under $2.5/MTok, high from $15/MTok). While a model has no reliability data, it gets work up to its tier, cheapest first; measured history then takes over. Configure a vendor in your models file to override.',
           ]
         : []),
+      `Local runtimes${priced.localSettings.enabled ? '' : ` (off: ${priced.localSettings.offReason})`}:`,
+      ...describeLocalPool(priced.local),
       "Reliability comes from your config. Prices come from your config, else from soot's sourced price catalog for the vendor's own API.",
       ...(unpricedWarning(priced.unpriced) === null
         ? []
@@ -1121,6 +1221,7 @@ export class SootEngine implements OrchestrationService {
         policy: cfg.config.policy,
         models: rows,
         autoModels: { enabled: cfg.config.autoModels, providers: [...priced.auto] },
+        localModels: { enabled: priced.localSettings.enabled, runtimes: [...priced.local] },
         unpricedModels: [...priced.unpriced],
       }) as Record<string, JsonValue>,
     };
@@ -1163,7 +1264,12 @@ export class SootEngine implements OrchestrationService {
     let priced: PricedRegistry;
     try {
       cfg = this.#configFor(repoRoot);
-      priced = loadPricedRegistry(cfg, this.#o.modelEnv ?? process.env, this.#o.priceDate);
+      priced = loadPricedRegistry(
+        cfg,
+        this.#o.modelEnv ?? process.env,
+        this.#o.priceDate,
+        this.#probed,
+      );
       registry = priced.registry;
     } catch (error) {
       return fail((error as Error).message, { dataDir: this.#o.dataDir });
@@ -1201,6 +1307,7 @@ export class SootEngine implements OrchestrationService {
       providers: json(providers),
       models: registry.models().length,
       autoModels: { enabled: cfg.config.autoModels, providers: [...priced.auto] },
+      localModels: { enabled: priced.localSettings.enabled, runtimes: [...priced.local] },
       pricing: {
         catalogPriced: [...priced.catalogPriced],
         unpriced: [...priced.unpriced],
@@ -1210,9 +1317,11 @@ export class SootEngine implements OrchestrationService {
     const text = [
       `Config: ${cfg.path}`,
       `State dir: ${this.#o.dataDir}`,
-      `Models: ${modelsSource(cfg)} (${String(data.models)} models${priced.autoRefs.length > 0 ? `, ${String(priced.autoRefs.length)} auto-added from your keys` : ''})`,
+      `Models: ${modelsSource(cfg)} (${String(data.models)} models${priced.autoRefs.length > priced.localRefs.length ? `, ${String(priced.autoRefs.length - priced.localRefs.length)} auto-added from your keys` : ''}${priced.localRefs.length > 0 ? `, ${String(priced.localRefs.length)} from local runtimes` : ''})`,
       `Auto models${cfg.config.autoModels ? '' : ' (off: "autoModels": false)'} (key variables checked for presence only; values are never printed):`,
       ...describeAutoPool(priced.auto),
+      `Local runtimes${priced.localSettings.enabled ? ' (keyless; probed with a short limit)' : ` (off: ${priced.localSettings.offReason})`}:`,
+      ...describeLocalPool(priced.local),
       `Prices: ${String(registry.models().filter((m) => m.pricing !== null).length)} of ${String(data.models)} priced${priced.catalogPriced.length > 0 ? ` (${String(priced.catalogPriced.length)} from soot's price catalog)` : ''}${pricingNote === null ? '' : `. ${pricingNote}`}`,
       `Policy: ${cfg.config.policy}; concurrency ${String(cfg.config.concurrency)}`,
       `Attempt timeout: ${String(data.effectiveAttemptTimeoutMs)} ms${cfg.config.attemptTimeoutMs === undefined ? ' (default; set "attemptTimeoutMs" to change)' : ''}`,

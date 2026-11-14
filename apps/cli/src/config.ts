@@ -98,6 +98,29 @@ export const ProjectConfigSchema = z
      * file always wins for a vendor it configures.
      */
     autoModels: z.boolean().default(true),
+    /**
+     * Probe local runtimes (Ollama, LM Studio) for keyless models (ADR-044). Default true:
+     * probe the default ports. `false`: never probe. `{"urls": [...]}`: probe these
+     * OpenAI-compatible base URLs instead (`SOOT_LOCAL_MODEL_URLS` overrides);
+     * `{"contextWindow": N}`: the window to assume for local models (default 4096). Off when
+     * `autoModels` is false. Your models file always wins for a runtime it configures.
+     */
+    localModels: z
+      .union([
+        z.boolean(),
+        z
+          .object({
+            urls: z
+              .array(z.url({ protocol: /^https?$/ }))
+              .min(1)
+              .max(8)
+              .optional(),
+            /** Context window to assume for local models (default 4096, the runtimes' default). */
+            contextWindow: z.int().min(512).max(10_000_000).optional(),
+          })
+          .strict(),
+      ])
+      .default(true),
     policy: z.enum(['economy', 'balanced', 'quality']).default('balanced'),
     /** Project checks soot runs for every task that changes files. */
     checks: z.array(CheckSchema).default([]),

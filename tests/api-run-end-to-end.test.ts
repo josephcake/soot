@@ -92,7 +92,7 @@ const engineFor = (r: DemoRepo, apply: boolean) =>
     agent: { kind: 'api' },
     approvals: apply ? withApply(unattendedApprovals()) : unattendedApprovals(),
     gitEnv: r.env,
-    modelEnv: { FAKE_KEY },
+    modelEnv: { FAKE_KEY, SOOT_LOCAL_MODELS: 'off' },
   });
 
 interface Saved {

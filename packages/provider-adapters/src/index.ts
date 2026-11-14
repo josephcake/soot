@@ -42,6 +42,7 @@ export {
 } from './ai-sdk-client.js';
 export { createModelClient, hasApiKey, readApiKey, type CreateClientOptions } from './adapters.js';
 export { discoverModelIds } from './discovery.js';
+export { probeLocalRuntimes, type LocalProbeOptions } from './local-probe.js';
 export {
   AllCandidatesFailedError,
   generateWithFallback,

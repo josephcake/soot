@@ -5,6 +5,16 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (keyless local models, ADR-044)
+
+- soot probes Ollama (`127.0.0.1:11434`) and LM Studio (`127.0.0.1:1234`) with a 500 ms
+  `GET /v1/models` and adds their chat models as keyless `local: true` providers, $0
+  (`source: "local runtime"`), tier `low`, assumed 4096-token context, so light work goes to
+  them first. `"localModels": false` or `SOOT_LOCAL_MODELS=off` turns this off;
+  `"localModels": { "urls": [...], "contextWindow": N }` or `SOOT_LOCAL_MODEL_URLS` changes
+  where to probe and the window. Your models file wins for a runtime it configures.
+  `soot config` and `soot models` list each runtime.
+
 ### Added (editor support and an Escalations view, ADR-044; M7-02…M7-04 prepared, M7-06)
 
 - The VS Code extension's tree and board have an **Escalations (N)** section: one entry per

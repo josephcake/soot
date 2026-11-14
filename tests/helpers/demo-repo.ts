@@ -51,6 +51,8 @@ export function createDemoRepo(): DemoRepo {
     PATH: process.env.PATH ?? '',
     HOME: top,
     SOOT_DATA_DIR: dataDir,
+    // Never probe this machine's local runtimes (ADR-044); tests that cover probing opt in.
+    SOOT_LOCAL_MODELS: 'off',
     GIT_CONFIG_GLOBAL: globalConfig,
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_AUTHOR_NAME: 'Demo User',

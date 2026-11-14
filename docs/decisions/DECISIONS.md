@@ -999,3 +999,60 @@ the old one.
     with `pnpm dlx`.
 - **Reversible:** Yes. The colors, metadata and sections are additive. The floor stays where
   it was.
+## ADR-044: Keyless local models are probed and added at $0, tier low
+
+- **Date:** 2026-11-14
+- **Status:** Accepted (Mochi, on Joseph's request: "for local llms sometimes there are no
+  token thats needed", then "lets start solving for each of these"). Implemented; verified
+  with unit tests and fake HTTP servers on 127.0.0.1 only. Extends ADR-043; amends ADR-043's
+  "no network discovery" alternative for local runtimes only.
+- **Context:** ADR-043 adds models when a vendor key is set. Local runtimes (Ollama, LM
+  Studio) serve an OpenAI-compatible API with no key, so the key check never found them and a
+  user had to hand-write a models file. soot already supported keyless `openai-compatible`
+  providers with `local: true` (M2-03) and could list a provider's models (`discoverModelIds`).
+- **Decision:**
+  - **Probe.** `probeLocalRuntimes` (`@soot/provider-adapters`) sends `GET <baseURL>/models`
+    with no key to each runtime in parallel, with a 500 ms limit (`LOCAL_PROBE_TIMEOUT_MS`),
+    and never throws: a runtime is `found`, `unreachable` or `error`. Defaults:
+    `ollama` at `http://127.0.0.1:11434/v1` and `lmstudio` at `http://127.0.0.1:1234/v1`.
+  - **Pool.** `addLocalModels` (`@soot/model-registry`, pure) adds each runtime that answered
+    as `openai-compatible`, `local: true`, no `apiKeyEnv`, with its chat models (ids matching
+    `embed` skipped, at most 32): price $0 with `source: "local runtime"`, tier `low`,
+    `tools` and `structuredOutput` true, `origin: 'auto'`.
+  - **Context window.** ADR-039 requires a stated window for local endpoints, and the listing
+    does not report the loaded context. Ollama and LM Studio load models with 4096 tokens by
+    default, so soot assumes 4096 (`LOCAL_DEFAULT_CONTEXT_WINDOW`); `"localModels":
+{"contextWindow": N}` raises it.
+  - **Settings.** `"localModels"` in soot.config.json: `true` (default), `false`, or
+    `{ "urls"?: [...], "contextWindow"?: N }`. `SOOT_LOCAL_MODELS=off|0|false` turns probing
+    off; `SOOT_LOCAL_MODEL_URLS` (comma-separated) replaces the URL list and wins over
+    `urls`. `"autoModels": false` turns local probing off too.
+  - **Override.** The models file wins: a runtime whose provider id or normalized base URL
+    (`localhost` = `127.0.0.1`, trailing slash ignored) the file configures gets nothing.
+  - **Where it runs.** The engine probes in `plan()`/`run`, `models()` and, from the CLI,
+    before `config()`, and caches results per engine. Synchronous reads that did not probe
+    (the dashboard's project panel) report `not-probed` rather than block on the network.
+  - **Visible.** `soot config` and `soot models` list each runtime (added, not-running,
+    no-models, error, configured, off, not-probed); JSON field `localModels`.
+  - **Tests.** Engines in tests never probe by default (`SOOT_LOCAL_MODELS=off` in the Vitest
+    env and the demo repo helper); probing tests opt in with a fake server URL. The existing
+    live local test still skips when no runtime is listening.
+- **Verification:** unit tests (settings, URL ids, merge, override, embed filter, cap, states);
+  probe tests against fake servers (listing without an authorization header, closed port,
+  HTTP 500, non-JSON, a server that never answers); CLI/engine tests where a fake runtime next
+  to fake xAI and DeepSeek keys takes the spec Test 2 button task, while the dropdown and the
+  auth bug still go to `xai/grok-4.3` and `xai/grok-4.7`. Not yet run against a real Ollama
+  or LM Studio.
+- **Alternatives:** an MCP bridge for local models (not needed: the runtimes already speak
+  the OpenAI API soot uses); Ollama's native `/api/show` for context length (reports the
+  model's trained maximum, not the loaded `num_ctx`, so it would overstate the window);
+  marking capabilities unknown (would make every local model unroutable for soot's API
+  runner); probing on every command including the synchronous dashboard read (would add
+  network waits to page loads).
+- **Consequences:** with a local runtime running, the cheapest low-complexity tasks go to it
+  at $0, and a run makes up to two extra requests to 127.0.0.1 before planning (500 ms worst
+  case each, in parallel). Small local models may fail tasks a hosted low-tier model would
+  pass; escalation and measured history correct this. Tasks larger than the assumed window
+  skip local models.
+- **Reversible:** Yes. `"localModels": false` or `SOOT_LOCAL_MODELS=off` per project or
+  shell; removing the merge call in the CLI removes it everywhere.
