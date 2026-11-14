@@ -177,7 +177,7 @@ function load() {
     STACK_CAP: number;
     __byId: Record<string, FakeNode>;
     drawFlow: (canvas: FakeNode, overview: unknown) => void;
-    renderPrompts: (prompts: unknown[]) => void;
+    renderPrompts: (prompts: unknown[], filter?: { from: string; to: string } | null) => void;
     summaryBlock: (run: unknown) => FakeNode;
     taskTableBlock: (run: unknown) => FakeNode;
     moreChartsBlock: (run: unknown) => FakeNode & { open?: boolean };
@@ -903,11 +903,17 @@ describe('page helpers', () => {
       expect(ui.parseRoute(h)).toEqual({ view: 'compose' });
     expect(ui.parseRoute('#/overview')).toEqual({ view: 'overview' });
     expect(ui.parseRoute('#/overview/')).toEqual({ view: 'overview' });
+    expect(ui.parseRoute('#/history')).toEqual({ view: 'prompts' });
+    expect(ui.parseRoute('#/history/')).toEqual({ view: 'prompts' });
+    expect(ui.parseRoute('#/history/run-1')).toEqual({ view: 'prompt', runId: 'run-1' });
+    expect(ui.parseRoute('#/history/a%2Fb/')).toEqual({ view: 'prompt', runId: 'a/b' });
+    // A malformed escape is kept as typed (the page then shows "not found").
+    expect(ui.parseRoute('#/history/%E0%A4%A')).toEqual({ view: 'prompt', runId: '%E0%A4%A' });
+    // Old #/prompts links still open the same views (ADR-042).
     expect(ui.parseRoute('#/prompts')).toEqual({ view: 'prompts' });
     expect(ui.parseRoute('#/prompts/')).toEqual({ view: 'prompts' });
     expect(ui.parseRoute('#/prompts/run-1')).toEqual({ view: 'prompt', runId: 'run-1' });
     expect(ui.parseRoute('#/prompts/a%2Fb/')).toEqual({ view: 'prompt', runId: 'a/b' });
-    // A malformed escape is kept as typed (the page then shows "not found").
     expect(ui.parseRoute('#/prompts/%E0%A4%A')).toEqual({ view: 'prompt', runId: '%E0%A4%A' });
     // Old single-page links (#<runId>) still open that prompt.
     expect(ui.parseRoute('#dropdown-auth')).toEqual({ view: 'prompt', runId: 'dropdown-auth' });
@@ -1023,11 +1029,51 @@ describe('page helpers', () => {
     const block = ui.notFoundBlock('gone');
     expect(text(block)).toContain('Prompt not found');
     expect(text(block)).toContain('"gone"');
-    expect(
-      all(block).some(
-        (n) => n.tag === 'a' && (n as unknown as { href: string }).href === '#/prompts',
-      ),
-    ).toBe(true);
+    const back = all(block).find((n) => n.tag === 'a');
+    expect(back?.textContent).toBe('← History');
+    expect((back as unknown as { href: string }).href).toBe('#/history');
+  });
+
+  it('the history list heading uses History, and empty windows talk about runs', () => {
+    const nav = ui.__byId.prompts ?? (ui.__byId.prompts = node('div'));
+    ui.renderPrompts([
+      {
+        runId: 'r1',
+        createdAt: '2026-11-12T17:00:00.000Z',
+        state: 'succeeded',
+        prompt: 'do it',
+        taskCount: 1,
+        agent: { kind: 'mock', label: 'mock' },
+        tokens: null,
+        cost: { actualUsd: null, unpricedAttempts: 0 },
+        taskCountsByModel: [],
+      },
+    ]);
+    expect(text(nav)).toContain('History · 1');
+    expect(text(nav)).not.toContain('Previous prompts');
+    ui.renderPrompts([], { from: '2026-11-12T17:00:00.000Z', to: '2026-11-12T18:00:00.000Z' });
+    expect(text(nav)).toContain('History · 0 of 0');
+    expect(text(nav)).toContain('No runs in this state directory yet');
+    ui.renderPrompts(
+      [
+        {
+          runId: 'out',
+          createdAt: '2026-11-13T17:00:00.000Z',
+          state: 'succeeded',
+          prompt: 'later',
+          taskCount: 1,
+          agent: { kind: 'mock', label: 'mock' },
+          tokens: null,
+          cost: { actualUsd: null, unpricedAttempts: 0 },
+          taskCountsByModel: [],
+        },
+      ],
+      { from: '2026-11-12T17:00:00.000Z', to: '2026-11-12T18:00:00.000Z' },
+    );
+    expect(text(nav)).toContain('History · 0 of 1');
+    expect(text(nav)).toContain('No runs in this window.');
+    const clear = all(nav).find((n) => n.className === 'clear');
+    expect((clear as unknown as { href: string } | undefined)?.href).toBe('#/history');
   });
 
   it('a prompt row links to its detail route and shows local dates and model swatches', () => {
@@ -1043,7 +1089,7 @@ describe('page helpers', () => {
       cost: { actualUsd: 0.001, unpricedAttempts: 0 },
       taskCountsByModel: [{ model: 'p/small', tasks: 1 }],
     });
-    expect((row as unknown as { href: string }).href).toBe('#/prompts/r%201');
+    expect((row as unknown as { href: string }).href).toBe('#/history/r%201');
     const t = text(row);
     expect(t).not.toContain('2026-11-12T10:00:00.000Z');
     expect(t).toContain('1,234 tok');
@@ -1114,7 +1160,7 @@ describe('prompt grid', () => {
     for (const c of m.columns.slice(-3, -1))
       expect(c.cells.every((x) => x.kind === 'empty')).toBe(true);
     // Clicking a prompt square opens its detail route.
-    expect(last?.cells[0]?.href).toBe('#/prompts/early');
+    expect(last?.cells[0]?.href).toBe('#/history/early');
   });
 
   it('caps a heavy day at the stack height and links the rest to the filtered list', () => {
@@ -1126,7 +1172,7 @@ describe('prompt grid', () => {
     expect(day?.cells).toHaveLength(ui.STACK_CAP);
     expect(day?.overflow).toBe(3);
     expect(day?.overflowHref).toBe(
-      '#/prompts?from=' +
+      '#/history?from=' +
         encodeURIComponent('2026-11-10T08:00:00.000Z') +
         '&to=' +
         encodeURIComponent('2026-11-11T08:00:00.000Z'),
@@ -1155,7 +1201,7 @@ describe('prompt grid', () => {
     expect(today[10]).toMatchObject({ kind: 'bucket', prompts: 1, activity: 0, level: 0 });
     expect(today[8]?.kind).toBe('empty');
     expect(today[9]?.href).toBe(
-      '#/prompts?from=' +
+      '#/history?from=' +
         encodeURIComponent('2026-11-12T17:00:00.000Z') +
         '&to=' +
         encodeURIComponent('2026-11-12T18:00:00.000Z'),
@@ -1203,7 +1249,7 @@ describe('prompt grid', () => {
     const links = all(panel).filter((n) => n.tag === 'a' && n.className === 'cell l3');
     expect(links).toHaveLength(1);
     const link = links[0] as FakeNode & { href: string };
-    expect(link.href).toBe('#/prompts/x');
+    expect(link.href).toBe('#/history/x');
     expect(link.attrs['aria-label']).toContain('prompt x');
     expect(link.attrs['aria-label']).toContain('complexity 3/4 (score 0.70)');
     const seg = all(panel).filter((n) => n.className.startsWith('seg-b'));
@@ -1226,9 +1272,14 @@ describe('prompt grid', () => {
     const from = '2026-11-12T17:00:00.000Z',
       to = '2026-11-12T18:00:00.000Z';
     expect(
+      ui.parseRoute('#/history?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to)),
+    ).toEqual({ view: 'prompts', filter: { from, to } });
+    // Old #/prompts window links still open the filtered list.
+    expect(
       ui.parseRoute('#/prompts?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to)),
     ).toEqual({ view: 'prompts', filter: { from, to } });
     // A bad or reversed window is ignored: the whole list.
+    expect(ui.parseRoute('#/history?from=x&to=' + to)).toEqual({ view: 'prompts' });
     expect(ui.parseRoute('#/prompts?from=x&to=' + to)).toEqual({ view: 'prompts' });
     expect(ui.parseRoute('#/prompts?from=' + to + '&to=' + from)).toEqual({ view: 'prompts' });
   });

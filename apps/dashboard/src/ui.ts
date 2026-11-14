@@ -6,8 +6,9 @@
  * /api paths.
  *
  * Views (hash routes, no router library): `#/` the prompt box (the default, ADR-038),
- * `#/overview` Overview (aggregates across every prompt only), `#/prompts` the prompt list,
- * `#/prompts/<runId>` one prompt's detail.
+ * `#/overview` Overview (aggregates across every prompt only), `#/history` the run list
+ * (ADR-042), `#/history/<runId>` one prompt's detail. Old `#/prompts` links still open the
+ * same views.
  *
  * The prompt box works like a chat prompt: submit plans and runs right away. While the user is
  * typing or a prompt is working, the page drops to focus mode: the prompt, a compact live task
@@ -35,7 +36,7 @@ export const INDEX_HTML = `<!doctype html>
       <nav class="tabs" aria-label="views">
         <a class="tab" id="tab-compose" href="#/">Prompt</a>
         <a class="tab" id="tab-overview" href="#/overview">Overview</a>
-        <a class="tab" id="tab-prompts" href="#/prompts">Prompts</a>
+        <a class="tab" id="tab-prompts" href="#/history">History</a>
       </nav>
       <main id="view-compose" class="compose" aria-label="prompt">
         <div id="cmp-live" class="cmp-live" hidden></div>
@@ -65,10 +66,10 @@ export const INDEX_HTML = `<!doctype html>
         <div id="agg" class="grid wide"></div>
       </main>
       <main id="view-prompts" class="grid" hidden>
-        <section id="prompts" class="block wide prompts" aria-label="previous prompts">loading…</section>
+        <section id="prompts" class="block wide prompts" aria-label="history">loading…</section>
       </main>
       <main id="view-prompt" class="grid" hidden>
-        <p class="wide"><a class="back" href="#/prompts">← All prompts</a></p>
+        <p class="wide"><a class="back" href="#/history">← History</a></p>
         <div id="run" class="grid wide"></div>
       </main>
     </div>
@@ -396,9 +397,10 @@ let lastRunId = null;
 
 // ---- Pure helpers (tested in ui.test.ts) -------------------------------------------------
 
-// Hash route: '' | '#' | '#/' → the prompt box; '#/overview' → overview; '#/prompts' → list;
-// '#/prompts/<runId>' → detail. An old-style '#<runId>' link still opens that prompt, and an
-// old '#/?zoom=hour' overview link still opens the overview. Anything else is the prompt box.
+// Hash route: '' | '#' | '#/' → the prompt box; '#/overview' → overview; '#/history' → list;
+// '#/history/<runId>' → detail. Old '#/prompts' and '#/prompts/<runId>' links still open the
+// same views. An old-style '#<runId>' link still opens that prompt, and an old
+// '#/?zoom=hour' overview link still opens the overview. Anything else is the prompt box.
 function parseRoute(hash) {
   const raw = String(hash || '').replace(/^#/, '');
   const qi = raw.indexOf('?');
@@ -407,7 +409,7 @@ function parseRoute(hash) {
   const zoomed = q.zoom === 'hour' || q.zoom === 'day';
   if (h === '' || h === '/') return zoomed ? { view: 'overview', zoom: q.zoom } : { view: 'compose' };
   if (h === '/overview' || h === '/overview/') return zoomed ? { view: 'overview', zoom: q.zoom } : { view: 'overview' };
-  const m = /^\/prompts\/?(.*)$/.exec(h);
+  const m = /^\/(?:history|prompts)\/?(.*)$/.exec(h);
   if (m) {
     const rest = m[1].replace(/\/+$/, '');
     if (rest === '') {
@@ -424,7 +426,7 @@ function parseRoute(hash) {
   }
   return { view: 'compose' };
 }
-const promptHref = (runId) => '#/prompts/' + encodeURIComponent(runId);
+const promptHref = (runId) => '#/history/' + encodeURIComponent(runId);
 
 // Keep a tag short; the full string goes in its title.
 function truncate(s, max) {
@@ -1024,7 +1026,7 @@ function parseQuery(q) {
   }
   return out;
 }
-const promptsWindowHref = (from, to) => '#/prompts?from=' + encodeURIComponent(new Date(from).toISOString()) + '&to=' + encodeURIComponent(new Date(to).toISOString());
+const promptsWindowHref = (from, to) => '#/history?from=' + encodeURIComponent(new Date(from).toISOString()) + '&to=' + encodeURIComponent(new Date(to).toISOString());
 
 // Prompts whose createdAt is in [from, to). A prompt without a date is never in a window.
 function filterPrompts(prompts, filter) {
@@ -1475,14 +1477,14 @@ function renderPrompts(all, filter) {
   const nav = $('prompts');
   nav.replaceChildren();
   const prompts = filterPrompts(all, filter);
-  nav.append(el('h2', '', 'Previous prompts · ' + (filter ? prompts.length + ' of ' + all.length : all.length)));
+  nav.append(el('h2', '', 'History · ' + (filter ? prompts.length + ' of ' + all.length : all.length)));
   if (filter) {
     const chip = el('div', 'filter-chip');
     const from = Date.parse(filter.from), to = Date.parse(filter.to);
     const t = el('span', '', 'Window: ' + fmtWindow(from, to, to - from > 2 * HOUR ? 'day' : 'hour'));
     t.title = filter.from + ' – ' + filter.to;
     const clear = el('a', 'clear', '× clear');
-    clear.href = '#/prompts';
+    clear.href = '#/history';
     clear.setAttribute('aria-label', 'clear the time filter');
     chip.append(t, clear);
     nav.append(chip);
@@ -1492,7 +1494,7 @@ function renderPrompts(all, filter) {
     return;
   }
   if (prompts.length === 0) {
-    nav.append(el('div', 'unknown', 'No prompts in this window.'));
+    nav.append(el('div', 'unknown', 'No runs in this window.'));
     return;
   }
   const list = el('div', 'prompt-list');
@@ -1902,8 +1904,8 @@ const BLOCKS = [summaryBlock, taskTableBlock, moreChartsBlock, aboutBlock];
 function notFoundBlock(runId) {
   const s = section('Prompt not found', true);
   s.append(el('p', 'note', 'No recorded prompt has the id "' + runId + '".'));
-  const back = el('a', 'back', '← All prompts');
-  back.href = '#/prompts';
+  const back = el('a', 'back', '← History');
+  back.href = '#/history';
   s.append(back);
   return s;
 }

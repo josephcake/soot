@@ -125,7 +125,7 @@ token. With `--agent api` (add `--apply` to land verified results), `--agent moc
 the landing page is a prompt box: pick a folder you allowed with
 `soot dashboard allow <dir>`, type a prompt, press Enter, and it plans and runs right away,
 showing each task's model, state and cost so far, with Stop. Without `--agent` it is
-read-only. Overview and Prompts show every recorded run: where tasks went, each task's
+read-only. Overview and History show every recorded run: where tasks went, each task's
 model, runner, tokens and cost. Unknown costs stay unknown and no savings are claimed. No
 other command starts or loads it ([`apps/dashboard`](apps/dashboard/README.md), ADR-031,
 ADR-038, ADR-039).
