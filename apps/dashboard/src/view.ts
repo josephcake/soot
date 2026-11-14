@@ -141,6 +141,12 @@ export interface DashboardRun {
     readonly estimatedUsd: number | null;
     /** Sum of reported actuals; null when any attempt is unpriced or no cost data exists. */
     readonly actualUsd: number | null;
+    /**
+     * What the run spent: planning plus task actuals (the cost report's `totals.run.usd`, ADR-046).
+     * Equals `actualUsd` for a report saved before planning was counted; null when either part
+     * is unknown.
+     */
+    readonly runUsd: number | null;
     readonly unpricedAttempts: number | null;
     /** Router estimates per attempt, summed; null when unknown. Never an actual. */
     readonly routedEstimateUsd: number | null;
@@ -557,6 +563,14 @@ export function toDashboardRun(
     cost: {
       estimatedUsd: est === null ? null : num(est.usd),
       actualUsd: act === null ? null : num(act.usd),
+      runUsd:
+        totals === null
+          ? null
+          : totals.run === undefined
+            ? act === null
+              ? null
+              : num(act.usd)
+            : num(rec(totals.run).usd),
       unpricedAttempts: act === null ? null : num(act.unpricedAttempts),
       routedEstimateUsd: routed === null ? null : num(routed.costUsd),
     },

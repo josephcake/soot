@@ -13,6 +13,9 @@ All notable changes are recorded here by milestone. Format loosely follows
 - Priced planning counts against `escalation.runBudgetUsd`: planning alone over the budget stops
   the run before any task starts (`decompositionFailure: "run-budget"`); otherwise tasks share
   the rest.
+- The plan preview's worst case is capped at the run budget minus the planning already spent.
+- The dashboard overview's reported Cost tile and "actual (reported)" chart include each run's
+  planning call (`totals.run.usd`).
 - The planner call skips a provider in cooldown and records a cooldown on an outage, rate
   limit, timeout or auth failure, like task attempts.
 

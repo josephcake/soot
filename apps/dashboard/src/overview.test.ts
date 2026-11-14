@@ -182,6 +182,8 @@ describe('toOverview', () => {
       runs: 1,
     });
     expect(ag.cost.actualUsd).toEqual({ value: 0.001, runs: 1 });
+    // A report saved before planning was counted has no totals.run: the run total is the tasks'.
+    expect(ag.cost.runUsd).toEqual({ value: 0.001, runs: 1 });
     expect(ag.outcomes).toMatchObject({ succeeded: 2, failed: 1, unfinished: 0 });
     expect(ag.outcomes.successRate).toBeCloseTo(2 / 3);
     expect(ag.validation.taskChecks).toEqual({ failed: 1 });
@@ -193,6 +195,32 @@ describe('toOverview', () => {
     ]);
     expect(ag.usageNote).toContain('Runner label is from the saved report');
     expect(ag.savingsNote).toContain('does not claim savings');
+  });
+
+  it('the reported cost includes the planning call; an unknown planning cost leaves the run out', () => {
+    const report = (run: unknown) => ({
+      cost: {
+        tasks: [],
+        totals: {
+          estimated: { inputTokens: 0, outputTokens: 0, usd: 0 },
+          actual: {
+            inputTokens: 0,
+            outputTokens: 0,
+            usd: 0.01,
+            unpricedAttempts: 0,
+            unreportedAttempts: 0,
+          },
+          run,
+        },
+      },
+    });
+    const planned = run({ runId: 'a' }, report({ usd: 0.013, planningUsd: 0.003 }));
+    const unpricedPlan = run({ runId: 'b' }, report({ usd: null, planningUsd: null }));
+    expect(planned.cost).toMatchObject({ actualUsd: 0.01, runUsd: 0.013 });
+    expect(unpricedPlan.cost).toMatchObject({ actualUsd: 0.01, runUsd: null });
+    const ag = toOverview([planned, unpricedPlan]).aggregate;
+    expect(ag.cost.actualUsd).toEqual({ value: 0.02, runs: 2 });
+    expect(ag.cost.runUsd).toEqual({ value: 0.013, runs: 1 });
   });
 
   it('complexity: each recorded input normalized, averaged, then bucketed 0-4', () => {

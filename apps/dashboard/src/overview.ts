@@ -163,6 +163,8 @@ export interface Aggregate {
     readonly estimatedUsd: Covered<number>;
     readonly routedEstimateUsd: Covered<number>;
     readonly actualUsd: Covered<number>;
+    /** Planning plus task actuals per run (what the overview's "reported" figures show). */
+    readonly runUsd: Covered<number>;
     /** Unpriced attempts summed over runs that have cost data. */
     readonly unpricedAttempts: number;
   };
@@ -267,6 +269,10 @@ export function toAggregate(runs: readonly DashboardRun[]): Aggregate {
       ),
       actualUsd: covered(
         runs.map((r) => r.cost.actualUsd),
+        plus,
+      ),
+      runUsd: covered(
+        runs.map((r) => r.cost.runUsd),
         plus,
       ),
       unpricedAttempts: runs.reduce((n, r) => n + (r.cost.unpricedAttempts ?? 0), 0),

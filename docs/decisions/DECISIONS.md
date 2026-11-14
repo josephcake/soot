@@ -1086,7 +1086,11 @@ the old one.
     run-budget check sees it and the stop reason names it. Unknown planning cost (unpriced
     model, unreported usage) is not counted and soot warns when a run budget is set: the
     money is already spent, so refusing to continue would not protect the budget, and soot
-    never invents a number.
+    never invents a number. The plan preview caps its worst case at the run budget minus the
+    planning already spent (its basis says "per run including planning").
+  - **Dashboard.** The overview's reported Cost tile and "actual (reported)" chart sum each
+    run's `totals.run.usd` (planning + tasks; tasks only for a report saved before this ADR);
+    a run whose planning cost is unknown is left out of that sum and the coverage says so.
   - **Cooldowns.** Before a planner call, soot reads the cooldowns in `soot.sqlite`; a
     provider in cooldown makes the decomposer `unusable` with the reason and end time (recorded
     prompts still run from fixtures). A planner call that fails with a provider error of kind
@@ -1100,7 +1104,8 @@ the old one.
   stops before any task (no branch, no run recorded), planning plus a task over a budget the
   task alone fits stops the task with the planning amount in the reason, an outage records a
   cooldown that makes the next planner call skip the provider, HTTP 400 records none, fixture
-  plans unchanged.
+  plans unchanged; the preview's worst case is capped at budget minus planning; the dashboard
+  overview's reported cost includes planning.
 - **Alternatives:** folding planning into `totals.actual` (would change a field existing views
   read as task spend); recording planning as a pseudo-task in `attempt_spend` (would leak into
   task views and history); refusing to run when planning is unpriced and a budget is set

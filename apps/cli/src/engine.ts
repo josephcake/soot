@@ -365,7 +365,10 @@ export interface PlanPreview {
   /** Sum of the known task estimates; `estimatePartial` when a task has none. */
   readonly estimateUsd: number | null;
   readonly estimatePartial: boolean;
-  /** Sum of the per-task worst cases, capped by the run budget when one is set. */
+  /**
+   * Sum of the per-task worst cases, capped by what the run budget leaves after planning when a
+   * budget is set.
+   */
   readonly worstCaseUsd: number | null;
   readonly worstCasePartial: boolean;
   readonly worstCaseBasis: string;
@@ -1578,7 +1581,10 @@ export function buildPlanPreview(
   const est = tasks.map((t) => t.estimateUsd);
   const worstVals = tasks.map((t) => t.worstCaseUsd);
   let worst = sum(worstVals);
-  if (worst !== null && esc.runBudgetUsd !== null) worst = Math.min(worst, esc.runBudgetUsd);
+  // The run budget covers planning too (ADR-046): tasks can spend only what planning left.
+  const planningSpent = plan.source.kind === 'model' ? (num(plan.planning.costUsd) ?? 0) : 0;
+  if (worst !== null && esc.runBudgetUsd !== null)
+    worst = Math.min(worst, Math.max(0, esc.runBudgetUsd - planningSpent));
   const src = plan.source;
   const planner: PlanPreview['planner'] =
     src.kind === 'fixture'
@@ -1608,7 +1614,7 @@ export function buildPlanPreview(
     estimatePartial: est.some((v) => v === null),
     worstCaseUsd: worst,
     worstCasePartial: worstVals.some((v) => v === null),
-    worstCaseBasis: `up to ${String(esc.maxAttemptsPerTask)} attempts per task on the priciest model the router accepts${esc.taskBudgetUsd === null ? '' : `, capped at $${String(esc.taskBudgetUsd)} per task`}${esc.runBudgetUsd === null ? '' : `, $${String(esc.runBudgetUsd)} per run`}`,
+    worstCaseBasis: `up to ${String(esc.maxAttemptsPerTask)} attempts per task on the priciest model the router accepts${esc.taskBudgetUsd === null ? '' : `, capped at $${String(esc.taskBudgetUsd)} per task`}${esc.runBudgetUsd === null ? '' : `, $${String(esc.runBudgetUsd)} per run including planning`}`,
     policy: plan.cfg.config.policy,
     agentLabel: plan.agentLabel,
   };

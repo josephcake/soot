@@ -916,10 +916,10 @@ function tilesFor(ov) {
   const at = ag ? ag.tokens.actual : { value: null, runs: 0 };
   if (at.value === null) out.push(tile('Tokens', DASH, 'not reported'));
   else out.push(tile('Tokens', fmtInt(at.value.inputTokens + at.value.outputTokens), 'reported · ' + coverage(at, runs) + (at.value.unreportedAttempts > 0 ? ' · ' + at.value.unreportedAttempts + ' attempt(s) unreported' : '')));
-  const ac = ag ? ag.cost.actualUsd : { value: null, runs: 0 };
+  const ac = ag ? ag.cost.runUsd : { value: null, runs: 0 };
   const unpriced = ag && ag.cost.unpricedAttempts > 0 ? ' · ' + ag.cost.unpricedAttempts + ' unpriced attempt(s)' : '';
   if (ac.value === null) out.push(tile('Cost', DASH, 'actual not reported' + unpriced));
-  else out.push(tile('Cost', '$' + ac.value.toFixed(4), 'reported actual · ' + coverage(ac, runs) + unpriced, usd(ac.value)));
+  else out.push(tile('Cost', '$' + ac.value.toFixed(4), 'reported actual incl. planning · ' + coverage(ac, runs) + unpriced, usd(ac.value)));
   return out;
 }
 
@@ -931,9 +931,9 @@ function aggCostBlock(ov) {
     { label: 'router · ' + coverage(c.routedEstimateUsd, n), value: c.routedEstimateUsd.value, why: 'unpriced' },
   ], usd));
   s.append(chart('actual (reported)', 'act', [
-    { label: 'reported · ' + coverage(c.actualUsd, n), value: c.actualUsd.value, why: c.unpricedAttempts ? c.unpricedAttempts + ' unpriced attempt(s)' : 'unknown' },
+    { label: 'reported incl. planning · ' + coverage(c.runUsd, n), value: c.runUsd.value, why: c.unpricedAttempts ? c.unpricedAttempts + ' unpriced attempt(s)' : 'unknown' },
   ], usd));
-  s.append(el('pre', 'note', 'Sums only what each run reported; the run count says how many runs are in each sum. Estimates are never shown as actuals. Mock runs report fictional amounts.'));
+  s.append(el('pre', 'note', 'Sums only what each run reported; the reported actual includes each run\'s planning call (ADR-046). The run count says how many runs are in each sum. Estimates are never shown as actuals. Mock runs report fictional amounts.'));
   return s;
 }
 

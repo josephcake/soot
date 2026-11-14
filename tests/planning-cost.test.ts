@@ -206,6 +206,19 @@ describe('run budget', () => {
     expect((await engineFor(r).status()).data).toEqual({ runs: [] });
   });
 
+  it('the plan preview caps the worst case at the budget minus planning', async () => {
+    const r = (repo = demo({ runBudgetUsd: 0.0002 }));
+    const engine = engineFor(r, () => answering());
+    const planned = await engine.plan({ prompt: UNKNOWN });
+    if (!planned.ok) throw new Error(planned.output.text);
+    const p = engine.previewPlan(planned.plan);
+    expect(p.planner.costUsd).toBeCloseTo(PLANNING_USD, 12);
+    // Uncapped, five attempts on the priciest model would exceed what planning left.
+    expect(p.tasks[0]?.worstCaseUsd ?? 0).toBeGreaterThan(0.0002 - PLANNING_USD);
+    expect(p.worstCaseUsd).toBeCloseTo(0.0002 - PLANNING_USD, 12);
+    expect(p.worstCaseBasis).toMatch(/, \$0\.0002 per run including planning$/);
+  });
+
   it(
     'planning counts against the budget the tasks share',
     async () => {
