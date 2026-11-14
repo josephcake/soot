@@ -105,16 +105,24 @@ makes no outbound requests and never shows key values.
   the result stays on `soot/<run>/integration` for you to merge. Starting it with `--apply`
   pre-approves only that one step, and only for a fully verified result on a clean tree.
 
-## Direct-API runner (`--agent api`, ADR-039)
+## Direct-API runner (`--agent api`, ADR-039, ADR-048)
 
 - Each task's routed model gets the task, its allowed and readable files (current contents),
   and earlier attempts' findings. It never gets the original prompt, other tasks' transcripts,
-  keys, or a shell: it can only return whole-file contents.
-- Every returned path must stay inside the task's worktree (no absolute paths, `..`, `.git`
-  or symlinks); one bad path fails the attempt and nothing is written. soot's usual scope,
-  protected-path and check rules then apply before anything is merged.
-- File contents are sent to the provider you configured for that model. Do not route tasks
-  over files you would not send to that provider.
+  keys, or a shell: it can only return edits. An edit replaces one exact, unique snippet of an
+  existing file, creates a new file, or gives a whole file (whole files only with
+  `"apiEditFormat": "whole"`). It cannot delete files.
+- Every edit is checked before anything is written: the path must stay inside the task's
+  worktree (no absolute paths, `..`, `.git` or symlinks) **and** inside the task's write lease;
+  a replaced snippet must match exactly once; a whole file may only overwrite a file the model
+  was shown in full; and the edit payload has size limits. One bad edit fails the reply and
+  nothing is written. The files are then written all together, and if one write fails every
+  file is put back. soot's usual scope, protected-path and check rules still apply before
+  anything is merged.
+- File contents are sent to the provider you configured for that model. With the default
+  `"apiEditFormat": "auto"`, a file the task may change is sent up to 256 KiB (64 KiB with
+  `"whole"`, and for files it may only read). Do not route tasks over files you would not send
+  to that provider.
 
 ## Known limits
 

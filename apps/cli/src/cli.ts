@@ -52,8 +52,8 @@ Environment: SOOT_DATA_DIR (state directory), SOOT_LOG_LEVEL (silent|error|warn|
 default info; log lines go to stderr). No .env file is read.
 
 Agents: --agent api sends each task to the model the router picked, through soot's provider
-adapters, and writes the whole-file edits it returns into the task's worktree (keys come from
-the variables your models file names). --agent mock runs a scripted test double (no model is
+adapters, and applies the edits it returns (targeted replacements or whole files, all or
+nothing) in the task's worktree (keys come from the variables your models file names). --agent mock runs a scripted test double (no model is
 called). --agent acp runs each task through the ACP agent command configured as "acpAgent" in
 soot.config.json (generic ACP driver; no harness is verified). --agent claude-code and --agent
 codex run each task through the ACP adapter you installed and signed in to, named by absolute
