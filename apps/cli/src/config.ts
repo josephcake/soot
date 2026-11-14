@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { forbiddenAgentArg } from '@soot/harness-adapters';
 import type { CheckCommand, CommandPolicy } from '@soot/integrations';
 import { z } from 'zod';
 
@@ -38,23 +39,62 @@ const SECRET_LIKE = /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH/i;
  * with `--agent acp`. Paths in `args` are passed verbatim; the process runs in the task's
  * worktree, so use absolute paths.
  */
+const AgentArgs = z
+  .array(z.string().max(4096))
+  .max(64)
+  .default([])
+  .refine(
+    (args) => forbiddenAgentArg(args) === null,
+    "an argument would skip or bypass the agent's approvals or sandbox; soot never passes it",
+  );
+
+const PassEnv = z
+  .array(
+    z
+      .string()
+      .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
+      .refine((n) => !SECRET_LIKE.test(n), 'credential-like variables are never passed'),
+  )
+  .max(32)
+  .default([]);
+
+const OneExecutable = z
+  .string()
+  .min(1)
+  .max(4096)
+  .refine((c) => !/[\n\r\0]/.test(c), 'one executable');
+
 export const AcpAgentConfigSchema = z
   .object({
-    command: z
-      .string()
-      .min(1)
-      .max(4096)
-      .refine((c) => !/[\n\r\0]/.test(c), 'one executable'),
-    args: z.array(z.string().max(4096)).max(64).default([]),
-    passEnv: z
-      .array(
-        z
-          .string()
-          .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
-          .refine((n) => !SECRET_LIKE.test(n), 'credential-like variables are never passed'),
-      )
-      .max(32)
-      .default([]),
+    command: OneExecutable,
+    args: AgentArgs,
+    passEnv: PassEnv,
+  })
+  .strict();
+
+/**
+ * A harness runner (ADR-047): the ACP adapter for Claude Code or Codex that the user installed
+ * and signed in to. Only used with `--agent claude-code` / `--agent codex`. `command` must be an
+ * absolute path (soot does not search PATH for it).
+ */
+export const HarnessAgentConfigSchema = z
+  .object({
+    command: OneExecutable.refine(isAbsolute, 'must be an absolute path to the adapter'),
+    args: AgentArgs,
+    passEnv: PassEnv,
+    /** soot model ref → the adapter's model option value. */
+    models: z.record(z.string().min(1).max(512), z.string().min(1).max(512)).optional(),
+    /** The adapter's reported session mode must be one of these. */
+    allowedModes: z.array(z.string().min(1).max(200)).min(1).max(20).optional(),
+    startupTimeoutMs: z.number().int().min(100).max(600_000).optional(),
+    cancelGraceMs: z.number().int().min(0).max(60_000).optional(),
+  })
+  .strict();
+
+export const HarnessesConfigSchema = z
+  .object({
+    'claude-code': HarnessAgentConfigSchema.optional(),
+    codex: HarnessAgentConfigSchema.optional(),
   })
   .strict();
 
@@ -143,6 +183,8 @@ export const ProjectConfigSchema = z
     fixtures: z.string().min(1).optional(),
     /** ACP agent to spawn for `--agent acp` (never used otherwise). */
     acpAgent: AcpAgentConfigSchema.optional(),
+    /** Harness runners for `--agent claude-code` / `--agent codex` (ADR-047). */
+    harnesses: HarnessesConfigSchema.optional(),
     /** Model for prompts with no recorded fixture (ADR-034). Absent: fixtures only. */
     decomposer: DecomposerConfigSchema.optional(),
   })

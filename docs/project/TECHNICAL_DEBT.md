@@ -168,13 +168,16 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   context). There is no structured log file beyond the audit log and the events file.
 
 - **[Blocked] No vendor harness has been run (M6-04, M6-05).** The generic ACP driver is tested
-  only with soot's own mock ACP agent. Claude Code and Codex stay `not-implemented`. Real model
-  execution without a harness also needs M2-07.
+  only with soot's own mock ACP agent, and the Claude Code / Codex runner profiles (ADR-047)
+  only with simulated adapters (`acp-profile-simulated`). The adapters' mode ids come from their
+  public sources; their model values, permission option ids and sign-in errors are guesses
+  until a real run. Real model execution without a harness also needs M2-07.
 - **[Resolved in M6 for agents that advertise it] ACP routed model (ADR-028).** When the agent
   offers a `model` session config option, soot sets it to the routed model per attempt and
   records the outcome as routing history. Agents without that option (or that refuse or do not
   confirm the value) pick their own model; the run reports "route not applied" and those
-  attempts are not counted. Matching is by exact ref or the id after `provider/`; no alias map.
+  attempts are not counted. Matching is by exact ref or the id after `provider/`, or, for the
+  harness runners, the user's `models` map (ADR-047).
 - **[Intentional] ACP v1 reports no token counts.** Usage shows 0 tokens; cost only if the agent
   sends a USD `usage_update`. soot never estimates tokens to fill the gap.
 - **[Intentional] ACP: one agent process and session per attempt.** No session resume or

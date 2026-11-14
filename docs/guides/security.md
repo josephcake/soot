@@ -47,6 +47,11 @@ they passed. Agent-reported evidence is shown as a claim and never decides anyth
 - Permission requests from the agent are answered by a person or rejected. soot never chooses
   "allow always", never signs in, and never changes the agent's mode or approval settings. The only setting soot
   changes is the agent's `model` option, to the routed model (ADR-028).
+- Harness runners (`--agent claude-code`, `--agent codex`, ADR-047) follow the same rules, need
+  an absolute adapter path in `harnesses`, and refuse a session whose reported mode turns the
+  harness's own approvals off (`bypassPermissions`, `agent-full-access`) or is outside your
+  `allowedModes`. Config arguments that skip approvals or the sandbox are refused for every ACP
+  agent. Tested against simulated adapters only.
 - Over ACP the agent can read the worktree and write inside the write lease only. It may still
   have its own tools: **a spawned agent runs with your user's rights**, so confine it with the
   harness's own sandbox settings. soot's diff, protected paths and checks catch changes inside

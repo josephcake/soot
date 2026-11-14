@@ -44,6 +44,11 @@ const ROUGH_PLAN_TOKENS = { input: 2000, output: 600 } as const;
 const asRecord = (v: unknown): Record<string, unknown> =>
   typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {};
 
+const harnessLabel = (id: string, command: unknown): string =>
+  typeof command === 'string'
+    ? `${id} (${command}; simulated-only runner)`
+    : `${id}: no "harnesses.${id}" in ${CONFIG_FILE}`;
+
 function planErrorCode(data: Record<string, unknown>): string {
   if (data.decomposerModelStatus === 'unusable') return 'decomposer_unusable';
   if (data.decompositionFailure === 'run-budget') return 'planning_over_budget';
@@ -65,7 +70,10 @@ export function createComposerAgent(o: ComposerAgentOptions) {
           }
         : {
             kind: 'acp' as const,
-            label: `acp (agent command from each project config)${landing}`,
+            label:
+              o.agent.harness === undefined
+                ? `acp (agent command from each project config)${landing}`
+                : `${o.agent.harness} (harnesses.${o.agent.harness} adapter from each project config; tested against simulated adapters only)${landing}`,
             lands: o.apply === true,
           };
 
@@ -140,9 +148,11 @@ export function createComposerAgent(o: ComposerAgentOptions) {
         runnerLabel:
           o.agent.kind !== 'acp'
             ? runner.label
-            : typeof acp.command === 'string'
-              ? `acp (${acp.command})`
-              : `acp: no "acpAgent" in ${CONFIG_FILE}`,
+            : o.agent.harness !== undefined
+              ? harnessLabel(o.agent.harness, asRecord(data.harnesses)[o.agent.harness])
+              : typeof acp.command === 'string'
+                ? `acp (${acp.command})`
+                : `acp: no "acpAgent" in ${CONFIG_FILE}`,
       };
     });
 

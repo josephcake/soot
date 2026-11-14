@@ -160,23 +160,24 @@ task edits. Unknown keys are rejected.
 }
 ```
 
-| Key                  | Default    | Meaning                                                                                                                         |
-| -------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `models`             | none       | Model registry file (above), relative to the config file. Optional: without it, models come from your keys (`autoModels`).      |
-| `autoModels`         | `true`     | Add models for well-known vendor keys that are set (see [Auto models](#auto-models-from-your-keys-adr-043)). `false` = off.     |
-| `localModels`        | `true`     | Probe local runtimes for keyless models ([below](#keyless-local-models-adr-045)). `false` = off; `{ "urls", "contextWindow" }`. |
-| `policy`             | `balanced` | `economy`, `balanced` or `quality` ([routing](model-routing.md)).                                                               |
-| `checks`             | `[]`       | Project checks run on every task that changes files, and on the merged result.                                                  |
-| `acceptance`         | `{}`       | Extra commands per task id; also run for read-only tasks (their only way to be verified).                                       |
-| `protectedPaths`     | `[]`       | Paths no task may change, even inside its lease. The config, registry, fixtures and mock script are added automatically.        |
-| `allowedExecutables` | `[]`       | Exact `argv[0]` values allowed to run. Destructive programs are refused regardless.                                             |
-| `concurrency`        | `4`        | Tasks running at once (1–16).                                                                                                   |
-| `attemptTimeoutMs`   | `1800000`  | Abort an attempt after this many ms (default 30 minutes, `DEFAULT_ATTEMPT_TIMEOUT_MS`); a hung runner ends as `timeout`.        |
-| `modelCallTimeoutMs` | `120000`   | Wall-clock limit for one model call: one `--agent api` try (with its repair round and retries) or one planner call (ADR-040).   |
-| `escalation`         | defaults   | Escalation limits and budgets (`@soot/escalation`, e.g. `{ "sameModelRetries": 0 }`).                                           |
-| `fixtures`           | none       | JSON array of extra recorded decompositions `{ id, prompt, tasks }`.                                                            |
-| `acpAgent`           | none       | ACP agent for `--agent acp`: `command`, `args`, `passEnv` (variable names; credential-like names are rejected).                 |
-| `decomposer`         | none       | `{ "model": "<provider/modelId>" }` or `{ "model": "auto" }`: the model for prompts with no fixture (see below).                |
+| Key                  | Default    | Meaning                                                                                                                                                                                                                        |
+| -------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `models`             | none       | Model registry file (above), relative to the config file. Optional: without it, models come from your keys (`autoModels`).                                                                                                     |
+| `autoModels`         | `true`     | Add models for well-known vendor keys that are set (see [Auto models](#auto-models-from-your-keys-adr-043)). `false` = off.                                                                                                    |
+| `localModels`        | `true`     | Probe local runtimes for keyless models ([below](#keyless-local-models-adr-045)). `false` = off; `{ "urls", "contextWindow" }`.                                                                                                |
+| `policy`             | `balanced` | `economy`, `balanced` or `quality` ([routing](model-routing.md)).                                                                                                                                                              |
+| `checks`             | `[]`       | Project checks run on every task that changes files, and on the merged result.                                                                                                                                                 |
+| `acceptance`         | `{}`       | Extra commands per task id; also run for read-only tasks (their only way to be verified).                                                                                                                                      |
+| `protectedPaths`     | `[]`       | Paths no task may change, even inside its lease. The config, registry, fixtures and mock script are added automatically.                                                                                                       |
+| `allowedExecutables` | `[]`       | Exact `argv[0]` values allowed to run. Destructive programs are refused regardless.                                                                                                                                            |
+| `concurrency`        | `4`        | Tasks running at once (1–16).                                                                                                                                                                                                  |
+| `attemptTimeoutMs`   | `1800000`  | Abort an attempt after this many ms (default 30 minutes, `DEFAULT_ATTEMPT_TIMEOUT_MS`); a hung runner ends as `timeout`.                                                                                                       |
+| `modelCallTimeoutMs` | `120000`   | Wall-clock limit for one model call: one `--agent api` try (with its repair round and retries) or one planner call (ADR-040).                                                                                                  |
+| `escalation`         | defaults   | Escalation limits and budgets (`@soot/escalation`, e.g. `{ "sameModelRetries": 0 }`).                                                                                                                                          |
+| `fixtures`           | none       | JSON array of extra recorded decompositions `{ id, prompt, tasks }`.                                                                                                                                                           |
+| `acpAgent`           | none       | ACP agent for `--agent acp`: `command`, `args`, `passEnv` (variable names; credential-like names are rejected).                                                                                                                |
+| `harnesses`          | none       | `claude-code` / `codex` ACP adapters for `--agent claude-code` / `--agent codex` (ADR-047, simulated only): absolute `command`, `args`, `passEnv`, optional `models` map, `allowedModes`, `startupTimeoutMs`, `cancelGraceMs`. |
+| `decomposer`         | none       | `{ "model": "<provider/modelId>" }` or `{ "model": "auto" }`: the model for prompts with no fixture (see below).                                                                                                               |
 
 Check entries: `name`, `kind` (`test`, `typecheck`, `lint`, `acceptance`), `argv`, optional
 `timeoutMs` and `required` (default `true`).
