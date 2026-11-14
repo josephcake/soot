@@ -11,6 +11,8 @@
 | `anthropic`         | Anthropic Messages API (native, not OpenAI-compatible) via the Vercel AI SDK | fake HTTP server end to end (planner and `--agent api`); not yet called live                     |
 | `openai`            | OpenAI Chat Completions via the Vercel AI SDK                                | fake HTTP server end to end (`--agent api`); not yet called live                                 |
 | `openai-compatible` | Any OpenAI-compatible endpoint (DeepSeek, xAI, Ollama, LM Studio, gateways)  | live with DeepSeek and xAI (ADR-039); a live local test is skipped unless a runtime is listening |
+| `google`            | Gemini API via `@ai-sdk/google` (native `generateContent`)                   | mocked HTTP only; not called live (ADR-049)                                                      |
+| `openrouter`        | OpenRouter (`https://openrouter.ai/api/v1`) via the OpenAI-compatible client | mocked HTTP only; not called live (ADR-049)                                                      |
 
 `anthropic` sends `POST /v1/messages` with `x-api-key` and `anthropic-version` headers, a
 separate `system` field and `max_tokens`, and reads text content blocks and
@@ -45,6 +47,93 @@ you: `soot run`, `soot config` and `soot models` warn when a callable model has 
   MCP server, reports, audit logs, task context and check commands never see them
   (`tests/credential-boundary.test.ts`, ADR-022, ADR-025).
 - soot never offers a login and never stores credentials.
+
+## Gemini and OpenRouter (opt-in, ADR-049)
+
+Neither vendor is auto-detected. Setting `GEMINI_API_KEY` or `OPENROUTER_API_KEY` alone does
+nothing; you must declare a provider of that kind in your models file. `soot config` will note
+that a reserved key is set but unused (it never prints the value).
+
+```json
+{
+  "version": 1,
+  "providers": [
+    { "id": "gemini", "kind": "google", "apiKeyEnv": "GEMINI_API_KEY" },
+    {
+      "id": "openrouter",
+      "kind": "openrouter",
+      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "routing": { "dataCollection": "deny", "requireParameters": true, "allowFallbacks": true }
+    }
+  ],
+  "models": [
+    {
+      "provider": "gemini",
+      "modelId": "gemini-3.5-flash-lite",
+      "contextWindow": 1048576,
+      "maxOutputTokens": 65536,
+      "tier": "low"
+    },
+    {
+      "provider": "openrouter",
+      "modelId": "anthropic/claude-sonnet-4.5",
+      "contextWindow": 200000,
+      "maxOutputTokens": 8192,
+      "pricing": {
+        "inputPerMTokUsd": 3,
+        "outputPerMTokUsd": 15,
+        "source": "https://openrouter.ai/anthropic/claude-sonnet-4.5",
+        "asOf": "2026-11-14"
+      }
+    }
+  ]
+}
+```
+
+Context windows and the OpenRouter price above are examples: copy current figures from the
+model card. Gemini list prices come from soot's catalog once the default host
+`generativelanguage.googleapis.com` applies (a user-set `pricing` still wins). OpenRouter has
+no catalog rows, because its price varies by the upstream that is routed to; set `pricing` or
+costs will show as "price not set".
+
+Recommended OpenRouter `routing`: `"dataCollection": "deny"`. soot does not force this, because
+OpenRouter's own default is `"allow"`. Other routing fields (`order`, `only`, `ignore`,
+`allowFallbacks`, `requireParameters`, `zdr`, `sort`) and optional `attribution` (`referer`,
+`title`) are documented by OpenRouter; attribution headers are sent only when configured.
+
+The same endpoints can also be configured as plain `openai-compatible` providers (the issue #9
+minimum, and the only option if you do not want the dedicated kinds):
+
+```json
+{
+  "version": 1,
+  "providers": [
+    {
+      "id": "gemini-compat",
+      "kind": "openai-compatible",
+      "baseURL": "https://generativelanguage.googleapis.com/v1beta/openai/",
+      "apiKeyEnv": "GEMINI_API_KEY"
+    },
+    {
+      "id": "openrouter",
+      "kind": "openai-compatible",
+      "baseURL": "https://openrouter.ai/api/v1",
+      "apiKeyEnv": "OPENROUTER_API_KEY"
+    }
+  ],
+  "models": []
+}
+```
+
+Gemini's OpenAI-compatible endpoint is marked **beta** by Google; the `google` kind is
+preferred. The plain `openai-compatible` OpenRouter config does not rewrite HTTP-200 error
+bodies or inject `routing` preferences; use kind `openrouter` for those.
+
+HTTP 402 (credits exhausted) on any provider now falls back to another provider instead of
+being retried as a crash.
+
+These adapters have been verified with fake HTTP and fake keys only. No live Gemini or
+OpenRouter call has been made.
 
 ## DeepSeek (optional)
 

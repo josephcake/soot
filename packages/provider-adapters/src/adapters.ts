@@ -1,4 +1,5 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { createGoogle } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { LanguageModelV4 } from '@ai-sdk/provider';
@@ -10,6 +11,7 @@ import {
 } from '@soot/model-registry';
 import { AiSdkModelClient } from './ai-sdk-client.js';
 import { ProviderError } from './errors.js';
+import { OPENROUTER_BASE_URL, openRouterFetch } from './openrouter.js';
 import type { RetryPolicy } from './retry.js';
 import type { ModelClient } from './types.js';
 
@@ -46,6 +48,32 @@ export function hasApiKey(
   env: Readonly<Record<string, string | undefined>>,
 ): boolean {
   return readApiKey(provider, env) !== undefined;
+}
+
+/**
+ * Reserved opt-in keys (ADR-049). Setting one does nothing until a provider of
+ * that kind is declared in the models file. `soot config` uses this to hint
+ * that a key is set but unused. Presence only; the value is never returned.
+ */
+const OPT_IN_KEYS = [
+  { apiKeyEnv: 'GEMINI_API_KEY', kind: 'google' },
+  { apiKeyEnv: 'OPENROUTER_API_KEY', kind: 'openrouter' },
+] as const;
+
+export function unusedOptInKeyHints(
+  providers: readonly Pick<ProviderConfig, 'apiKeyEnv'>[],
+  env: Readonly<Record<string, string | undefined>>,
+): string[] {
+  const used = new Set(providers.flatMap((p) => (p.apiKeyEnv === undefined ? [] : [p.apiKeyEnv])));
+  const hints: string[] = [];
+  for (const { apiKeyEnv, kind } of OPT_IN_KEYS) {
+    if (readApiKey({ apiKeyEnv } as ProviderConfig, env) === undefined) continue;
+    if (used.has(apiKeyEnv)) continue;
+    hints.push(
+      `$${apiKeyEnv} is set but unused; add a \`${kind}\` provider to your models file (opt-in)`,
+    );
+  }
+  return hints;
 }
 
 function refuse(provider: ProviderConfig, message: string): ProviderError {
@@ -136,6 +164,23 @@ export function createModelClient(
         supportsStructuredOutputs:
           mode === 'json_schema' && model.capabilities.structuredOutput === true,
         ...fetchOption,
+      })(model.modelId);
+      break;
+    case 'google':
+      // Always pass apiKey explicitly: @ai-sdk/google otherwise reads
+      // GOOGLE_GENERATIVE_AI_API_KEY from the process environment (ADR-022, ADR-049).
+      if (apiKey === undefined) throw missingKey();
+      languageModel = createGoogle({ apiKey, ...baseURL, ...fetchOption })(model.modelId);
+      break;
+    case 'openrouter':
+      if (apiKey === undefined) throw missingKey();
+      languageModel = createOpenAICompatible({
+        name: provider.id,
+        baseURL: provider.baseURL ?? OPENROUTER_BASE_URL,
+        apiKey,
+        includeUsage: true,
+        supportsStructuredOutputs: mode !== 'json_object',
+        fetch: openRouterFetch(provider, fetch),
       })(model.modelId);
       break;
     case 'listed-only':

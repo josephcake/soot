@@ -87,23 +87,26 @@ These are recorded in [`docs/decisions/DECISIONS.md`](docs/decisions/DECISIONS.m
 
 ### Supported providers
 
-**Implemented.** Milestone 2 (in progress) adds adapters for Anthropic, OpenAI, and generic
-OpenAI-compatible endpoints (Ollama, LM Studio) through the Vercel AI SDK in-process (ADR-017,
-ADR-019, ADR-022), tested against mocked HTTP. With your own keys, `soot run --agent api`
-sends each task to its routed model (ADR-039); this has been run live with DeepSeek
-(`deepseek-flash`, also as planner) and xAI (`grok-4.7`) only. Anthropic and OpenAI have not
-been called live. Set one or more of `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`
-and `DEEPSEEK_API_KEY` and soot adds those vendors' catalog models by itself, each with a
-tier from its list price, and routes light tasks to cheap models and hard tasks to strong ones
+**Implemented.** Milestone 2 (in progress) adds adapters for Anthropic, OpenAI, Gemini
+(`google`), OpenRouter (`openrouter`), and generic OpenAI-compatible endpoints (Ollama, LM
+Studio) through the Vercel AI SDK in-process (ADR-017, ADR-019, ADR-022, ADR-049), tested
+against mocked HTTP. With your own keys, `soot run --agent api` sends each task to its routed
+model (ADR-039); this has been run live with DeepSeek (`deepseek-flash`, also as planner) and
+xAI (`grok-4.7`) only. Anthropic, OpenAI, Gemini and OpenRouter have not been called live.
+Set one or more of `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY` and
+`DEEPSEEK_API_KEY` and soot adds those vendors' catalog models by itself, each with a tier
+from its list price, and routes light tasks to cheap models and hard tasks to strong ones
 (ADR-043, [auto models](docs/guides/configuration.md#auto-models-from-your-keys-adr-043)).
+Gemini and OpenRouter are opt-in: setting `GEMINI_API_KEY` or `OPENROUTER_API_KEY` does
+nothing until you declare a `google` or `openrouter` provider in your models file (ADR-049).
 Keyless local runtimes (Ollama, LM Studio) on their default ports are found the same way and
 take light work first at $0 (ADR-045,
-[local models](docs/guides/configuration.md#keyless-local-models-adr-045)). A
-models file you write (`@soot/model-registry`) always wins for the vendors it configures. Prices for
-popular models come from a sourced catalog of official list prices (ADR-037); refresh them
-with the [update-model-pricing prompt](skills/update-model-pricing/SKILL.md). DeepSeek is
-optional and user-configured like any OpenAI-compatible provider (ADR-035 lifted the ADR-016
-hold); it is not a default. See
+[local models](docs/guides/configuration.md#keyless-local-models-adr-045)). A models file you
+write (`@soot/model-registry`) always wins for the vendors it configures.
+Prices for popular models come from a sourced catalog of official list prices (ADR-037);
+refresh them with the [update-model-pricing prompt](skills/update-model-pricing/SKILL.md).
+DeepSeek is optional and user-configured like any OpenAI-compatible provider (ADR-035 lifted
+the ADR-016 hold); it is not a default. See
 [`packages/provider-adapters/README.md`](packages/provider-adapters/README.md).
 
 ### Supported harnesses

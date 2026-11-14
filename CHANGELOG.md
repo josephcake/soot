@@ -5,6 +5,33 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (Gemini and OpenRouter, opt-in, ADR-049)
+
+- Provider kind `google` for the Gemini API (via `@ai-sdk/google` 4.0.118). Thinking tokens
+  count as output, cached input as cache reads, and existing Gemini catalog prices apply
+  automatically. Uses `GEMINI_API_KEY` only when a `google` provider is declared in your
+  models file.
+- Provider kind `openrouter` (OpenAI-compatible, default base `https://openrouter.ai/api/v1`)
+  with optional `routing` preferences (`dataCollection`, `zdr`, `order`, `only`, `ignore`,
+  `allowFallbacks`, `requireParameters`, `sort`) and optional attribution headers. Uses
+  `OPENROUTER_API_KEY` only when declared.
+- Neither is auto-detected: setting the key alone does nothing; `soot config` notes a
+  set-but-unused key.
+
+### Fixed
+
+- HTTP 402 (credits exhausted) now falls back to another provider instead of being retried
+  as a crash.
+- OpenRouter errors delivered as HTTP 200 with an `error` body are now classified by their
+  real status (rate limit, unavailable, …).
+
+### Docs
+
+- `.env.example`, `docs/guides/providers.md`, `docs/guides/configuration.md`: Gemini/OpenRouter
+  setup, plus the plain `openai-compatible` alternative.
+
+Verified with fake HTTP and fake keys only; no live Gemini or OpenRouter calls (ADR-011).
+
 ### Added (targeted edits for `--agent api`, ADR-048, issue #4)
 
 - `--agent api` models can now return targeted edits instead of whole files:

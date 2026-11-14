@@ -148,6 +148,18 @@ describe('applyPriceCatalog / unpricedModels', () => {
     expect(xai && providerHost(xai)).toBe('api.x.ai');
     expect(local && providerHost(local)).toBe('127.0.0.1');
     expect(listed && providerHost(listed)).toBeNull();
+    const gemini = parseRegistryConfig({
+      version: 1,
+      providers: [{ id: 'gemini', kind: 'google', apiKeyEnv: 'GEMINI_API_KEY' }],
+      models: [],
+    }).providers[0];
+    const openrouter = parseRegistryConfig({
+      version: 1,
+      providers: [{ id: 'openrouter', kind: 'openrouter', apiKeyEnv: 'OPENROUTER_API_KEY' }],
+      models: [],
+    }).providers[0];
+    expect(gemini && providerHost(gemini)).toBe('generativelanguage.googleapis.com');
+    expect(openrouter && providerHost(openrouter)).toBe('openrouter.ai');
   });
 });
 

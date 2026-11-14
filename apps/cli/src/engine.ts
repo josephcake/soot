@@ -100,7 +100,12 @@ import {
   formatLimit,
   withTimeLimit,
 } from './time-limit.js';
-import { createModelClient, hasApiKey, probeLocalRuntimes } from '@soot/provider-adapters';
+import {
+  createModelClient,
+  hasApiKey,
+  probeLocalRuntimes,
+  unusedOptInKeyHints,
+} from '@soot/provider-adapters';
 
 /*
  * The soot engine behind the CLI and the MCP server: one prompt → recorded-fixture
@@ -1426,6 +1431,7 @@ export class SootEngine implements OrchestrationService {
       local: p.local,
     }));
     const decomposer = this.#decomposerModel(cfg, registry);
+    const optInHints = unusedOptInKeyHints(registry.providers(), this.#o.modelEnv ?? process.env);
     const data = {
       configFile: cfg.path,
       dataDir: this.#o.dataDir,
@@ -1467,6 +1473,7 @@ export class SootEngine implements OrchestrationService {
         catalogPriced: [...priced.catalogPriced],
         unpriced: [...priced.unpriced],
       },
+      unusedOptInKeys: optInHints,
     };
     const pricingNote = unpricedWarning(priced.unpriced);
     const text = [
@@ -1500,6 +1507,7 @@ export class SootEngine implements OrchestrationService {
         (p) =>
           `- ${p.id} (${p.kind})${p.apiKeyEnv === null ? '' : ` key: $${p.apiKeyEnv}`}${p.local ? ' local' : ''}`,
       ),
+      ...optInHints,
     ].join('\n');
     return { ok: true, text, data: json(data) as Record<string, JsonValue> };
   }

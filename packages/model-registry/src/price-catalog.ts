@@ -264,6 +264,9 @@ export const PRICE_CATALOG: readonly CatalogEntry[] = Object.freeze([
 const DEFAULT_HOST: Partial<Record<ProviderConfig['kind'], string>> = {
   anthropic: 'api.anthropic.com',
   openai: 'api.openai.com',
+  google: 'generativelanguage.googleapis.com',
+  // No catalog rows: OpenRouter prices vary by the upstream that is routed to.
+  openrouter: 'openrouter.ai',
 };
 
 /** The API hostname a provider sends requests to, or `null` (listed-only, or unknown). */

@@ -41,11 +41,14 @@ it never contains the key itself, and the config validator rejects anything that
 environment-variable name. Conventional names, reserved in `.env.example` with empty values:
 
 `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (the Milestone 2 adapters), `DEEPSEEK_API_KEY` (used
-through the `openai-compatible` adapter when you configure a DeepSeek provider, ADR-035), and
-`XAI_API_KEY` (xAI through the `openai-compatible` adapter), and `GEMINI_API_KEY`,
-`OPENROUTER_API_KEY` (reserved; configure them as `openai-compatible` providers yourself).
-The first four are also detected by name (presence only) and add that vendor's models
-automatically ([auto models](#auto-models-from-your-keys-adr-043)).
+through the `openai-compatible` adapter when you configure a DeepSeek provider, ADR-035),
+`XAI_API_KEY` (xAI through the `openai-compatible` adapter), `GEMINI_API_KEY` (the `google`
+kind, ADR-049) and `OPENROUTER_API_KEY` (the `openrouter` kind, or a plain
+`openai-compatible` config; ADR-049). The first four are also detected by name (presence
+only) and add that vendor's models automatically
+([auto models](#auto-models-from-your-keys-adr-043)). Gemini and OpenRouter are **opt-in**:
+setting the key alone does nothing until you declare a provider of that kind in your models
+file. `soot config` notes a set-but-unused reserved key, and never prints the value.
 
 Rules (ADR-022, M2-08):
 

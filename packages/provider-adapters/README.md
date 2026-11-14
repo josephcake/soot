@@ -13,12 +13,21 @@ Adapters wrap the [Vercel AI SDK](https://ai-sdk.dev) in-process (ADR-019, ADR-0
 | `anthropic`         | Anthropic Messages (`@ai-sdk/anthropic`)                    | named by `apiKeyEnv`, e.g. `ANTHROPIC_API_KEY`    |
 | `openai`            | OpenAI Chat Completions (`@ai-sdk/openai`)                  | named by `apiKeyEnv`, e.g. `OPENAI_API_KEY`       |
 | `openai-compatible` | Chat Completions at your `baseURL` (Ollama, LM Studio, ...) | optional; if `apiKeyEnv` is named, it must be set |
+| `google`            | Gemini `generateContent` (`@ai-sdk/google`)                 | named by `apiKeyEnv`, e.g. `GEMINI_API_KEY`       |
+| `openrouter`        | OpenRouter (OpenAI-compatible + 200-error wrapper)          | named by `apiKeyEnv`, e.g. `OPENROUTER_API_KEY`   |
 | `listed-only`       | never called                                                | none                                              |
 
 Only `listed-only` providers are refused. DeepSeek has no special treatment since ADR-035
 (which lifted the ADR-016 hold): configure it as `openai-compatible` with
 `baseURL: "https://api.deepseek.com/v1"` and `apiKeyEnv: "DEEPSEEK_API_KEY"`. It is optional
 and not a default. Live DeepSeek calls (planning and task work) were made on 2026-11-13.
+
+Gemini and OpenRouter are opt-in (ADR-049): they are never added to the auto pool. Declare a
+`google` or `openrouter` provider in your models file; setting the key alone does nothing.
+The `google` factory is always given an explicit `apiKey` from `apiKeyEnv`, so the SDK cannot
+silently read `GOOGLE_GENERATIVE_AI_API_KEY`. OpenRouter routing preferences and attribution
+headers are optional; HTTP-200 `{error}` bodies are rewritten to the real status. HTTP 402
+(credits exhausted) is classified as `auth` and falls back. Verified with mocked HTTP only.
 
 ## Interface
 

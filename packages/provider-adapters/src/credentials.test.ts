@@ -15,7 +15,14 @@ import type { StreamEvent } from './types.js';
 
 const ANTHROPIC_SECRET = 'sk-ant-FAKE-test-secret-4f1c9a';
 const OPENAI_SECRET = 'sk-proj-FAKE-test-secret-77d2be';
-const env = { ANTHROPIC_API_KEY: ANTHROPIC_SECRET, OPENAI_API_KEY: OPENAI_SECRET };
+const GEMINI_SECRET = 'AIza-FAKE-test-secret-gemini11';
+const OPENROUTER_SECRET = 'sk-or-FAKE-test-secret-or11';
+const env = {
+  ANTHROPIC_API_KEY: ANTHROPIC_SECRET,
+  OPENAI_API_KEY: OPENAI_SECRET,
+  GEMINI_API_KEY: GEMINI_SECRET,
+  OPENROUTER_API_KEY: OPENROUTER_SECRET,
+};
 
 let logged: string[] = [];
 beforeEach(() => {
@@ -62,6 +69,22 @@ const cases: {
     secret: OPENAI_SECRET,
     header: 'authorization',
     expected: `Bearer ${OPENAI_SECRET}`,
+  },
+  {
+    name: 'google',
+    ref: 'gemini/test-gemini',
+    format: 'gemini',
+    secret: GEMINI_SECRET,
+    header: 'x-goog-api-key',
+    expected: GEMINI_SECRET,
+  },
+  {
+    name: 'openrouter',
+    ref: 'openrouter/anthropic/claude-x',
+    format: 'openrouter',
+    secret: OPENROUTER_SECRET,
+    header: 'authorization',
+    expected: `Bearer ${OPENROUTER_SECRET}`,
   },
 ];
 
