@@ -37,7 +37,10 @@ environment-variable name. Conventional names, reserved in `.env.example` with e
 
 `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (the Milestone 2 adapters), `DEEPSEEK_API_KEY` (used
 through the `openai-compatible` adapter when you configure a DeepSeek provider, ADR-035), and
-`GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `XAI_API_KEY` (reserved, no adapter yet).
+`XAI_API_KEY` (xAI through the `openai-compatible` adapter), and `GEMINI_API_KEY`,
+`OPENROUTER_API_KEY` (reserved; configure them as `openai-compatible` providers yourself).
+The first four are also detected by name (presence only) and add that vendor's models
+automatically ([auto models](#auto-models-from-your-keys-adr-043)).
 
 Rules (ADR-022, M2-08):
 
@@ -51,7 +54,8 @@ Rules (ADR-022, M2-08):
 
 ## Model registry config
 
-soot has no built-in model list. You describe providers and models in JSON and load it with
+soot has no built-in model list beyond the [auto models](#auto-models-from-your-keys-adr-043)
+it adds for well-known keys. You describe providers and models in JSON and load it with
 `loadRegistryConfigFile(path)` (`@soot/model-registry`). A model you leave without `pricing`
 gets soot's sourced catalog price when one exists for that vendor API and model id (see
 [Prices](#prices)):
@@ -153,7 +157,8 @@ task edits. Unknown keys are rejected.
 
 | Key                  | Default    | Meaning                                                                                                                       |
 | -------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `models`             | (required) | Model registry file (above), relative to the config file.                                                                     |
+| `models`             | none       | Model registry file (above), relative to the config file. Optional: without it, models come from your keys (`autoModels`).    |
+| `autoModels`         | `true`     | Add models for well-known vendor keys that are set (see [Auto models](#auto-models-from-your-keys-adr-043)). `false` = off.   |
 | `policy`             | `balanced` | `economy`, `balanced` or `quality` ([routing](model-routing.md)).                                                             |
 | `checks`             | `[]`       | Project checks run on every task that changes files, and on the merged result.                                                |
 | `acceptance`         | `{}`       | Extra commands per task id; also run for read-only tasks (their only way to be verified).                                     |
@@ -165,7 +170,7 @@ task edits. Unknown keys are rejected.
 | `escalation`         | defaults   | Escalation limits and budgets (`@soot/escalation`, e.g. `{ "sameModelRetries": 0 }`).                                         |
 | `fixtures`           | none       | JSON array of extra recorded decompositions `{ id, prompt, tasks }`.                                                          |
 | `acpAgent`           | none       | ACP agent for `--agent acp`: `command`, `args`, `passEnv` (variable names; credential-like names are rejected).               |
-| `decomposer`         | none       | `{ "model": "<provider/modelId>" }`: a model from your registry for prompts with no fixture (see below).                      |
+| `decomposer`         | none       | `{ "model": "<provider/modelId>" }` or `{ "model": "auto" }`: the model for prompts with no fixture (see below).              |
 
 Check entries: `name`, `kind` (`test`, `typecheck`, `lint`, `acceptance`), `argv`, optional
 `timeoutMs` and `required` (default `true`).
@@ -200,6 +205,40 @@ models in your registry file:
   cost report or run budget.
 - **Status:** implemented, verified with mock model clients, and run live with
   `deepseek/deepseek-flash` (2026-11-13).
+
+### Auto models from your keys (ADR-043)
+
+If a well-known vendor key is set in the environment soot starts in, soot adds that vendor's
+models by itself, so you can have several keys and let soot pick per task:
+
+| Key variable        | Provider id | Endpoint                                             |
+| ------------------- | ----------- | ---------------------------------------------------- |
+| `ANTHROPIC_API_KEY` | `anthropic` | Anthropic Messages API                               |
+| `OPENAI_API_KEY`    | `openai`    | OpenAI Chat Completions                              |
+| `XAI_API_KEY`       | `xai`       | `https://api.x.ai/v1` (OpenAI-compatible)            |
+| `DEEPSEEK_API_KEY`  | `deepseek`  | `https://api.deepseek.com/v1` (`json_object` output) |
+
+- soot checks only that the variable is set (inside the adapter layer); the value is never
+  printed, logged or written anywhere.
+- The models are that vendor's entries in soot's [price catalog](#prices), with the
+  catalog's sourced price. Each gets `tools` and `structuredOutput`; vision, reasoning and
+  context window stay unknown. Reliability stays unknown too.
+- Each gets a **tier** from its list output price: `low` under $2.50 per million output
+  tokens, `medium` from $2.50, `high` from $15. While a model has no reliability data, the
+  router gives it work up to its tier, cheapest first; once soot has recorded enough outcomes
+  for the model, measured reliability decides instead ([routing](model-routing.md)).
+- **Your models file wins.** A vendor whose provider id or key variable your file already
+  configures gets nothing added. Configure a vendor yourself to choose its models, tiers or
+  priors. `"autoModels": false` turns the pool off.
+- You can set `"tier": "low" | "medium" | "high"` on your own models too, for example a free
+  [FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi) endpoint for light work.
+- Work that needs a capability soot does not assume (for example `reasoning` for security
+  review) still needs a model that declares it in your models file.
+- `soot config` lists each vendor as added, not used (no key), configured (your file covers
+  it) or off. `soot models` marks auto models and shows each tier.
+- `"decomposer": { "model": "auto" }` picks the cheapest priced model with structured output
+  whose key is set, skipping `low`-tier models when another is available. Without
+  `decomposer`, decomposition stays fixtures-only as before.
 
 ## CLI state files
 

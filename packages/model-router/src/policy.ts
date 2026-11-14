@@ -27,6 +27,11 @@ export const RoutingPolicySchema = z
     allowUnknownReliability: z.boolean(),
     /** When nothing meets the threshold: fail, or take the most reliable remaining model. */
     onNoQualifying: z.enum(['fail', 'most-reliable']),
+    /**
+     * Models with a `tier` and unknown reliability (ADR-043): when no model's tier reaches the
+     * task's, take the strongest tier available instead of failing. Default true.
+     */
+    tierFallback: z.boolean().default(true),
     /** Restrict to these providers (`null` = all callable providers). */
     providers: z.array(z.string()).nullable(),
     excludeProviders: z.array(z.string()),
@@ -45,6 +50,7 @@ export type RoutingPolicy = z.infer<typeof RoutingPolicySchema>;
 const common = {
   allowUnknownReliability: false,
   onNoQualifying: 'fail',
+  tierFallback: true,
   providers: null,
   excludeProviders: [],
   localOnly: false,

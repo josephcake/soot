@@ -92,8 +92,11 @@ OpenAI-compatible endpoints (Ollama, LM Studio) through the Vercel AI SDK in-pro
 ADR-019, ADR-022), tested against mocked HTTP. With your own keys, `soot run --agent api`
 sends each task to its routed model (ADR-039); this has been run live with DeepSeek
 (`deepseek-flash`, also as planner) and xAI (`grok-4.7`) only. Anthropic and OpenAI have not
-been called live. soot ships no
-built-in model list; you configure models yourself (`@soot/model-registry`). Prices for
+been called live. Set one or more of `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`
+and `DEEPSEEK_API_KEY` and soot adds those vendors' catalog models by itself, each with a
+tier from its list price, and routes light tasks to cheap models and hard tasks to strong ones
+(ADR-043, [auto models](docs/guides/configuration.md#auto-models-from-your-keys-adr-043)). A
+models file you write (`@soot/model-registry`) always wins for the vendors it configures. Prices for
 popular models come from a sourced catalog of official list prices (ADR-037); refresh them
 with the [update-model-pricing prompt](skills/update-model-pricing/SKILL.md). DeepSeek is
 optional and user-configured like any OpenAI-compatible provider (ADR-035 lifted the ADR-016
@@ -153,7 +156,9 @@ Individual steps: `pnpm run typecheck | lint | format:check | test | build`.
 
 `SOOT_LOG_LEVEL` and `SOOT_DATA_DIR` configure soot (listed in `.env.example`); export them
 in your shell. Provider keys are read only by the provider adapters, from
-the variable your model config names (`apiKeyEnv`), and nothing loads `.env` files yet. Details: [`docs/guides/configuration.md`](docs/guides/configuration.md). Never commit real keys.
+the variable your model config names (`apiKeyEnv`) or a well-known one (`ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`, `XAI_API_KEY`, `DEEPSEEK_API_KEY`; checked for presence only, ADR-043),
+and nothing loads `.env` files yet. Details: [`docs/guides/configuration.md`](docs/guides/configuration.md). Never commit real keys.
 
 ## Example execution and cost optimization
 
@@ -222,6 +227,8 @@ is rate-limited. Run it locally, copy the unified key from its dashboard, and po
 }
 ```
 
-`auto` lets FreeLLMAPI pick the model; you can also name a specific one. FreeLLMAPI is a
+`auto` lets FreeLLMAPI pick the model; you can also name a specific one. Add
+`"tier": "low"` to the model to keep it on light tasks while your paid keys take the hard ones
+(ADR-043). FreeLLMAPI is a
 separate project, meant for personal experimentation, and each provider's own free-tier
 terms still apply.

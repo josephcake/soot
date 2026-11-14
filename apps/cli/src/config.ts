@@ -67,22 +67,37 @@ export const AcpAgentConfigSchema = z
  */
 export const DecomposerConfigSchema = z
   .object({
-    model: z
-      .string()
-      .min(3)
-      .max(512)
-      .regex(
-        /^[^/\s]+\/\S+$/,
-        'must be a model reference "provider/modelId" from your models file',
-      ),
+    /**
+     * A model reference `provider/modelId`, or `auto` (ADR-043): soot picks the cheapest priced
+     * model with structured output whose key is set, preferring tier medium or above.
+     */
+    model: z.union([
+      z.literal('auto'),
+      z
+        .string()
+        .min(3)
+        .max(512)
+        .regex(
+          /^[^/\s]+\/\S+$/,
+          'must be "auto" or a model reference "provider/modelId" from your models file',
+        ),
+    ]),
   })
   .strict();
 
 export const ProjectConfigSchema = z
   .object({
     version: z.literal(1),
-    /** Registry config file (see docs/guides/configuration.md), relative to this file. */
-    models: z.string().min(1),
+    /**
+     * Registry config file (see docs/guides/configuration.md), relative to this file. Optional
+     * (ADR-043): without one, the models come only from the keys that are set (`autoModels`).
+     */
+    models: z.string().min(1).optional(),
+    /**
+     * Add models for well-known vendor keys that are set (ADR-043). Default true. Your models
+     * file always wins for a vendor it configures.
+     */
+    autoModels: z.boolean().default(true),
     policy: z.enum(['economy', 'balanced', 'quality']).default('balanced'),
     /** Project checks soot runs for every task that changes files. */
     checks: z.array(CheckSchema).default([]),
@@ -123,7 +138,8 @@ export interface LoadedConfig {
   readonly path: string;
   readonly dir: string;
   readonly config: ProjectConfig;
-  readonly modelsPath: string;
+  /** `null` when soot.config.json names no models file (auto pool only, ADR-043). */
+  readonly modelsPath: string | null;
   readonly fixturesPath: string | null;
   readonly checks: readonly CheckCommand[];
   readonly acceptance: Readonly<Record<string, readonly CheckCommand[]>>;
@@ -163,7 +179,7 @@ export function loadProjectConfig(path: string): LoadedConfig {
     path: resolve(path),
     dir,
     config,
-    modelsPath: resolve(dir, config.models),
+    modelsPath: config.models === undefined ? null : resolve(dir, config.models),
     fixturesPath: config.fixtures === undefined ? null : resolve(dir, config.fixtures),
     checks: config.checks.map(toCheck),
     acceptance: Object.fromEntries(

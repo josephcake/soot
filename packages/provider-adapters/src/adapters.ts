@@ -37,6 +37,17 @@ export function readApiKey(
   return value === undefined || value === '' ? undefined : value;
 }
 
+/**
+ * True when the provider's key variable is set to a non-empty value (ADR-043). Presence only:
+ * the value is read here, inside the credential boundary, and never returned.
+ */
+export function hasApiKey(
+  provider: ProviderConfig,
+  env: Readonly<Record<string, string | undefined>>,
+): boolean {
+  return readApiKey(provider, env) !== undefined;
+}
+
 function refuse(provider: ProviderConfig, message: string): ProviderError {
   return new ProviderError({ kind: 'refused', provider: provider.id, message });
 }
