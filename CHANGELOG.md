@@ -39,6 +39,12 @@ All notable changes are recorded here by milestone. Format loosely follows
   requests of about 270 s each, the first dropped by xAI.
 - The scheduler's attempt timeout reads "30 min" or "5s" instead of milliseconds; `soot config`
   without `--agent` names `--agent api` too.
+- A hung call sometimes surfaced as the adapter's generic "operation was aborted" timeout
+  instead of "timed out after … waiting for <model>" (or, for the planner, not as a
+  `TimeLimitError`): the adapter's per-request timer and the limit came due in the same
+  millisecond. The per-request timeout is now the time left plus 1 s
+  (`REQUEST_TIMEOUT_MARGIN_MS`), so the limit always fires first. This made the ADR-040 tests
+  flaky on Node 26 in CI.
 
 ### Added (docs: recording of a real run)
 

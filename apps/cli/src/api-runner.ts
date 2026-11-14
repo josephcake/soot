@@ -309,7 +309,7 @@ export class ApiAgentRunner implements AgentRunner {
     const parsed = await withTimeLimit(
       limitMs,
       signal,
-      async (callSignal, remaining) => {
+      async (callSignal, requestTimeout) => {
         let reply: ReturnType<typeof parseEditsReply> = { ok: false, error: 'no reply' };
         for (let round = 0; round < 2; round++) {
           const response = await client.generate(
@@ -317,7 +317,7 @@ export class ApiAgentRunner implements AgentRunner {
               system: SYSTEM,
               messages,
               maxOutputTokens: this.#o.maxOutputTokens ?? 16_000,
-              timeoutMs: remaining(),
+              timeoutMs: requestTimeout(),
             },
             callSignal,
           );
