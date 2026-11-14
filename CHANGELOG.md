@@ -5,6 +5,22 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Verified (live acceptance runs and the first savings benchmark, ADR-050)
+
+- `scripts/benchmark.mjs` and `examples/bench-app`: a reproducible savings benchmark (issue #3,
+  spec Test 5) that runs six fixed prompts through soot's routing and through the single most
+  expensive available model, with real keys. It needs `--live`, refuses in CI and never runs in
+  tests. First results with xAI and DeepSeek, three repetitions:
+  [docs/benchmarks/2026-11-14.md](docs/benchmarks/2026-11-14.md). On the prompts both arms
+  passed, routing cost $0.0174 against $0.1176; routed passed 15/18 runs, the baseline 11/18.
+  The high-complexity prompt failed in both arms, and the sample is small.
+- Spec Tests 1 to 6 ran live with `--agent api`
+  ([docs/benchmarks/2026-11-14-acceptance.md](docs/benchmarks/2026-11-14-acceptance.md)):
+  Tests 1, 2 and 4 passed (Test 4's review is unverified by design), Test 3 in part, and Test 6
+  for provider outage and model timeout.
+- Status: M2-07 (two real providers), M6-07 (acceptance runs) and M6-08 (benchmark) are
+  Verified. Status docs no longer say that no live model has run.
+
 ### Added (process sandbox for agent commands, ADR-051)
 
 - soot-run checks and the ACP agent process (`--agent acp`, and the Claude Code and Codex

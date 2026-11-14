@@ -85,5 +85,8 @@ soot models   # every model (yours and auto-added): eligible or why not, price, 
 soot status <run-id>   # the model path of each task and every decision
 ```
 
-No cost savings are claimed: savings will be reported only from measured benchmark runs
-(M6-08).
+Savings are reported only from measured runs. The first benchmark
+([docs/benchmarks/2026-11-14.md](../benchmarks/2026-11-14.md), M6-08) is small: two vendors, six
+prompts, three repetitions. On the light and medium prompts that passed in both arms, routing
+cost 85% less than sending every task to `xai/grok-4.7`; on the one high-complexity prompt
+routing picked the same model as the baseline and saved nothing.

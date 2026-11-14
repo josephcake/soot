@@ -7,7 +7,7 @@ every exit criterion is verified from real runs. Dates are recorded only when ve
 | --------- | --------------------------------- | -------------------------------------------------- | --------------- |
 | M0        | Repository Foundation             | Completed (verified locally and on hosted CI)      | 2026-11-12      |
 | M1        | Core Orchestration                | Completed (verified locally with mock agents)      | 2026-11-12      |
-| M2        | Multi-Provider Model Connectivity | In Progress (partial; mocks only, M2-07 blocked)   | —               |
+| M2        | Multi-Provider Model Connectivity | In Progress (partial; M2-07 verified live)         | —               |
 | M3        | Intelligent Model Routing         | Completed (verified locally with fixture registry) | 2026-11-12      |
 | M4        | Adaptive Execution                | Completed (verified locally with mock agents)      | 2026-11-12      |
 | M5        | Codebase Integration and Safety   | Completed (verified locally; fixture repos, mocks) | 2026-11-12      |
@@ -58,7 +58,7 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Dependencies:** M0; M1 task schema.
 - **Acceptance / exit criteria:** at least two independent providers work with real API credentials; multiple models can be invoked; provider failures are handled; models can be selected dynamically.
 - **Note:** Real-credential verification is blocked until a user supplies their own keys (ADR-011). Mocked-provider tests are required regardless.
-- **Status:** In Progress (partial). Mockable scope (M2-01, -02, -04, -05, -06, -08) verified with mocked HTTP; M2-03 live local test skipped (no local runtime); M2-07 Blocked on BYOK keys. Not Completed: the real-credential exit criterion is unmet.
+- **Status:** In Progress (partial). Mockable scope (M2-01, -02, -04, -05, -06, -08) verified with mocked HTTP; M2-03 live local test skipped (no local runtime); M2-09 (Gemini, OpenRouter) mocked HTTP only. M2-07 Verified on 2026-11-14 (ADR-050): xAI and DeepSeek ran tasks live with the user's keys, several models were invoked and selected per task, and a live outage and timeouts were handled by fallback and retries. Not Completed while M2-03 and M2-09 are unverified.
 - **Evidence:** `packages/provider-adapters`, `packages/model-registry` tests; `tests/credential-boundary.test.ts`; ADR-022.
 - **Completion date:** —
 
@@ -68,7 +68,7 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Deliverables:** task complexity evaluation; capability matching; cost estimation; model selection; routing explanations; configurable policies (Economy / Balanced / Quality / Custom).
 - **Dependencies:** M1, M2.
 - **Acceptance / exit criteria:** simple tasks go to inexpensive capable models; complex tasks can go to stronger models; selection is per task; routing decisions are logged and explainable.
-- **Status:** Completed. Verified locally with a fictional model registry and the spec's fixture prompts, without network access or keys. Complexity evaluation is heuristic until a model-backed planner exists (ADR-023). Routed tasks cannot run on real providers until M2-07 (Blocked).
+- **Status:** Completed. Verified locally with a fictional model registry and the spec's fixture prompts, without network access or keys. Complexity evaluation is heuristic until a model-backed planner exists (ADR-023). Routed tasks run on real providers since ADR-039 (M2-07 Verified, ADR-050).
 - **Evidence:** `tests/m3-routing-end-to-end.test.ts` (EC1–EC4), `packages/model-router` tests (M3-01…M3-06), `packages/observability/src/routing-log.test.ts`.
 - **Completion date:** 2026-11-12
 
@@ -78,7 +78,7 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Deliverables:** execution monitoring; escalation and downgrade rules; retry management; context transfer; failure recovery; task cancellation.
 - **Dependencies:** M1, M3.
 - **Acceptance / exit criteria:** a task can be escalated during execution; previous findings are preserved; unrelated completed tasks are not restarted; escalation loops are bounded.
-- **Status:** Completed. Verified locally with mock agents, the fictional routing registry and the spec's fixture prompts (§17 Tests 3 and 6), without network access or keys. Triggers rely on agents' structured self-report until Milestone 5 checks evidence (ADR-024). Escalated tasks cannot run on real providers until M2-07 (Blocked).
+- **Status:** Completed. Verified locally with mock agents, the fictional routing registry and the spec's fixture prompts (§17 Tests 3 and 6), without network access or keys. Triggers rely on agents' structured self-report until Milestone 5 checks evidence (ADR-024). Escalation on real providers was seen live on 2026-11-14 (ADR-050).
 - **Evidence:** `tests/m4-adaptive-end-to-end.test.ts` (EC1–EC6), `packages/escalation` tests (M4-01…M4-04), `packages/agent-runtime/src/scheduler-attempts.test.ts` (M4-05, M4-06), `packages/context-manager/src/execution-store.test.ts` (attempt history, schema v2).
 - **Completion date:** 2026-11-12
 
@@ -88,7 +88,7 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Deliverables:** filesystem integration; git integration; file-conflict detection; git worktree isolation; patch integration; test execution; final validation; task-level cost reporting.
 - **Dependencies:** M1, M4.
 - **Acceptance / exit criteria:** multiple tasks modify a real repository safely; conflicting changes are detected; integration failures are reported; relevant tests are executed.
-- **Status:** Completed. Verified locally on real temporary git repositories with real `node --test`, `tsc` and lint commands run by soot itself; agents are mocks that write files, so no model or provider is called (ADR-025). A task is Verified only from soot-run evidence on its real diff. Real-model execution still depends on M2-07 (Blocked) and harness runners (M6).
+- **Status:** Completed. Verified locally on real temporary git repositories with real `node --test`, `tsc` and lint commands run by soot itself; agents are mocks that write files, so no model or provider is called (ADR-025). A task is Verified only from soot-run evidence on its real diff. Real-model execution runs through `--agent api` since ADR-039 (M2-07 Verified, ADR-050); harness runners are M6.
 - **Evidence:** `tests/m5-codebase-end-to-end.test.ts` (12 tests: EC1–EC4, M5-05…M5-09), `packages/integrations` tests (worktrees, cleanup, merge-tree integration, scope, structured edits, command controls), `packages/observability/src/audit-cost-report.test.ts`, `packages/context-manager/src/untrusted.test.ts` and `execution-store.test.ts` (schema v3), `packages/agent-runtime/src/permissions.test.ts`.
 - **Completion date:** 2026-11-12
 
@@ -98,7 +98,7 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Deliverables:** universal orchestration skill (`SKILL.md`); Claude Code integration; Codex integration; MCP server where appropriate; standalone CLI (`orchestrator run|models|status|config|cost|stop`); installation docs.
 - **Dependencies:** M5.
 - **Acceptance / exit criteria:** a user invokes orchestration from a supported harness; one prompt triggers the complete workflow; the user receives the consolidated result.
-- **Status:** In Progress (partial). Exit criteria **not met**: no harness is supported yet (M6-04/05 Implemented as ACP runner profiles but tested against simulated adapters only, ADR-047; no real run) and real execution needs BYOK providers (M2-07, Blocked). Done: the `soot` CLI, the MCP server (tested with the official SDK client), the universal skill and its installer, and the docs, all against fixtures and a scripted mock agent (ADR-026); and one generic ACP driver with `soot run --agent acp`, tested only against soot's own mock ACP agent (ADR-027). No vendor harness has been run through it.
+- **Status:** In Progress (partial). Exit criteria **not met**: no harness is supported yet (M6-04/05 Implemented as ACP runner profiles but tested against simulated adapters only, ADR-047; no real run) Real providers are verified (M2-07, ADR-050), and spec Tests 1, 2 and 4 ran live (M6-07) along with the savings benchmark (M6-08). Done: the `soot` CLI, the MCP server (tested with the official SDK client), the universal skill and its installer, and the docs, all against fixtures and a scripted mock agent (ADR-026); and one generic ACP driver with `soot run --agent acp`, tested only against soot's own mock ACP agent (ADR-027). No vendor harness has been run through it.
 - **Completion date:** —
 
 ## M7 — IDE Extensions

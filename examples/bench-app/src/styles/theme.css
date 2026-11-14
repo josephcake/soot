@@ -1,0 +1,15 @@
+:root {
+  --brand: #ff7a1a;
+  --surface: #111111;
+  --text: #e8dcc8;
+}
+
+.card {
+  background: var(--surface);
+  border: 2px solid var(--brand);
+  color: var(--text);
+}
+
+.link {
+  color: var(--brand);
+}

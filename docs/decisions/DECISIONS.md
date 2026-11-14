@@ -1334,6 +1334,63 @@ generativelanguage.googleapis.com`, so the existing Gemini catalog prices apply.
   - Not live-verified against Gemini or OpenRouter; fixtures are doc-derived.
 - **Reversible:** Yes. Remove the two kinds, the 402 mapping, and the dependency pin.
 
+## ADR-050: Live acceptance runs and the first savings benchmark; M2-07 is met
+
+- **Date:** 2026-11-14
+- **Status:** Accepted (Mochi, under its engineering grant; Joseph approved real runs with his
+  xAI and DeepSeek keys and a spend cap of $3).
+- **Context:** The spec's acceptance scenarios (§17 Tests 1 to 6) had run only with the mock
+  agent, so M6-07 was Blocked and M6-08 (the cost benchmark, issue #3) Not Started. The spec
+  forbids savings claims without benchmark data (§504). Status docs still said no live model
+  had run, although ADR-039 recorded live DeepSeek and xAI runs on 2026-11-13, and left open
+  whether that met M2-07 (real execution on two independent providers with user keys).
+- **Decision:**
+  - **Benchmark.** `scripts/benchmark.mjs` runs a fixed task set (`examples/bench-app`: six
+    prompts, seven tasks, recorded fixtures, protected acceptance tests) two ways: soot's
+    routing over the auto pool from the keys that are set, and a baseline with only the
+    pool's most expensive model (highest list output price). Each run gets a fresh repo copy
+    and data dir; pass/fail is the bench app's own acceptance and project tests on the landed
+    tree; cost is soot's actual cost from reported tokens; unknown stays unknown. It spends
+    money, so it refuses without `--live` or when `CI` is set, and no test or CI step runs it.
+    `--max-usd` stops it before the next run once known spend reaches the cap.
+  - **Results** are published with method, raw data and caveats in
+    `docs/benchmarks/2026-11-14.md` and `.json`: three repetitions with xAI and DeepSeek. On
+    the 10 paired runs where both arms passed with known cost, routed $0.0174 vs baseline
+    $0.1176. Routed passed 15/18, baseline 11/18. The high-complexity prompt failed in both
+    arms (same model, 120 s call limit), and the baseline's 0/3 on the title prompt comes from
+    having no escalation target plus retries that do not see the failed check's output. That
+    is all soot may claim; README and the routing guide quote it with the sample size.
+  - **Acceptance runs** (`docs/benchmarks/2026-11-14-acceptance.md`): Tests 1 and 2 passed
+    and landed; Test 4 ran on both providers with implementation and tests verified and the
+    read-only review unverified by design; Test 3 started cheap but did not escalate from
+    theme complexity (live escalation was seen in Test 1 and the benchmark, from repeated
+    failed checks); Test 6 was run live for a provider outage (fallback worked) and model
+    timeouts (retries, cross-provider fallback, attempt limit, finished task kept). Rate
+    limits, invalid output, agent crash and resume were not run live.
+  - **Status.** M2-07 **Verified**: xAI and DeepSeek are independent providers, both ran
+    tasks with the user's own keys, recorded here and in ADR-039; several models were
+    invoked and selected per task, and live failures were handled. Milestone 2 stays In
+    Progress because M2-03 and M2-09 are not verified live. M6-07 **Verified** (Tests 1, 2,
+    4 recorded live, with the Test 4 caveats above). M6-08 **Verified** (measured, published,
+    small). Milestone 6 stays In Progress (no real harness, M6-04/05).
+- **Verification:** the runs themselves (2026-11-14, about 12:44 to 1:33 PM PT, soot built
+  from `5dfbd8d`), and a smoke run of benchmark prompt 2 in both arms after rebasing onto
+  `dd6ff34` (passed). Live spend: $0.32 known for all runs (benchmark $0.25, acceptance
+  $0.07); 21 timed-out calls reported no usage, so their cost, if billed, is unknown.
+  `bash scripts/ci.sh` with all four key variables unset passes and makes no live call.
+- **Alternatives:** a benchmark inside Vitest behind an env flag (too easy to run by
+  accident and spend money); letting a model decompose each prompt (adds noise and planning
+  cost, and the arms would run different tasks); choosing the baseline by hand (the
+  pool's most expensive model is mechanical and reproducible); raising the 120 s call limit
+  for the high-complexity prompt (would measure a configuration users do not get by
+  default); marking Milestone 2 Completed (two of its tasks are still unverified live).
+- **Consequences:** soot has its first real savings number, and the caveats travel with it.
+  Two follow-ups came out of the data: retries should see a bounded tail of the failed
+  check's output (TECHNICAL_DEBT), and a high-tier model in the pool (Anthropic or OpenAI
+  keys) is needed before the high-complexity prompt can say anything about routing.
+- **Reversible:** Yes. The script and docs can be removed; statuses go back if a later run
+  contradicts them.
+
 ## ADR-051: Process sandbox for commands soot launches for an agent
 
 - **Date:** 2026-11-14

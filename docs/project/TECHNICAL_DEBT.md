@@ -26,12 +26,11 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   recorded prompts and refuses others; it is the default. `ModelDecomposer` (ADR-033)
   decomposes other prompts through a `ModelClient` and validates the answer like a fixture, and
   the CLI/MCP engine uses it when `decomposer.model` in `soot.config.json` names a usable
-  registry model (ADR-034). It is **verified with mock model clients only** (no real provider,
-  M2-07 blocked) and the prompt it sends is untuned.
-- **[Deferred] Live DeepSeek unverified (ADR-035).** The data-residency hold is lifted and a
-  configured DeepSeek provider is callable through the `openai-compatible` adapter, but no live
-  DeepSeek request has been made: wire behaviour, structured output and decomposition quality
-  are unknown. Verify together with M2-07.
+  registry model (ADR-034). It is verified with mock model clients, plus live DeepSeek planning on
+  2026-11-13 (ADR-039); the prompt it sends is untuned.
+- **[Resolved, ADR-039/ADR-050] Live DeepSeek.** DeepSeek was called live through the
+  `openai-compatible` adapter with `json_object` output for planning and tasks (2026-11-13) and
+  in the 2026-11-14 acceptance and benchmark runs. Decomposition quality is not measured.
 - **[Resolved, ADR-046] Decomposer model spend and health (ADR-034).** The planning call is a
   labelled line in the cost report, `soot cost` and the run total; priced planning counts
   against the run budget before any task starts; the call honours and records provider
@@ -72,9 +71,15 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 
 ## Provider connectivity (Milestone 2)
 
-- **[Blocked] No real provider has been called (M2-07).** All adapter behaviour is verified
-  against mocked HTTP shaped from SDK and provider documentation. Wire-format drift will only
-  show up with user-supplied keys (ADR-011).
+- **[Partly resolved, ADR-050] Live providers (M2-07 Verified).** xAI and DeepSeek ran live
+  through the `openai-compatible` adapter. The Anthropic, OpenAI, Gemini and OpenRouter
+  adapters are still verified against mocked HTTP only; their wire drift would show up only
+  with user-supplied keys (ADR-011).
+- **[Open, ADR-050] Retries do not see the failed check's output.** A retry is told only that
+  a check failed (`acceptance:title failed (exit 1)`) and starts from a reset worktree, so a
+  model can repeat or swap the same mistake. In the 2026-11-14 benchmark this failed the
+  single-model arm on every run of one prompt. Passing a bounded tail of the check output to
+  the next attempt is the likely fix.
 - **[Resolved, ADR-030] Provider health persists.** Timed cooldowns (outage, rate limit,
   timeout) are stored in `soot.sqlite` (`provider_cooldowns`) through `ProviderHealthStore`;
   `soot run` loads them, so a restarted process skips a provider that was down until its

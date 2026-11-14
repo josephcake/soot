@@ -65,10 +65,11 @@ M1-05/M1-08 `packages/agent-runtime/src/{scheduler,mock-agent}.test.ts`; M1-07
 ## M2 — Multi-Provider Model Connectivity
 
 > Status: **In Progress (partial)**. Mockable scope verified 2026-11-12 with mocked HTTP and a
-> scripted test double only; no real provider call has been made. M2-03 is Implemented, not Verified: the generic
+> scripted test double. Live xAI and DeepSeek calls ran on 2026-11-13 (ADR-039) and 2026-11-14
+> (ADR-050). M2-03 is Implemented, not Verified: the generic
 > OpenAI-compatible adapter is covered by mocked HTTP, but the live local-runtime test was
-> **skipped** (no Ollama or LM Studio was running). M2-07 is Blocked on user-supplied keys
-> (ADR-011). Issue #9 (Gemini and OpenRouter kinds, ADR-049) is Implemented against mocked
+> **skipped** (no Ollama or LM Studio was running). M2-07 is Verified with the user's xAI and
+> DeepSeek keys (ADR-050). Issue #9 (Gemini and OpenRouter kinds, ADR-049) is Implemented against mocked
 > HTTP and fake keys only; neither vendor is auto-detected, and no live call has been made.
 > Evidence: `packages/provider-adapters/src/*.test.ts`,
 > `packages/model-registry/src/*.test.ts`, `tests/credential-boundary.test.ts`,
@@ -82,7 +83,7 @@ M1-05/M1-08 `packages/agent-runtime/src/{scheduler,mock-agent}.test.ts`; M1-07
 | M2-04 | Model registry with manual model config; no hardcoded model names                                          | P0       | M2        | M2-01            | Completed   | packages/model-registry                    | Registry loads user config; tests cover custom endpoints.                                                                          |
 | M2-05 | Model discovery + unavailable-provider handling + fallback                                                 | P1       | M2        | M2-04            | Completed   | packages/model-registry                    | Simulated outage marks provider unavailable; fallback tested.                                                                      |
 | M2-06 | Pricing and capability metadata (context window, tools, structured output, vision, reasoning)              | P1       | M2        | M2-04            | Completed   | packages/model-registry                    | Metadata sourced/refreshable; missing data represented as unknown, not guessed.                                                    |
-| M2-07 | Real execution on ≥2 independent providers with user-supplied keys                                         | P0       | M2        | M2-02, BYOK keys | Blocked     | packages/provider-adapters                 | Opt-in test run with real credentials recorded. Will be Blocked until keys are provided (ADR-011).                                 |
+| M2-07 | Real execution on ≥2 independent providers with user-supplied keys                                         | P0       | M2        | M2-02, BYOK keys | Verified    | packages/provider-adapters                 | Opt-in test run with real credentials recorded. Verified 2026-11-14 with xAI and DeepSeek (ADR-039, ADR-050).                      |
 | M2-08 | Credential isolation: keys read only by adapters, never in task context/logs                               | P0       | M2        | M2-01            | Completed   | packages/provider-adapters, core           | Tests assert keys absent from context, logs, results.                                                                              |
 | M2-09 | Gemini (`google`) and OpenRouter (`openrouter`) provider kinds, opt-in only (issue #9, ADR-049)            | P1       | M2        | M2-02            | Implemented | packages/provider-adapters, model-registry | Mocked HTTP and fake keys; neither is auto-detected; HTTP 402 falls back; OpenRouter 200-errors are classified. Not live-verified. |
 
@@ -91,7 +92,7 @@ M1-05/M1-08 `packages/agent-runtime/src/{scheduler,mock-agent}.test.ts`; M1-07
 > Status: **Completed (verified locally with a fictional registry and the spec fixture prompts)**,
 > 2026-11-12. Complexity evaluation is heuristic (ADR-023). Routing calls no model, so real
 > providers are not needed for these exit criteria; using the routes for real calls still
-> depends on M2-07 (Blocked). Evidence: `packages/model-router/src/*.test.ts`,
+> depended on M2-07, Verified on 2026-11-14 (ADR-050). Evidence: `packages/model-router/src/*.test.ts`,
 > `packages/observability/src/routing-log.test.ts`, `tests/m3-routing-end-to-end.test.ts`.
 
 | ID    | Description                                                                              | Priority | Milestone | Dependencies | Status    | Component                            | Acceptance criteria                                                            |
@@ -107,7 +108,7 @@ M1-05/M1-08 `packages/agent-runtime/src/{scheduler,mock-agent}.test.ts`; M1-07
 
 > Status: **Completed (verified locally with mock agents and a fictional registry)**,
 > 2026-11-12. Signals come from agent self-report until Milestone 5 checks evidence (ADR-024).
-> Running escalated tasks on real providers still depends on M2-07 (Blocked). Evidence:
+> Escalation on real providers was seen live on 2026-11-14 (ADR-050, M2-07 Verified). Evidence:
 > `packages/escalation/src/*.test.ts`, `packages/agent-runtime/src/scheduler-attempts.test.ts`,
 > `packages/context-manager/src/execution-store.test.ts`, `tests/m4-adaptive-end-to-end.test.ts`.
 
@@ -124,7 +125,7 @@ M1-05/M1-08 `packages/agent-runtime/src/{scheduler,mock-agent}.test.ts`; M1-07
 
 > Status: **Completed (verified locally on real fixture git repositories with mock agents)**,
 > 2026-11-12. soot runs the checks itself on each task's real diff; agent self-report is never
-> evidence (ADR-018, ADR-025). Real-model diffs depend on M2-07 (Blocked) and M6 runners.
+> evidence (ADR-018, ADR-025). Real-model diffs come from `--agent api` since ADR-039 (M2-07 Verified, ADR-050).
 > Evidence: `tests/m5-codebase-end-to-end.test.ts`, `packages/integrations/src/*.test.ts`,
 > `packages/observability/src/audit-cost-report.test.ts`,
 > `packages/context-manager/src/untrusted.test.ts`, `packages/agent-runtime/src/permissions.test.ts`.
@@ -151,8 +152,8 @@ M1-05/M1-08 `packages/agent-runtime/src/{scheduler,mock-agent}.test.ts`; M1-07
 | M6-04 | Claude Code integration                                            | P2       | M6        | M6-02 or M6-03 | Implemented (simulated only) | packages/harness-adapters | Verified end to end in Claude Code before any claim.                    |
 | M6-05 | Codex integration                                                  | P2       | M6        | M6-02 or M6-03 | Implemented (simulated only) | packages/harness-adapters | Verified end to end in Codex before any claim.                          |
 | M6-06 | Installation, provider, routing, and security docs                 | P1       | M6        | M6-01          | Implemented                  | docs/                     | Fresh-machine quick start reproduced.                                   |
-| M6-07 | Acceptance scenarios spec §17 Tests 1, 2, 4 end to end             | P0       | M6        | M6-01, M2-07   | Blocked                      | tests/                    | Recorded runs; Test 4 needs ≥2 real providers (BYOK).                   |
-| M6-08 | Cost comparison benchmark (spec §17 Test 5)                        | P2       | M6        | M6-07          | Not Started                  | tests/, observability     | Savings claimed only from measured data.                                |
+| M6-07 | Acceptance scenarios spec §17 Tests 1, 2, 4 end to end             | P0       | M6        | M6-01, M2-07   | Verified                     | tests/                    | Recorded runs; Test 4 needs ≥2 real providers (BYOK).                   |
+| M6-08 | Cost comparison benchmark (spec §17 Test 5)                        | P2       | M6        | M6-07          | Verified                     | tests/, observability     | Savings claimed only from measured data.                                |
 | M6-09 | Generic ACP driver (soot as ACP client) and `soot run --agent acp` | P1       | M6        | M6-01          | Completed                    | packages/harness-adapters | Tested against soot's own mock ACP agent only; no vendor agent claimed. |
 
 M6 notes (2026-11-12, ADR-026):
@@ -181,10 +182,18 @@ M6 notes (2026-11-12, ADR-026):
 - **M6-06 Implemented:** `docs/guides/installation.md`, `docs/guides/providers.md`, `docs/guides/model-routing.md`,
   `docs/guides/security.md`. The keyless quick start was reproduced step by step from a fresh local clone
   in a temp directory on the build box, not on a separate fresh machine.
-- **M6-07 Blocked (on M2-07):** fixture-backed CLI runs of Tests 1, 2 and the Test 4 graph
-  shape pass with the mock agent, but they are not the recorded real runs the criterion asks
-  for, and Test 4 needs ≥2 real providers.
-- **M6-08 Not Started:** no savings are claimed without measured runs.
+- **M6-07 Verified (2026-11-14, ADR-050):** Tests 1, 2 and 4 ran live with `--agent api` on
+  throwaway demo repos, with xAI and DeepSeek
+  ([docs/benchmarks/2026-11-14-acceptance.md](../benchmarks/2026-11-14-acceptance.md)). Tests 1
+  and 2 completed and landed. Test 4 used both providers; implementation and tests were
+  verified and landed, and the security review is "unverified" by design (read-only, no
+  checks), so that run reports incomplete. Test 4 needed a feature description file in the
+  repo and `reasoning: true` declared on `grok-4.7`. Tests 3 and 6 were also run: Test 3
+  partly (no escalation from theme complexity), Test 6 for outage and timeout only.
+- **M6-08 Verified (2026-11-14, ADR-050):** `scripts/benchmark.mjs` (never in CI, needs
+  `--live`) on `examples/bench-app`, 6 prompts × 3 repetitions × 2 arms
+  ([docs/benchmarks/2026-11-14.md](../benchmarks/2026-11-14.md)). Routing cost 85% less than
+  `grok-4.7` alone on the 10 paired runs where both passed; small sample, two vendors.
 - **M6-09 Completed (ADR-027):** `AcpAgentRunner` drives any ACP agent over the stable ACP v1
   protocol (official `@agentclientprotocol/sdk`), one session per attempt in the task's
   worktree. Permission requests go to soot's approval gate only (unattended → rejected, task
@@ -282,8 +291,8 @@ Planner notes (2026-11-12):
   `soot config`); tests in `tests/p02-decomposer-config.test.ts` and
   `apps/cli/src/config.test.ts` (mock clients through an injected `modelClientFactory`, a fake
   key string only to prove a client can be built and is never printed or called; `fetch`
-  replaced by a spy that fails on any call). Implemented, not Verified: no real model has
-  decomposed a prompt (M2-07 Blocked).
+  replaced by a spy that fails on any call). Implemented, not Verified here; per ADR-039
+  DeepSeek decomposed prompts live on 2026-11-13.
 - **DeepSeek (ADR-035, 2026-11-12):** the ADR-016 hold is lifted, so a user-configured DeepSeek
   provider can be the decomposer model. That removes a policy refusal only; P-01/P-02 stay
   Implemented, not Verified, until a real model has decomposed a prompt.

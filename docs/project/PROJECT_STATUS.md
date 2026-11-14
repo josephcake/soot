@@ -4,7 +4,7 @@ Last Updated: 2026-11-14
 
 ## Current Phase
 
-Milestone 6 — Universal Skill and CLI (in progress, partial: CLI, MCP server, skill and docs against fixtures and a scripted mock agent; exit criteria not met); Milestone 7 — IDE Extensions (started, partial: a thin VS Code extension, run in a real VS Code with the mock agent (M7-01 Verified); Cursor and other editors not run); Milestone 2 In Progress (partial; M2-07 Blocked)
+Milestone 6 — Universal Skill and CLI (in progress, partial: CLI, MCP server, skill and docs against fixtures and a scripted mock agent; exit criteria not met); Milestone 7 — IDE Extensions (started, partial: a thin VS Code extension, run in a real VS Code with the mock agent (M7-01 Verified); Cursor and other editors not run); Milestone 2 In Progress (partial; M2-07 Verified live with xAI and DeepSeek, ADR-050)
 
 ## Overall Progress
 
@@ -25,7 +25,7 @@ ACP agent command the user configures, with permission requests answered only by
 otherwise it reports "route not applied" (ADR-028). It is tested only against soot's own mock
 ACP agent. Claude Code (M6-04) and Codex (M6-05) have runner profiles over that driver
 (`--agent claude-code`, `--agent codex`, ADR-047): Implemented, tested against simulated
-adapters only. Not done: no vendor harness has been run (neither is claimed or supported), no real provider (M2-07 Blocked), so M6-07 (real recorded acceptance runs) is Blocked and M6-08 not started. M5
+adapters only. Not done: no vendor harness has been run (neither is claimed or supported), but real providers now run tasks: on 2026-11-14 spec Tests 1, 2 and 4 were run live with xAI and DeepSeek and recorded (M6-07 Verified), and the savings benchmark was run (M6-08 Verified; [docs/benchmarks/2026-11-14.md](../benchmarks/2026-11-14.md), ADR-050). M5
 gained protected paths: a task that edits a protected file (such as its acceptance test) fails
 even inside its lease.
 
@@ -84,7 +84,8 @@ integrated serially with a merge-tree dry run; conflicts are surfaced with their
 the user's working tree moves only by fast-forward after final validation and explicit
 approval. The consolidated report lists incomplete work first and shows cost estimates and
 actuals separately. Approvals are never automatic; everything is audited (ADR-025). This is
-not a finished product: harness runners are Milestone 6 and real providers wait on M2-07.
+not a finished product: harness runners are Milestone 6. Real models have run tasks through this
+workflow since ADR-039 (M2-07 Verified, ADR-050).
 
 Milestone 4 is Completed and verified locally with mock agents, the fictional routing registry
 and the spec's fixture prompts (§17 Tests 3 and 6). Failed or doubtful work escalates mid-flight
@@ -99,8 +100,8 @@ has a `ModelDecomposer` that asks a caller-supplied `ModelClient` for tasks and 
 answer like a fixture (task contract, unique ids, known dependencies, no cycles, path rules,
 unpriced estimates); invalid answers fail with `ModelDecompositionError`. `createDecomposer`
 stays fixture-only when no client is given, and with a client still answers recorded prompts
-from fixtures. **Implemented, verified with mocks only:** no real model has decomposed a prompt
-(M2-07 Blocked).
+from fixtures. **Implemented.** Verified with mocks; per ADR-039 `deepseek/deepseek-flash`
+decomposed prompts live on 2026-11-13 (status unchanged: the prompt is untuned).
 
 Decomposer model config (ADR-034, TASKS P-02, no milestone status change): an optional
 `decomposer: { model }` in `soot.config.json` names a registry model. The CLI/MCP engine uses
@@ -112,8 +113,9 @@ unknown prompts naming the setting and the reason. `soot config` shows whether i
 DeepSeek hold lifted (ADR-035 supersedes ADR-016, no milestone status change): Joseph reviewed
 data residency on 2026-11-12. DeepSeek is no longer restricted; configured as an
 OpenAI-compatible provider with `DEEPSEEK_API_KEY`, it is selectable, routable and usable as the
-decomposer model. It is optional and not a default. **No live DeepSeek call has been made;**
-live decomposition remains unverified and M2-07 stays Blocked.
+decomposer model. It is optional and not a default. DeepSeek has since been called live for
+planning and tasks (ADR-039, 2026-11-13) and in the 2026-11-14 acceptance and benchmark runs
+(ADR-050).
 
 Milestone 3 (per-task routing, heuristic evaluation, ADR-023) is Completed.
 
@@ -121,8 +123,12 @@ Milestone 2 stays In Progress (partial). Its mockable scope is verified with moc
 Real-model execution (ADR-039, 2026-11-13): `--agent api` runs each task on its routed model.
 With the user's keys, DeepSeek (`deepseek-flash`, planner and tasks) and xAI (`grok-4.7`) were
 called live on a throwaway demo repo; every task was verified by the project's tests and the
-result landed with `--apply`. Anthropic and OpenAI have not been called live. Whether this
-completes M2-07 is Mochi's call; its status is not changed here. Project name `soot` (ADR-013).
+result landed with `--apply`. On 2026-11-14 both providers ran again in the spec acceptance
+runs and the savings benchmark, including a live provider outage and model timeouts handled by
+fallback and retries ([acceptance runs](../benchmarks/2026-11-14-acceptance.md)). ADR-050
+records M2-07 (two independent providers, real keys) as **Verified**. Milestone 2 stays In
+Progress because M2-03 (local endpoint) and M2-09 (Gemini, OpenRouter) are not verified live.
+Anthropic and OpenAI have not been called live. Project name `soot` (ADR-013).
 
 The repository is public at https://github.com/josephcake/soot under MIT (ADR-032, published
 2026-11-12). Hosted GitHub Actions CI runs on every push to `main` and passed for Node 24 and
@@ -176,8 +182,8 @@ Node 26 (M0-11 Completed).
 
 ## In Progress
 
-- [ ] Milestone 2. M2-03 (local endpoint) is Implemented: covered by mocked HTTP, but the live test skipped because no Ollama or LM Studio was running. M2-09 (Gemini and OpenRouter, ADR-049) is Implemented against mocked HTTP and fake keys; neither is auto-detected and no live call has been made. M2-07 is Blocked.
-- [ ] Milestone 6. M6-01, M6-03 and M6-09 (generic ACP driver, mock ACP agent only) Completed; M6-02 and M6-06 Implemented; M6-04 and M6-05 Implemented (simulated only, ADR-047; a real-product run is still needed); M6-08 Not Started; M6-07 Blocked on M2-07. Exit criteria not met.
+- [ ] Milestone 2. M2-03 (local endpoint) is Implemented: covered by mocked HTTP, but the live test skipped because no Ollama or LM Studio was running. M2-09 (Gemini and OpenRouter, ADR-049) is Implemented against mocked HTTP and fake keys; neither is auto-detected and no live call has been made. M2-07 is Verified (xAI and DeepSeek live, ADR-050).
+- [ ] Milestone 6. M6-01, M6-03 and M6-09 (generic ACP driver, mock ACP agent only) Completed; M6-02 and M6-06 Implemented; M6-04 and M6-05 Implemented (simulated only, ADR-047; a real-product run is still needed); M6-07 (Tests 1, 2, 4 live) and M6-08 (savings benchmark) Verified (ADR-050). Exit criteria not met.
 
 - [ ] Milestone 7. M7-01 (VS Code extension), M7-05 (graph), M7-07 (cost) and M7-08 (cancellation, on/off after the ADR-041 fix) Verified in a real VS Code (2026-11-14, mock agent); M7-06 (models, escalation events) Implemented; M7-02…M7-04 (Cursor, Windsurf, Kilo Code) Not Started. Exit criteria not met.
 
@@ -187,18 +193,17 @@ Node 26 (M0-11 Completed).
 
 ## Blockers
 
-- **Milestone 6 exit criteria** need a supported harness: running the Claude Code / Codex runner profiles (ADR-047) against a real harness adapter the user already installed and signed in to (M6-04/05), which this box must not do, plus real providers (M2-07). Mochi decides next steps.
+- **Milestone 6 exit criteria** need a supported harness: running the Claude Code / Codex runner profiles (ADR-047) against a real harness adapter the user already installed and signed in to (M6-04/05), which this box must not do. Real providers are no longer a blocker (M2-07 Verified). Mochi decides next steps.
 - **Milestone 7 exit criteria** need the extension loaded and used in a real VS Code (and, separately, each other editor). This box has no editor; Mochi decides where and when.
-- **M2-07 Blocked:** Milestone 2's real-provider exit criterion needs user-supplied (BYOK) keys for at least two providers (ADR-011, ADR-017). soot will not mint, request, or spend.
 
 ## Known Issues
 
-- The CLI and MCP server decompose from fixtures unless `decomposer.model` is configured with a usable key (ADR-034); without it, prompts without a recorded fixture are refused. The model path is verified with mock model clients only: no real model has decomposed a prompt, and since ADR-046 the planning call is counted in the cost report and the run budget and honours provider cooldowns.
-- Agents are mocks. Since M5, "complete" means soot ran the checks on the task's real diff, but no real model has produced a diff yet.
+- The CLI and MCP server decompose from fixtures unless `decomposer.model` is configured with a usable key (ADR-034); without it, prompts without a recorded fixture are refused. The model path is verified with mock model clients, plus live DeepSeek planning on 2026-11-13 (ADR-039); since ADR-046 the planning call is counted in the cost report and the run budget and honours provider cooldowns.
+- `--agent api` runs tasks on real models (ADR-039); the mock agent remains the keyless default for demos and tests. "Complete" means soot ran the checks on the task's real diff. A retry is told which check failed but not its output, which cost the single-model benchmark arm every run of one prompt (ADR-050).
 - Process sandbox (ADR-051): real isolation only with working `bwrap` (Linux, exercised) or
   `sandbox-exec` (macOS, unit-tested only). Elsewhere the `none` fallback runs commands with the
   user's rights (`docs/project/TECHNICAL_DEBT.md`).
-- Provider adapters are verified against mocked HTTP only. Real wire behaviour is unverified until M2-07.
+- Only the OpenAI-compatible adapter has been verified live (xAI and DeepSeek). The Anthropic, OpenAI, Gemini and OpenRouter adapters are verified against mocked HTTP only.
 - Escalation triggers still use agent signals, plus soot's own verification since M5. Provider cooldowns, run spend and model outcomes are persisted (ADR-030); the CLI has no resume command yet.
 - See `docs/project/TECHNICAL_DEBT.md`.
 
@@ -206,7 +211,7 @@ Node 26 (M0-11 Completed).
 
 1. Mochi: review the Claude Code and Codex runner profiles (ADR-047, simulated only). Verifying them with a real harness (M6-04/05, issues #1/#2) needs a machine where the user has installed and signed in to that harness's ACP adapter and agrees to a run; Mochi decides when and where.
 2. Mochi: arrange a run of the unpublished `.vsix` in a real VS Code (then Cursor) to verify M7-01/M7-02.
-3. Mochi: decide when and whether to run M2-07 with user-supplied keys. Real routing outcomes, model-backed evaluation and calibrated thresholds depend on it.
+3. Mochi: decide whether to pass failed-check output to retries (benchmark finding, ADR-050), and whether to grow the benchmark (more prompts, Anthropic/OpenAI keys) before quoting savings outside the repo.
 4. Optional: run `pnpm vitest run packages/provider-adapters/src/local-endpoint.test.ts` with Ollama or LM Studio running to verify M2-03 live.
 
 ## MVP Readiness
@@ -223,5 +228,6 @@ Recorded 2026-11-12 ~12:42 PST from a real run of `bash scripts/ci.sh` in `/work
 - **Network audit:** the in-process suite was re-run with a global `fetch` guard; the only real requests were the two localhost probes and the dashboard tests' requests to their own 127.0.0.1 server. Subprocess tests (`soot stop`, `soot mcp`, the env/log-level/health/audit/cost CLI tests in `tests/hardening-cli.test.ts`, and the mock ACP agent processes spawned by `soot run --agent acp`) run built soot code that does not depend on the provider adapters. The only ACP agent ever spawned is soot's own mock (`node .../mock-agent-bin.js`); no vendor binary was run. No key-like environment variables were set.
 - **Re-run after ADR-033 (2026-11-12 ~4:33 PM PST):** `bash scripts/ci.sh` passed again (Node 24.22.1): 70 test files (69 passed, 1 skipped), 508 tests (507 passed, 1 skipped, the same live local-endpoint test). The global `fetch` audit above was not repeated for this run; the new planner tests replace `fetch` with a spy that fails on any call.
 - **Re-run after ADR-034 (2026-11-12 ~5:16 PM PST):** `bash scripts/ci.sh` passed (Node 24.22.1, pnpm 10.34.6): 71 test files (70 passed, 1 skipped), 520 tests (519 passed, 1 skipped, the same live local-endpoint test). The global `fetch` audit was not repeated; the new P-02 tests replace `fetch` with a spy that fails on any call. Since ADR-034 the built CLI imports `@soot/provider-adapters`, but it builds a client only when `decomposer.model` is configured, which no subprocess test does.
+- **Re-run after ADR-050 (2026-11-14 ~1:38 PM PST):** `bash scripts/ci.sh` with `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` unset passed on `feat/benchmark` (rebased on `dd6ff34`): 97 test files (96 passed, 1 skipped), 917 tests (916 passed, 1 skipped). The benchmark script is not part of CI.
 - **Hosted CI:** GitHub Actions [run 43334786373](https://github.com/josephcake/soot/actions/runs/43334786373) on `8a38865` passed for Node 24 and Node 26 (started 2026-11-12 4:09 PM PT, finished 4:11 PM PT); the earlier [run 43329225136](https://github.com/josephcake/soot/actions/runs/43329225136) on `30aaf29` also passed.
 - **Quick start:** `docs/guides/installation.md` reproduced step by step from a fresh `git clone` of this repo in `/tmp` (demo runs: unattended INCOMPLETE exit 2, interactive `y` COMPLETE exit 0 with fast-forward, Test 4 shape INCOMPLETE with the review unverified, skill installed into a temp dir).

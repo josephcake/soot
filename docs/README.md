@@ -23,6 +23,13 @@ Skills (prompts) for AI agents working with soot. They live in [`skills/`](../sk
 | [universal-orchestrator](../skills/universal-orchestrator/SKILL.md) | Hand a multi-part coding request to soot and relay its report.                                                                         |
 | [update-model-pricing](../skills/update-model-pricing/SKILL.md)     | Run when a provider, key, or new model id is added: look up the official price, record it with source and date, never guess (ADR-037). |
 
+## Benchmarks
+
+| Document                                                               | Description                                                              |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| [Savings benchmark 2026-11-14](benchmarks/2026-11-14.md)               | Routed vs single-expensive-model runs with real xAI and DeepSeek models. |
+| [Live acceptance runs 2026-11-14](benchmarks/2026-11-14-acceptance.md) | Spec §17 Tests 1 to 6 with real models, and what each one showed.        |
+
 ## Project tracking
 
 | Document                                      | Description                                              |
