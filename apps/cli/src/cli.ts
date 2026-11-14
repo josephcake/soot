@@ -31,15 +31,15 @@ export interface CliIo {
 export const USAGE = `soot ${VERSION} — task-level orchestration for coding harnesses
 
 Usage:
-  soot run "<prompt>" [--repo <dir>] [--agent api | --agent mock --mock-script <file> | --agent acp] [--run-id <id>] [--interactive] [--apply]
+  soot run "<prompt>" [--repo <dir>] [--agent api | --agent mock --mock-script <file> | --agent acp | --agent claude-code | --agent codex] [--run-id <id>] [--interactive] [--apply]
   soot status [<run-id>]
   soot cost [<run-id>]
   soot models
   soot config [--repo <dir>]
   soot stop <run-id> [--task <task-id>]
-  soot mcp [--agent mock --mock-script <file> | --agent acp]   MCP server on stdio (unattended)
+  soot mcp [--agent mock --mock-script <file> | --agent acp | --agent claude-code | --agent codex]   MCP server on stdio (unattended)
   soot install-skill [--target <dir>] [--harness agents,claude,grok] [--force]
-  soot dashboard [--port <n>] [--open] [--agent api | --agent mock --mock-script <file> | --agent acp] [--apply]
+  soot dashboard [--port <n>] [--open] [--agent api | --agent mock --mock-script <file> | --agent acp | --agent claude-code | --agent codex] [--apply]
                                 optional local dashboard on 127.0.0.1 (default port 8787)
   soot dashboard allow <dir> | disallow <dir> | list   folders the dashboard may run prompts in
 
@@ -55,7 +55,10 @@ Agents: --agent api sends each task to the model the router picked, through soot
 adapters, and writes the whole-file edits it returns into the task's worktree (keys come from
 the variables your models file names). --agent mock runs a scripted test double (no model is
 called). --agent acp runs each task through the ACP agent command configured as "acpAgent" in
-soot.config.json (generic ACP driver; no harness is verified). soot never approves anything for
+soot.config.json (generic ACP driver; no harness is verified). --agent claude-code and --agent
+codex run each task through the ACP adapter you installed and signed in to, named by absolute
+path in "harnesses" (runner profiles over the same driver, tested against simulated adapters
+only; soot never signs in and refuses bypass modes). soot never approves anything for
 you: with --interactive (or a terminal) it asks; otherwise approval-needing work is refused.
 --apply pre-approves one thing only: fast-forwarding your branch to the result once every task
 is verified and final validation passed (refused if your working tree is dirty).
@@ -107,12 +110,18 @@ function agentMode(agent: string | undefined, script: string | undefined): Agent
     if (script !== undefined) throw new UsageError('--mock-script is only for --agent mock');
     return { kind: 'acp' };
   }
+  if (agent === 'claude-code' || agent === 'codex') {
+    if (script !== undefined) throw new UsageError('--mock-script is only for --agent mock');
+    return { kind: 'acp', harness: agent };
+  }
   if (agent === 'api') {
     if (script !== undefined) throw new UsageError('--mock-script is only for --agent mock');
     return { kind: 'api' };
   }
   if (agent !== 'mock')
-    throw new UsageError(`unknown agent "${agent}" (available: api, mock, acp)`);
+    throw new UsageError(
+      `unknown agent "${agent}" (available: api, mock, acp, claude-code, codex)`,
+    );
   if (script === undefined) throw new UsageError('--agent mock needs --mock-script <file>');
   return { kind: 'mock', script };
 }

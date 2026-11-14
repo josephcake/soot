@@ -111,7 +111,7 @@ hold); it is not a default. See
 **None yet.** `soot mcp` serves soot over MCP (tested with the official MCP SDK client, not
 inside any product) and `soot install-skill` installs the universal skill into `.agents`,
 `.claude` and `.grok` skill folders. `soot run --agent acp` runs tasks through an ACP agent
-command you configure (one generic driver, tested only with soot's own mock ACP agent). Claude Code and Codex integration (M6-04/05) are not built.
+command you configure (one generic driver, tested only with soot's own mock ACP agent). `--agent claude-code` and `--agent codex` (M6-04/05) are runner profiles over that driver for the ACP adapter you install and sign in to; they are tested against simulated adapters only and have not been run with the real harnesses.
 
 ### IDE extension (Milestone 7, partial)
 

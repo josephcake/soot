@@ -23,8 +23,8 @@ describe('@soot/harness-adapters', () => {
 
   it('claims no harness as verified end to end', () => {
     expect(HARNESS_SUPPORT.map((h) => [h.id, h.verifiedEndToEnd, h.runner])).toEqual([
-      ['claude-code', false, 'not-implemented'],
-      ['codex', false, 'not-implemented'],
+      ['claude-code', false, 'acp-profile-simulated'],
+      ['codex', false, 'acp-profile-simulated'],
       ['grok', false, 'not-implemented'],
     ]);
   });

@@ -59,8 +59,8 @@ Add `--json` for machine-readable output.
   their registry; DeepSeek is allowed since ADR-035 but is never a default); that path is
   verified with mock models only. `soot config` says whether it is usable.
 - Agents: a **scripted mock** (`--agent mock --mock-script <file>`; no model is called), or an
-  ACP agent command the user configured (`--agent acp`; tested only with soot's mock ACP
-  agent). Without `--agent`, `soot run` refuses: real providers are not available yet.
+  ACP agent command the user configured (`--agent acp`, or `--agent claude-code` / `--agent codex` for those harnesses' ACP adapters; tested only with soot's mock ACP agent and
+  simulated adapters). Without `--agent`, `soot run` refuses: real providers are not available yet.
 - Supported providers, routing and security: see `docs/guides/providers.md`,
   `docs/guides/model-routing.md` and `docs/guides/security.md` in the soot repository.
 

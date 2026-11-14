@@ -10,9 +10,12 @@ import {
 } from '@soot/agent-runtime';
 import {
   AcpAgentRunner,
+  createHarnessRunner,
   describeCommand,
+  harnessRunnerLabel,
   spawnAcpAgent,
   type AcpRouteRecord,
+  type HarnessId,
 } from '@soot/harness-adapters';
 import { SILENT_LOGGER, parseEnv, type LogLevel, type Logger } from '@soot/core';
 import { openExecutionStore, type ExecutionStore, type ModelOutcome } from '@soot/context-manager';
@@ -115,8 +118,12 @@ import { createModelClient, hasApiKey, probeLocalRuntimes } from '@soot/provider
 export type AgentMode =
   | { readonly kind: 'none' }
   | { readonly kind: 'mock'; readonly script: string }
-  /** Spawn the `acpAgent` command from the project config (generic ACP driver, ADR-027). */
-  | { readonly kind: 'acp' }
+  /**
+   * Spawn the `acpAgent` command from the project config (generic ACP driver, ADR-027), or with
+   * `harness`, the `harnesses.<id>` adapter command through that harness's runner profile
+   * (ADR-047; tested against simulated adapters only).
+   */
+  | { readonly kind: 'acp'; readonly harness?: HarnessId }
   /** Call each task's routed model directly through soot's provider adapters (ADR-039). */
   | { readonly kind: 'api' };
 
@@ -477,6 +484,21 @@ export class SootEngine implements OrchestrationService {
         tryTimeoutMs: cfg.config.modelCallTimeoutMs ?? DEFAULT_MODEL_CALL_TIMEOUT_MS,
       });
     }
+    if (agent.kind === 'acp' && agent.harness !== undefined) {
+      const spec = cfg.config.harnesses?.[agent.harness];
+      if (spec === undefined) {
+        return `--agent ${agent.harness} needs "harnesses": { "${agent.harness}": { "command": "/absolute/path/to/its-acp-adapter" } } in ${cfg.path}; soot never picks, installs or searches for one, and never signs in.`;
+      }
+      try {
+        return createHarnessRunner(agent.harness, spec, {
+          approvals: this.#o.approvals.mode,
+          env: this.#o.agentEnv ?? process.env,
+          onRoute,
+        });
+      } catch (error) {
+        return (error as Error).message;
+      }
+    }
     if (agent.kind === 'acp') {
       const spec = cfg.config.acpAgent;
       if (spec === undefined) {
@@ -502,6 +524,12 @@ export class SootEngine implements OrchestrationService {
 
   #agentLabel(cfg: LoadedConfig): string {
     const { agent } = this.#o;
+    if (agent.kind === 'acp' && agent.harness !== undefined) {
+      const spec = cfg.config.harnesses?.[agent.harness];
+      if (spec !== undefined) {
+        return `${harnessRunnerLabel(agent.harness, spec)}; runner profile over the generic ACP driver, tested against simulated adapters only; routed models are applied only when the adapter offers a "model" option, see ACP model routing`;
+      }
+    }
     if (agent.kind === 'acp' && cfg.config.acpAgent !== undefined) {
       return `acp (${describeCommand(cfg.config.acpAgent)}; generic ACP driver; routed models are applied only when the agent offers a "model" option, see ACP model routing)`;
     }
@@ -1408,6 +1436,15 @@ export class SootEngine implements OrchestrationService {
       effectiveModelCallTimeoutMs: cfg.config.modelCallTimeoutMs ?? DEFAULT_MODEL_CALL_TIMEOUT_MS,
       agent: this.#o.agent.kind,
       acpAgent: cfg.config.acpAgent === undefined ? null : json(cfg.config.acpAgent),
+      harness: this.#o.agent.kind === 'acp' ? (this.#o.agent.harness ?? null) : null,
+      harnesses: json(
+        Object.fromEntries(
+          Object.entries(cfg.config.harnesses ?? {}).map(([id, h]) => [
+            id,
+            h === undefined ? null : describeCommand(h),
+          ]),
+        ),
+      ),
       decomposer: {
         model: decomposer.status === 'not-configured' ? null : decomposer.ref,
         status: decomposer.status,
@@ -1440,8 +1477,9 @@ export class SootEngine implements OrchestrationService {
       `Policy: ${cfg.config.policy}; concurrency ${String(cfg.config.concurrency)}`,
       `Attempt timeout: ${String(data.effectiveAttemptTimeoutMs)} ms${cfg.config.attemptTimeoutMs === undefined ? ' (default; set "attemptTimeoutMs" to change)' : ''}`,
       `Model call limit: ${formatLimit(data.effectiveModelCallTimeoutMs)} per --agent api try and per planner call${cfg.config.modelCallTimeoutMs === undefined ? ' (default; set "modelCallTimeoutMs" to change)' : ''}`,
-      `Agent: ${this.#o.agent.kind === 'none' ? 'none (run refuses: pick --agent api, --agent mock or --agent acp)' : this.#agentLabel(cfg)}`,
+      `Agent: ${this.#o.agent.kind === 'none' ? 'none (run refuses: pick --agent api, --agent mock, --agent acp, --agent claude-code or --agent codex)' : this.#agentLabel(cfg)}`,
       `ACP agent command: ${cfg.config.acpAgent === undefined ? 'not configured' : describeCommand(cfg.config.acpAgent)}`,
+      `Harness runners (simulated-only, ADR-047): claude-code ${cfg.config.harnesses?.['claude-code'] === undefined ? 'not configured' : describeCommand(cfg.config.harnesses['claude-code'])}; codex ${cfg.config.harnesses?.codex === undefined ? 'not configured' : describeCommand(cfg.config.harnesses.codex)}`,
       `Decomposition: ${describeDecomposerModel(decomposer)}`,
       `Approvals: ${this.#o.approvals.mode} (soot never approves on your behalf)`,
       'Checks:',

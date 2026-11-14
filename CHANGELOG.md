@@ -5,6 +5,24 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (Claude Code and Codex runners, simulated only, ADR-047)
+
+- `soot run --agent claude-code` and `--agent codex` (the flag is also accepted by `soot mcp`
+  and `soot dashboard`; only `soot run` is tested end to end) run
+  each task through the ACP adapter for that harness that you installed and signed in to,
+  named by absolute path under `harnesses` in soot.config.json. They are small profiles over the
+  generic ACP driver: approvals still go through soot (allow once; deny or unattended rejects),
+  sign-in needed blocks the task, routed models apply through the adapter's `model` option
+  (optional `models` map). **Tested against simulated adapters only; not run with the real
+  Claude Code or Codex** (M6-04 / M6-05 Implemented, simulated only; issues #1, #2 stay open).
+- Every ACP agent: soot refuses a session whose reported mode turns the harness's approvals off
+  (`bypassPermissions`, `agent-full-access`), before the prompt or when the agent switches to it
+  mid-turn, and never changes the mode itself; `allowedModes` can require specific modes.
+  Startup (`initialize` + `session/new`) has a 60 s limit, and stopping during startup ends the
+  agent process. `auth_required` at the first prompt now blocks like at `session/new`.
+- Config: `acpAgent` and `harnesses` refuse approval-bypass arguments (`--dangerously-*`,
+  `--yolo`, `--full-auto`, `-a never`, `danger-full-access`, ...).
+
 ### Added (planning cost in the report and the run budget, ADR-046, issue #5)
 
 - The planning (decomposer) call is its own line in `soot cost` and the run report

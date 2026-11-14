@@ -23,8 +23,9 @@ A generic ACP driver (ADR-027) lets `soot run --agent acp` run each task through
 ACP agent command the user configures, with permission requests answered only by a person
 (unattended: rejected, the task refused, independent tasks continue). When the agent advertises a `model` session option, soot applies the routed model per attempt;
 otherwise it reports "route not applied" (ADR-028). It is tested only against soot's own mock
-ACP agent. Not done: no vendor harness has been run (Claude Code
-M6-04, Codex M6-05: not claimed), no real provider (M2-07 Blocked), so M6-07 (real recorded acceptance runs) is Blocked and M6-08 not started. M5
+ACP agent. Claude Code (M6-04) and Codex (M6-05) have runner profiles over that driver
+(`--agent claude-code`, `--agent codex`, ADR-047): Implemented, tested against simulated
+adapters only. Not done: no vendor harness has been run (neither is claimed or supported), no real provider (M2-07 Blocked), so M6-07 (real recorded acceptance runs) is Blocked and M6-08 not started. M5
 gained protected paths: a task that edits a protected file (such as its acceptance test) fails
 even inside its lease.
 
@@ -165,7 +166,7 @@ Node 26 (M0-11 Completed).
 ## In Progress
 
 - [ ] Milestone 2. M2-03 (local endpoint) is Implemented: covered by mocked HTTP, but the live test skipped because no Ollama or LM Studio was running. M2-07 is Blocked.
-- [ ] Milestone 6. M6-01, M6-03 and M6-09 (generic ACP driver, mock ACP agent only) Completed; M6-02 and M6-06 Implemented; M6-04, M6-05, M6-08 Not Started; M6-07 Blocked on M2-07. Exit criteria not met.
+- [ ] Milestone 6. M6-01, M6-03 and M6-09 (generic ACP driver, mock ACP agent only) Completed; M6-02 and M6-06 Implemented; M6-04 and M6-05 Implemented (simulated only, ADR-047; a real-product run is still needed); M6-08 Not Started; M6-07 Blocked on M2-07. Exit criteria not met.
 
 - [ ] Milestone 7. M7-01 (VS Code extension), M7-05 (graph), M7-07 (cost) and M7-08 (cancellation, on/off after the ADR-041 fix) Verified in a real VS Code (2026-11-14, mock agent); M7-06 (models, escalation events) Implemented; M7-02…M7-04 (Cursor, Windsurf, Kilo Code) Not Started. Exit criteria not met.
 
@@ -175,7 +176,7 @@ Node 26 (M0-11 Completed).
 
 ## Blockers
 
-- **Milestone 6 exit criteria** need a supported harness: running the generic ACP driver against a real harness the user already installed and signed in to (M6-04/05), which this box must not do, plus real providers (M2-07). Mochi decides next steps.
+- **Milestone 6 exit criteria** need a supported harness: running the Claude Code / Codex runner profiles (ADR-047) against a real harness adapter the user already installed and signed in to (M6-04/05), which this box must not do, plus real providers (M2-07). Mochi decides next steps.
 - **Milestone 7 exit criteria** need the extension loaded and used in a real VS Code (and, separately, each other editor). This box has no editor; Mochi decides where and when.
 - **M2-07 Blocked:** Milestone 2's real-provider exit criterion needs user-supplied (BYOK) keys for at least two providers (ADR-011, ADR-017). soot will not mint, request, or spend.
 
@@ -190,7 +191,7 @@ Node 26 (M0-11 Completed).
 
 ## Next Actions
 
-1. Mochi: review the generic ACP driver (ADR-027). Verifying it with a real harness (M6-04/05) needs a machine where the user has installed and signed in to that harness and agrees to a run; Mochi decides when and where.
+1. Mochi: review the Claude Code and Codex runner profiles (ADR-047, simulated only). Verifying them with a real harness (M6-04/05, issues #1/#2) needs a machine where the user has installed and signed in to that harness's ACP adapter and agrees to a run; Mochi decides when and where.
 2. Mochi: arrange a run of the unpublished `.vsix` in a real VS Code (then Cursor) to verify M7-01/M7-02.
 3. Mochi: decide when and whether to run M2-07 with user-supplied keys. Real routing outcomes, model-backed evaluation and calibrated thresholds depend on it.
 4. Optional: run `pnpm vitest run packages/provider-adapters/src/local-endpoint.test.ts` with Ollama or LM Studio running to verify M2-03 live.

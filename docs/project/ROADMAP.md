@@ -94,7 +94,7 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Deliverables:** universal orchestration skill (`SKILL.md`); Claude Code integration; Codex integration; MCP server where appropriate; standalone CLI (`orchestrator run|models|status|config|cost|stop`); installation docs.
 - **Dependencies:** M5.
 - **Acceptance / exit criteria:** a user invokes orchestration from a supported harness; one prompt triggers the complete workflow; the user receives the consolidated result.
-- **Status:** In Progress (partial). Exit criteria **not met**: no harness is supported yet (M6-04/05 not started) and real execution needs BYOK providers (M2-07, Blocked). Done: the `soot` CLI, the MCP server (tested with the official SDK client), the universal skill and its installer, and the docs, all against fixtures and a scripted mock agent (ADR-026); and one generic ACP driver with `soot run --agent acp`, tested only against soot's own mock ACP agent (ADR-027). No vendor harness has been run through it.
+- **Status:** In Progress (partial). Exit criteria **not met**: no harness is supported yet (M6-04/05 Implemented as ACP runner profiles but tested against simulated adapters only, ADR-047; no real run) and real execution needs BYOK providers (M2-07, Blocked). Done: the `soot` CLI, the MCP server (tested with the official SDK client), the universal skill and its installer, and the docs, all against fixtures and a scripted mock agent (ADR-026); and one generic ACP driver with `soot run --agent acp`, tested only against soot's own mock ACP agent (ADR-027). No vendor harness has been run through it.
 - **Completion date:** —
 
 ## M7 — IDE Extensions

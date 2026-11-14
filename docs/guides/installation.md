@@ -194,6 +194,71 @@ soot run "<recorded prompt>" --agent acp --interactive
   (`packages/harness-adapters/dist/acp/mock-agent-bin.js <script.json>`). Whether any vendor
   harness works this way is untested.
 
+## Run tasks through Claude Code or Codex (simulated only, not yet run for real)
+
+> **Status:** implemented and tested against **simulated adapters only** (scripted fakes in this
+> repository, ADR-047). Nobody has run these runners with the real Claude Code or Codex yet,
+> so neither harness is listed as supported (M6-04 / M6-05 are "Implemented (simulated
+> only)"). Treat the setup below as untested until a recorded real run exists.
+
+`--agent claude-code` and `--agent codex` are small profiles over the generic ACP driver above.
+Each runs the ACP adapter for that harness that **you** installed and signed in to yourself
+(for example the community ACP adapters for Claude Code and for Codex). soot never installs,
+downloads, searches for, or signs in to anything, and never bundles a vendor SDK:
+
+```json
+{
+  "harnesses": {
+    "claude-code": {
+      "command": "/absolute/path/to/your-claude-code-acp-adapter",
+      "args": [],
+      "passEnv": [],
+      "models": { "anthropic/claude-sonnet-x": "sonnet" },
+      "allowedModes": ["default"]
+    },
+    "codex": {
+      "command": "/absolute/path/to/your-codex-acp-adapter",
+      "allowedModes": ["read-only"]
+    }
+  }
+}
+```
+
+```sh
+soot run "<recorded prompt>" --agent claude-code --interactive
+soot run "<recorded prompt>" --agent codex --interactive
+```
+
+- `command` must be an **absolute path** (soot does not search `PATH`), run without a shell, in
+  the task's worktree, with the same scrubbed environment as `acpAgent`. `passEnv` takes
+  variable names only; credential-like names (`*KEY*`, `*TOKEN*`, ...) are refused. Sign-in
+  stays in the harness's own config location (for example its config directory under `HOME`).
+- **Approvals stay with you**, exactly as for `--agent acp`: soot picks the adapter's "allow
+  once" option only when you approve; a denial, or any request in an unattended run, is
+  rejected and the task is refused. soot never picks "always allow".
+- **Modes.** soot never changes the harness's mode. It reads the mode the adapter reports and
+  refuses the task when that mode turns the harness's own approvals off (Claude Code
+  `bypassPermissions`; Codex `agent-full-access`), or when you set `allowedModes` and the mode
+  is not in it. In modes where the harness approves some actions itself by your own setting
+  (Claude Code `auto` / `acceptEdits`, Codex `agent` / `workspace-write`), the task runs and the
+  result notes it; soot still diffs the worktree and runs its checks. To be asked for every
+  action, set the harness's own mode to an asking one and list it in `allowedModes`.
+- Arguments that skip approvals or the sandbox (`--dangerously-*`, `--yolo`, `--full-auto`,
+  `bypassPermissions`, `danger-full-access`, `-a never`, `approval_policy="never"`) are refused
+  in the config, for `acpAgent` too.
+- **Sign-in.** If the adapter reports that nobody is signed in, the task is blocked with "sign in
+  to Claude Code / Codex yourself"; soot never calls `authenticate`. An adapter that does not
+  start a session within `startupTimeoutMs` (default 60 s; it may be waiting for a login) fails
+  the attempt and is stopped.
+- **Model routing.** If the adapter offers a `model` option, soot sets it to the routed model,
+  via your `models` map (soot ref → adapter value) or an exact / bare-id match; otherwise the run
+  says "route not applied". Token counts are not reported over ACP and are never invented.
+- **Cancel and timeouts.** Stopping a run or task, or the attempt timeout, sends
+  `session/cancel`; after `cancelGraceMs` (default 2 s) the adapter process is ended.
+- The skill and MCP server are separate: they let the harness call soot. These runners let soot
+  call the harness. Do not point a harness runner at a harness session that is itself running
+  `soot mcp` for the same repository.
+
 ## VS Code / Cursor extension (local build; run in VS Code, not in Cursor)
 
 > Sideloading steps for VS Code and Cursor are in

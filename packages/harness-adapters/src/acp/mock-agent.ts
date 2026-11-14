@@ -43,6 +43,8 @@ export const MockAcpStepSchema = z
     ignoreCancel: z.boolean().optional(),
     /** Fictional cost reported in a `usage_update`. */
     costUsd: z.number().min(0).optional(),
+    /** Send `current_mode_update` with this mode id before anything else (an agent switching mode). */
+    switchMode: z.string().min(1).optional(),
   })
   .strict();
 export type MockAcpStep = z.infer<typeof MockAcpStepSchema>;
@@ -65,6 +67,35 @@ export const MockAcpScriptSchema = z
       .optional(),
     /** `session/new` fails with ACP `auth_required` (the user is not signed in). */
     requireAuth: z.boolean().optional(),
+    /** `session/prompt` fails with ACP `auth_required` (sign-in found missing at first prompt). */
+    requireAuthAtPrompt: z.boolean().optional(),
+    /** Never answer `initialize` (an adapter stuck at startup, e.g. waiting for a login). */
+    hangOnInitialize: z.boolean().optional(),
+    /** Name in `agentInfo` (simulated harness adapters use their own test-double names). */
+    agentName: z.string().min(1).max(100).optional(),
+    /** Advertise session modes: as `modes` (ACP session modes) and/or a `mode` config option. */
+    modes: z
+      .object({
+        current: z.string().min(1),
+        available: z.array(z.string().min(1)).min(1).max(20),
+        via: z.enum(['modes', 'configOption', 'both']).default('modes'),
+      })
+      .strict()
+      .optional(),
+    /** Permission options offered (default: allow once, always allow, reject). */
+    permissionOptions: z
+      .array(
+        z
+          .object({
+            optionId: z.string().min(1),
+            name: z.string().min(1),
+            kind: z.enum(['allow_once', 'allow_always', 'reject_once', 'reject_always']),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(8)
+      .optional(),
     /** Step per soot task id (read from the prompt's "Task <id>:" line). */
     tasks: z.record(z.string().min(1), MockAcpStepSchema),
     default: MockAcpStepSchema.optional(),
@@ -101,10 +132,25 @@ export function createMockAcpAgent(
     string,
     { cwd: string; cancelled: boolean; wake: (() => void) | null; model: string | null }
   >();
-  const modelOption = (current: string): acp.SessionConfigOption[] =>
-    script.models === undefined
+  const modes = script.modes;
+  const modeConfig: acp.SessionConfigOption[] =
+    modes === undefined || modes.via === 'modes'
       ? []
       : [
+          {
+            id: 'mode',
+            name: 'Mode',
+            category: 'mode',
+            type: 'select',
+            currentValue: modes.current,
+            options: modes.available.map((v) => ({ value: v, name: v })),
+          },
+        ];
+  const modelOption = (current: string): acp.SessionConfigOption[] =>
+    script.models === undefined
+      ? modeConfig
+      : [
+          ...modeConfig,
           {
             id: 'model',
             name: 'Model',
@@ -126,10 +172,11 @@ export function createMockAcpAgent(
     .onRequest(acp.methods.agent.initialize, ({ params }) => {
       note('initialize', { clientInfo: params.clientInfo?.name ?? null });
       caps = params.clientCapabilities ?? {};
+      if (script.hangOnInitialize === true) return new Promise<never>(() => undefined);
       return {
         protocolVersion: acp.PROTOCOL_VERSION,
         agentCapabilities: { loadSession: false },
-        agentInfo: { name: 'soot-mock-acp-agent', version: '0.0.0' },
+        agentInfo: { name: script.agentName ?? 'soot-mock-acp-agent', version: '0.0.0' },
         authMethods: [],
       };
     })
@@ -139,9 +186,19 @@ export function createMockAcpAgent(
       const id = `mock-session-${String(next++)}`;
       const model = script.models?.current ?? null;
       sessions.set(id, { cwd: params.cwd, cancelled: false, wake: null, model });
-      return model === null
-        ? { sessionId: id }
-        : { sessionId: id, configOptions: modelOption(model) };
+      const configOptions = model === null ? modeConfig : modelOption(model);
+      return {
+        sessionId: id,
+        ...(configOptions.length === 0 ? {} : { configOptions }),
+        ...(modes !== undefined && modes.via !== 'configOption'
+          ? {
+              modes: {
+                currentModeId: modes.current,
+                availableModes: modes.available.map((m) => ({ id: m, name: m })),
+              },
+            }
+          : {}),
+      };
     })
     .onRequest(acp.methods.agent.session.setConfigOption, ({ params }) => {
       const value = 'value' in params ? String(params.value) : '';
@@ -173,6 +230,7 @@ export function createMockAcpAgent(
       const session = sessions.get(params.sessionId);
       note('session/prompt', { taskId, model: session?.model ?? null });
       if (session === undefined) throw acp.RequestError.sessionNotFound(params.sessionId);
+      if (script.requireAuthAtPrompt === true) throw acp.RequestError.authRequired();
       const step: MockAcpStep =
         (taskId === null ? undefined : script.tasks[taskId]) ?? script.default ?? {};
       const sessionId = params.sessionId;
@@ -184,6 +242,14 @@ export function createMockAcpAgent(
       const stopped = (): acp.PromptResponse | null =>
         session.cancelled && step.ignoreCancel !== true ? { stopReason: 'cancelled' } : null;
 
+      if (step.switchMode !== undefined) {
+        await client.notify(acp.methods.client.session.update, {
+          sessionId,
+          update: { sessionUpdate: 'current_mode_update', currentModeId: step.switchMode },
+        });
+        // Give the client a moment to react (it may cancel the turn).
+        await new Promise((r) => setTimeout(r, 60));
+      }
       await say(`[mock ACP agent] task ${taskId ?? '(unknown)'}. `);
       if (step.permission !== undefined) {
         await client.notify(acp.methods.client.session.update, {
@@ -204,7 +270,7 @@ export function createMockAcpAgent(
             kind: step.permission.kind ?? 'edit',
             locations: Object.keys(step.writes ?? {}).map((p) => ({ path: join(session.cwd, p) })),
           },
-          options: [
+          options: script.permissionOptions ?? [
             { optionId: 'allow', name: 'Allow once', kind: 'allow_once' },
             { optionId: 'always', name: 'Always allow', kind: 'allow_always' },
             { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
@@ -213,8 +279,14 @@ export function createMockAcpAgent(
         const answer = await client.request(acp.methods.client.session.requestPermission, request);
         log.permissionOutcomes.push(answer.outcome);
         onLog?.({ method: 'permission-answer', outcome: answer.outcome });
-        const allowed =
-          answer.outcome.outcome === 'selected' && answer.outcome.optionId === 'allow';
+        const picked =
+          answer.outcome.outcome === 'selected'
+            ? request.options.find(
+                (o) =>
+                  answer.outcome.outcome === 'selected' && o.optionId === answer.outcome.optionId,
+              )
+            : undefined;
+        const allowed = picked?.kind === 'allow_once' || picked?.kind === 'allow_always';
         if (!allowed) {
           await say('Permission was not granted; stopping without changes.');
           return stopped() ?? { stopReason: 'end_turn' };

@@ -2,9 +2,11 @@
  * @soot/harness-adapters
  *
  * Milestone 6 (partial): the orchestration service interface shared by the CLI and harness
- * adapters, an MCP server exposing it as tools (official MCP TypeScript SDK), and one generic
- * ACP driver (official ACP TypeScript SDK) that runs a task through any ACP agent the user
- * configures. It is tested only with soot's own mock ACP agent; no vendor harness is claimed.
+ * adapters, an MCP server exposing it as tools (official MCP TypeScript SDK), one generic ACP
+ * driver (official ACP TypeScript SDK) that runs a task through any ACP agent the user
+ * configures, and Claude Code / Codex runner profiles over that driver (ADR-047). All of it is
+ * tested only with soot's own mock ACP agent and simulated adapters; no vendor harness is
+ * claimed.
  */
 
 export const PACKAGE_NAME = '@soot/harness-adapters';
@@ -22,9 +24,14 @@ export {
   ACP_CLIENT_INFO,
   AcpAbortError,
   AcpAgentRunner,
+  DEFAULT_MODE_POLICY,
+  KNOWN_BYPASS_MODES,
   matchModelValue,
+  modeRefusal,
   permissionOutcome,
+  reportedMode,
   type AcpAgentRunnerOptions,
+  type AcpModePolicy,
   type AcpRouteRecord,
   type AcpConnector,
   type AcpEndpoint,
@@ -35,6 +42,19 @@ export {
   spawnAcpAgent,
   type AcpAgentCommand,
 } from './acp/spawn.js';
+export {
+  HARNESS_IDS,
+  HARNESS_PROFILES,
+  createHarnessRunner,
+  forbiddenAgentArg,
+  harnessModePolicy,
+  harnessRunnerLabel,
+  type HarnessAgentConfig,
+  type HarnessId,
+  type HarnessProfile,
+  type HarnessRunnerOptions,
+} from './acp/harness-profiles.js';
+export { simulatedHarnessScript, type SimulatedHarnessOptions } from './acp/simulated-harnesses.js';
 export {
   MockAcpScriptSchema,
   MockAcpStepSchema,

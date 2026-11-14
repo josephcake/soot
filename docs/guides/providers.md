@@ -104,5 +104,8 @@ configure (usually zero, with a source such as "local runtime").
 soot can run tasks through any agent that speaks ACP (Agent Client Protocol), using one generic
 driver (ADR-027, `--agent acp`, see [installation](installation.md#run-tasks-through-an-acp-agent)).
 It has been tested only against soot's own mock ACP agent; no vendor harness has been run
-through it, so no harness is listed as supported. soot will never bundle proprietary agent
+through it, so no harness is listed as supported. `--agent claude-code` and `--agent codex`
+are runner profiles over the same driver for those harnesses' ACP adapters (ADR-047, see
+[installation](installation.md#run-tasks-through-claude-code-or-codex-simulated-only-not-yet-run-for-real));
+they are tested against simulated adapters only and still need a real recorded run. soot will never bundle proprietary agent
 SDKs, offer a login, bypass the harness's approvals, or present itself as the vendor's product.
