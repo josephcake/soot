@@ -145,7 +145,14 @@ describe('soot run: spec §17 Test 2 through the CLI (fixture-backed)', () => {
         ['verify-auth-bug', 'verified', 'read-only'],
       ]);
       expect(task(out, 'verify-auth-bug')?.checks).toEqual([
-        { name: 'regression:auth', kind: 'test', status: 'passed', exitCode: 0 },
+        {
+          name: 'regression:auth',
+          kind: 'test',
+          status: 'passed',
+          exitCode: 0,
+          // ADR-051: auto mode; bwrap where it works (this box), else the honest fallback.
+          sandbox: expect.stringMatching(/^(bwrap|sandbox-exec|none)$/) as unknown,
+        },
       ]);
       expect(r.git('show', 'soot/t2/integration:src/components/Dropdown.tsx')).toMatch(
         /export function Dropdown/,

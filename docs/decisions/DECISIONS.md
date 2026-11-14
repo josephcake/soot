@@ -1333,3 +1333,128 @@ generativelanguage.googleapis.com`, so the existing Gemini catalog prices apply.
   - The 402 → `auth` change is vendor-neutral and affects every provider.
   - Not live-verified against Gemini or OpenRouter; fixtures are doc-derived.
 - **Reversible:** Yes. Remove the two kinds, the 402 mapping, and the dependency pin.
+
+## ADR-051: Process sandbox for commands soot launches for an agent
+
+- **Date:** 2026-11-14
+- **Status:** Accepted (Mochi, holding Joseph's approval authority: "a process sandbox for
+  agent commands", queued after the Claude Code and Codex runners). Implemented. The Linux
+  `bwrap` backend was exercised for real on the development box (bubblewrap 0.12.0, Linux
+  6.12); the macOS `sandbox-exec` backend is built and unit-tested only and has never run on a
+  Mac; Windows has no backend. Amends the "no OS sandbox" consequences of ADR-025 and ADR-027.
+  (Numbered 051 because ADR-050 was reserved; Mochi may renumber at merge. Rebased onto
+  `main` dd6ff34, after ADR-044 to ADR-049.)
+- **Context:** Worktrees isolate git state, not processes (TECHNICAL_DEBT). Every process soot
+  starts for an agent ran with the user's full rights: it could write anywhere the user can,
+  read home dotfiles, reach the network, and open soot's own state. The diff check only sees the
+  worktree. Spawn sites in `main` (dd6ff34), found by reading every `child_process` use:
+  1. `runCheck` (`packages/integrations/src/commands.ts`): soot-run validation commands,
+     called per task by `IsolatedTaskRunner.#verify` (`runner.ts`) and for final validation of
+     the integrated tree by `runCodebaseWorkflow` (`workflow.ts`). **Covered.**
+  2. `spawnAcpAgent` (`packages/harness-adapters/src/acp/spawn.ts`): the user-configured ACP
+     agent process for `--agent acp`, one per attempt, used by the engine
+     (`apps/cli/src/engine.ts`). **Covered**: the agent and every tool it runs itself inherit
+     the sandbox.
+  3. The direct-API runner (`apps/cli/src/api-runner.ts`) spawns nothing: the model returns
+     whole files or targeted `replace`/`create` edits that soot applies all-or-nothing
+     (ADR-039, ADR-048) and "never runs commands". Nothing to wrap; recorded here so nobody
+     assumes a tool or shell step exists.
+  4. Not agent work, deliberately **not** sandboxed: soot's own `git` plumbing
+     (`packages/integrations/src/git.ts`; it must write the repository's refs and worktrees),
+     `soot dashboard --open` (`apps/cli/src/open-url.ts`, the user's browser), and the VS Code
+     extension spawning the soot CLI (`apps/vscode-extension/src/core/soot-cli.ts`).
+  5. The Claude Code and Codex runners (ADR-047, `createHarnessRunner` in
+     `packages/harness-adapters/src/acp/harness-profiles.ts`) spawn their adapter through
+     `spawnAcpAgent`. **Covered**: the engine passes its `Sandbox` (`HarnessRunnerOptions.sandbox`
+     → `spawnAcpAgent(config, env, { sandbox })`).
+  6. Checked in #20–#24 (ADR-044 to ADR-049): no new process spawns. The local-model probe
+     (ADR-045, `packages/provider-adapters/src/local-probe.ts`) is an HTTP `GET <baseURL>/models`
+     from soot itself with no key, not a process and not agent work, so it is not sandboxed. The
+     editor support (ADR-044) reuses the extension's existing CLI spawn (item 4).
+- **Decision:**
+  - **One interface, backends per OS, nothing installed.** `Sandbox` (`@soot/agent-runtime`,
+    `sandbox.ts`) wraps an argument vector for one worktree (`prepare`) and says what it is:
+    `backend` (`bwrap` | `sandbox-exec` | `none`), `isolation` (true only for a real backend),
+    `network`, `reason`, and `blocked`. `runSandboxed` (`sandbox-process.ts`) runs a command to
+    completion under it. `resolveSandbox(settings, host)` picks the backend:
+    - `auto` (default): Linux uses `bwrap` if it is on `PATH` (or `bwrapPath`) **and** a one-off
+      probe with soot's flags succeeds (user namespaces can be disabled); macOS uses
+      `/usr/bin/sandbox-exec` after a probe; anything else, or a failed probe, gets `none`.
+    - `bwrap` / `sandbox-exec`: that backend or nothing. A named backend that is unavailable
+      **blocks** instead of falling back.
+    - `none`: the fallback on purpose.
+  - **Policy: deny by default** (`buildSandboxPolicy`). Writable: the task worktree, plus
+    `writePaths`, plus a private temp dir. Hidden: the user's home and soot's state directory
+    (database, reports, audit log, other tasks' worktrees). Re-exposed read-only inside hidden
+    places: the repository's main tree and its git common dir (so `git` and `node_modules`
+    resolution work), the install prefix of an executable that lives there (never a whole
+    hidden location), and `readPaths`. Read-only even inside a writable root: the git common
+    dir and the worktree's `.git` pointer file. Network: off unless `network: true`. The cwd
+    must be a task worktree (never `/`, home, the state dir, or an ancestor of them).
+    `writePaths` may never be `/`, home or an ancestor of it, a dotfile or dot-directory in
+    home, anything with a `.git` segment, or soot's state dir (checked when the config is
+    loaded and again with the real state dir).
+  - **bwrap** (`bwrapArgs`): `--die-with-parent --new-session --unshare-pid --unshare-ipc
+--unshare-uts --unshare-cgroup-try [--unshare-net] --ro-bind / / --dev /dev --proc /proc
+--tmpfs /tmp`, then `--tmpfs` over each hidden location, `--ro-bind-try` for re-exposed
+    paths, `--bind` for the worktree (`--bind-try` for extras), `--ro-bind-try` over git
+    internals, and `--remount-ro` on each hidden location last, so writes there fail instead of
+    landing in a throwaway tmpfs. `--chdir <worktree> --setenv TMPDIR /tmp -- argv`.
+  - **sandbox-exec** (`seatbeltProfile`, `sandboxExecArgs`): a generated `(deny default)` SBPL
+    profile; process, signal and sysctl basics allowed; `file-read*` allowed except hidden
+    locations, then re-exposed paths; `file-read* file-write*` only for the worktree, extras and
+    a per-command `mkdtemp` dir (removed afterwards, `TMPDIR` points at it); `deny
+file-write*` on git internals last; `(allow network*)` only when configured. Every path is
+    passed as a `-D NAME=value` parameter and referenced with `(param "NAME")`, never spliced
+    into the profile text. `mach-lookup` is allowed broadly (many tools need it).
+  - **Fallback `none` claims nothing.** `isolation: false`, and it reports `network: true`
+    because it cannot stop network. It keeps soot's own protections for every backend: argument
+    vector only (no shell), environment allowlist with credential-like names stripped again at
+    this layer (`SECRET_ENV_NAME`; the same pattern now refuses `acpAgent.passEnv` names), cwd
+    pinned to the worktree, timeout, the whole process group killed (`detached` +
+    `kill(-pid)`) on timeout, cancellation and after the leader exits, and an output cap (16 MiB
+    total, then the process is killed; a bounded tail is kept).
+  - **Required.** `required: true` (or a named backend that is unavailable) sets `blocked`:
+    `IsolatedTaskRunner` returns every task `blocked` before its worktree or agent starts
+    (audit `sandbox-blocked`), `runCheck` refuses, and `spawnAcpAgent` throws. `required: true`
+    with `mode: "none"` is a config error.
+  - **Config.** `sandbox` in `soot.config.json`: `mode` (`auto` | `bwrap` | `sandbox-exec` |
+    `none`, default `auto`), `network` (false), `readPaths`, `writePaths` (absolute, max 32),
+    `required` (false), `bwrapPath`. Strict schema; errors name the field and the reason.
+    The engine takes `home` and `PATH` from the environment soot was started with.
+  - **Recorded honestly.** `CheckEvidence.sandbox` (backend, or `null` when the command never
+    started) flows into the report and `soot status`. `soot.sqlite` schema v6 adds
+    `command_runs` (run, task, attempt, stage, name, status, exit code, sandbox) for every
+    soot-run check, shown as `commands` in `soot status --json`. The saved report, `soot run`,
+    `soot status` and `soot config` (`sandbox` in `--json`) show the backend and whether it is
+    real isolation. The dashboard shows each check's backend and the run's; a check or run
+    with no record shows `unknown` (ADR-031), never a guess.
+- **Verification (this box, Linux, bwrap 0.12.0):** unit tests for protected paths, env
+  stripping, policy, backend choice, `bwrap` argv (flags and bind order) and the Seatbelt
+  profile/argv (without the binaries). Real `bwrap` tests (skipped where bwrap does not work):
+  a write outside the worktree fails and nothing appears on the host, home and the DB are
+  neither readable nor writable, git internals are `EROFS`, a TCP connect to 1.1.1.1 fails
+  with `ENETUNREACH` and only `lo` exists, a timeout kills the sandbox; the ACP mock agent runs
+  under bwrap end to end; a configured check that writes outside its worktree fails through the
+  CLI. Fallback tests pin down its limits: secrets stripped, no shell, grandchildren killed,
+  output cap, and that it does **not** stop a write outside the worktree. Mutation checks: 14
+  single mutations, 13 killed (no `--unshare-net`, no hidden tmpfs, no `--remount-ro`, no
+  read-only git binds, secrets kept, dotfile guard removed, `.git` guard removed, silent
+  fallback for a named backend, `required` ignored, fallback claiming no network, fallback cwd
+  guard removed, no output cap, task gate removed). One survived: killing only the child
+  instead of its process group on timeout, because the second group kill after the leader exits
+  still reaps grandchildren; removing both group kills is killed by the grandchild test.
+- **Alternatives:** containers (Docker/Podman, container-use): heavier, often not installed,
+  and against "only what the OS has"; Landlock/seccomp directly from Node (needs a native
+  addon); `firejail` (setuid, not on most systems); asking each harness to sandbox itself
+  (Codex has its own, others differ; soot could not show what ran where); a read-allowlist
+  instead of read-only root (too many system paths differ per distro to keep tools working).
+- **Consequences:** On Linux with working bwrap, a check or ACP agent cannot write outside its
+  worktree, read home or soot's state, or reach the network unless configured. Real harnesses
+  need `network: true` and `writePaths`/`readPaths` for their own state outside home (their
+  dotfile state in home cannot be made writable by design); this is untested with any vendor
+  harness. Tools that write caches into home fail under bwrap (home is empty and read-only).
+  The fallback is clearly labelled as not isolation. Without bwrap on GitHub's runners the CI
+  integration tests are skipped, not faked.
+- **Reversible:** Yes. `"sandbox": { "mode": "none" }` restores the old behavior per project
+  (plus the new env strip, process-group kill and output cap). The schema-v6 table is additive.

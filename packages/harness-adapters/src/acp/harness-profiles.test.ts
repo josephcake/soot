@@ -1,8 +1,11 @@
 import {
+  DEFAULT_SANDBOX_SETTINGS,
   InteractiveApprovalGate,
   UNATTENDED_APPROVALS,
+  resolveSandbox,
   type AgentTaskInput,
   type ApprovalGate,
+  type Sandbox,
 } from '@soot/agent-runtime';
 import { validateAgentResult, type AgentResult, type Task } from '@soot/task-graph';
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
@@ -419,6 +422,63 @@ describe('approval-bypass guards', () => {
     expect(modeRefusal(null, policy)).toBeNull();
     expect(modeRefusal(null, { ...policy, allowedModes: ['default'] })).toContain(
       'reports no session mode',
+    );
+  });
+});
+
+describe('process sandbox wiring (ADR-051)', () => {
+  const input = (root: string): AgentTaskInput => {
+    const t = task('t', ['a.txt']);
+    return {
+      task: t,
+      attempt: 1,
+      dependencyResults: [],
+      workspace: { root, writeScope: t.files.write },
+      permissions: { requestApproval: () => Promise.resolve('unavailable' as const) },
+    };
+  };
+
+  it.each(HARNESS_IDS)(
+    '%s: the adapter command is spawned through the sandbox, in the task worktree',
+    async (id) => {
+      const root = workspace();
+      const seen: { argv: readonly string[]; cwd: string }[] = [];
+      const spy: Sandbox = {
+        ...resolveSandbox(DEFAULT_SANDBOX_SETTINGS, {
+          platform: 'linux',
+          home: null,
+          dataDir: null,
+          path: '',
+        }),
+        prepare: (argv, o) => {
+          seen.push({ argv, cwd: o.cwd });
+          throw new Error('sandbox spy: not spawning');
+        },
+      };
+      const runner = createHarnessRunner(
+        id,
+        { command: '/opt/simulated/adapter', args: ['--acp'] },
+        { approvals: 'unattended', sandbox: spy },
+      );
+      await expect(runner.run(input(root), new AbortController().signal)).rejects.toThrow(
+        /sandbox spy/,
+      );
+      expect(seen).toEqual([{ argv: ['/opt/simulated/adapter', '--acp'], cwd: root }]);
+    },
+  );
+
+  it.each(HARNESS_IDS)('%s: a blocked sandbox never starts the adapter', async (id) => {
+    const blocked = resolveSandbox(
+      { ...DEFAULT_SANDBOX_SETTINGS, required: true },
+      { platform: 'win32', home: null, dataDir: null, path: '' },
+    );
+    const runner = createHarnessRunner(
+      id,
+      { command: '/opt/simulated/adapter', args: [] },
+      { approvals: 'unattended', sandbox: blocked },
+    );
+    await expect(runner.run(input(workspace()), new AbortController().signal)).rejects.toThrow(
+      /no real sandbox/,
     );
   });
 });

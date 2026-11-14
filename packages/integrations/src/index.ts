@@ -69,6 +69,7 @@ export {
 export {
   buildConsolidatedReport,
   renderConsolidatedReport,
+  sandboxLabel,
   type ConsolidatedReport,
   type IntegrationState,
   type ReportInput,

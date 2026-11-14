@@ -1,11 +1,15 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
   DEFAULT_ATTEMPT_TIMEOUT_MS,
   MockAgentRunner,
+  resolveSandbox,
   type AgentRunner,
   type ApprovalGate,
+  type Sandbox,
+  type SandboxHost,
   type Scheduler,
 } from '@soot/agent-runtime';
 import {
@@ -174,6 +178,53 @@ export interface EngineOptions {
    * (`GET <baseURL>/models`, short limit, no key). Tests pass one bound to a fake server.
    */
   readonly localProbe?: (runtimes: readonly LocalRuntime[]) => Promise<LocalRuntimeProbe[]>;
+  /**
+   * Host facts for picking the process sandbox (ADR-051). Default: this machine
+   * (`process.platform`, `os.homedir()`, `dataDir`, `$PATH`, a real one-off backend probe).
+   */
+  readonly sandboxHost?: Partial<SandboxHost>;
+}
+
+/** The effective sandbox as `soot config`, `soot run` and reports show it (ADR-051). */
+export function describeSandbox(s: Sandbox): {
+  readonly mode: string;
+  readonly backend: string;
+  readonly isolation: boolean;
+  readonly network: boolean;
+  readonly required: boolean;
+  readonly readPaths: readonly string[];
+  readonly writePaths: readonly string[];
+  readonly reason: string;
+  readonly blocked: string | null;
+} {
+  return {
+    mode: s.settings.mode,
+    backend: s.backend,
+    isolation: s.isolation,
+    network: s.network,
+    required: s.settings.required,
+    readPaths: [...s.settings.readPaths],
+    writePaths: [...s.settings.writePaths],
+    reason: s.reason,
+    blocked: s.blocked,
+  };
+}
+
+/** A saved run's sandbox for `soot status`; "unknown" when the report predates ADR-051. */
+export function savedSandboxLine(saved: JsonValue | undefined): string {
+  if (saved === undefined || saved === null || typeof saved !== 'object' || Array.isArray(saved))
+    return 'unknown (not recorded for this run)';
+  const rec = saved as Readonly<Record<string, JsonValue>>;
+  const backend = typeof rec.backend === 'string' ? rec.backend : 'unknown';
+  return rec.isolation === true ? `${backend} (OS isolation)` : `${backend} (NOT isolation)`;
+}
+
+/** One line for humans: what isolates agent commands, honestly. */
+export function sandboxLine(s: Sandbox): string {
+  const what = s.isolation
+    ? `${s.backend} (OS isolation: writes only in the task worktree and temp${s.settings.writePaths.length > 0 ? ` plus ${String(s.settings.writePaths.length)} configured path(s)` : ''}; network ${s.network ? 'allowed' : 'off'})`
+    : 'none: NOT isolation (fallback: scrubbed env, worktree cwd, no shell, timeouts, process-group kill, output cap; the process runs with your rights and network)';
+  return `${what}; ${s.reason}${s.blocked === null ? '' : `; BLOCKED: tasks will not run (${s.blocked})`}`;
 }
 
 /**
@@ -338,6 +389,8 @@ export interface EnginePlan {
   readonly intake: ReturnType<typeof createPromptIntake>;
   readonly runner: AgentRunner;
   readonly acp: PlanAcpState;
+  /** Process sandbox for checks and the ACP agent process (ADR-051). */
+  readonly sandbox: Sandbox;
 }
 
 export type PlanOutcome =
@@ -456,10 +509,22 @@ export class SootEngine implements OrchestrationService {
     return join(this.#o.dataDir, 'reports', `${runId}.json`);
   }
 
+  #sandbox(cfg: LoadedConfig): Sandbox {
+    const h = this.#o.sandboxHost ?? {};
+    return resolveSandbox(cfg.sandbox, {
+      platform: h.platform ?? process.platform,
+      home: h.home === undefined ? homedir() : h.home,
+      dataDir: h.dataDir === undefined ? resolve(this.#o.dataDir) : h.dataDir,
+      path: h.path ?? process.env.PATH ?? '',
+      ...(h.probe === undefined ? {} : { probe: h.probe }),
+    });
+  }
+
   #runner(
     cfg: LoadedConfig,
     registry: ModelRegistry,
     onRoute: (r: AcpRouteRecord) => void,
+    sandbox: Sandbox,
   ): AgentRunner | string {
     const { agent } = this.#o;
     if (agent.kind === 'none') {
@@ -500,6 +565,7 @@ export class SootEngine implements OrchestrationService {
           approvals: this.#o.approvals.mode,
           env: this.#o.agentEnv ?? process.env,
           onRoute,
+          sandbox,
         });
       } catch (error) {
         return (error as Error).message;
@@ -511,7 +577,7 @@ export class SootEngine implements OrchestrationService {
         return `--agent acp needs an "acpAgent" command in ${cfg.path}; soot never picks or searches for one.`;
       }
       return new AcpAgentRunner({
-        connect: spawnAcpAgent(spec, this.#o.agentEnv ?? process.env),
+        connect: spawnAcpAgent(spec, this.#o.agentEnv ?? process.env, { sandbox }),
         approvals: this.#o.approvals.mode,
         onRoute,
       });
@@ -602,20 +668,29 @@ export class SootEngine implements OrchestrationService {
     }
     // ACP (ADR-028): whether each attempt's routed model was applied by the agent.
     const acp: PlanAcpState = { routes: [], audit: null };
-    const runner = this.#runner(cfg, registry, (r) => {
-      acp.routes.push(r);
-      acp.audit?.record('model-route', r.taskId, {
-        attempt: r.attempt,
-        routed: r.routed,
-        applied: r.applied,
-        agentValue: r.agentValue,
-        reason: r.reason,
-      });
-      (r.applied ? log.info : log.warn)(
-        `soot: ${r.taskId} #${String(r.attempt)} ACP model ${r.applied ? 'applied' : 'NOT applied'}: ${r.reason}`,
-      );
-    });
+    const sandbox = this.#sandbox(cfg);
+    const runner = this.#runner(
+      cfg,
+      registry,
+      (r) => {
+        acp.routes.push(r);
+        acp.audit?.record('model-route', r.taskId, {
+          attempt: r.attempt,
+          routed: r.routed,
+          applied: r.applied,
+          agentValue: r.agentValue,
+          reason: r.reason,
+        });
+        (r.applied ? log.info : log.warn)(
+          `soot: ${r.taskId} #${String(r.attempt)} ACP model ${r.applied ? 'applied' : 'NOT applied'}: ${r.reason}`,
+        );
+      },
+      sandbox,
+    );
     if (typeof runner === 'string') return failed(fail(runner));
+    (sandbox.blocked !== null || !sandbox.isolation ? log.warn : log.info)(
+      `soot: sandbox: ${sandboxLine(sandbox)}`,
+    );
     const agentLabel = this.#agentLabel(cfg);
 
     const unpricedNote = unpricedWarning(priced.unpriced);
@@ -787,6 +862,7 @@ export class SootEngine implements OrchestrationService {
       intake,
       runner,
       acp,
+      sandbox,
     };
     return { ok: true, plan };
   }
@@ -849,6 +925,7 @@ export class SootEngine implements OrchestrationService {
       registry,
       intake,
       runner,
+      sandbox,
     } = plan;
     const acpRoutes = plan.acp.routes;
     const request = { prompt: plan.prompt };
@@ -985,6 +1062,20 @@ export class SootEngine implements OrchestrationService {
         prompt: request.prompt,
         planning: planningLine,
         ...(this.#o.gitEnv === undefined ? {} : { gitEnv: this.#o.gitEnv }),
+        // ADR-051: every soot-run check runs under the sandbox and is stored with its backend.
+        sandbox,
+        onCheck: (taskId, attempt, e) => {
+          store.recordCommandRun({
+            runId,
+            taskId,
+            attempt,
+            stage: taskId === null ? 'final-validation' : 'task-check',
+            name: e.name,
+            status: e.status,
+            exitCode: e.exitCode,
+            sandbox: e.sandbox,
+          });
+        },
       });
       const { report } = result;
       const decisions = supervisor.events.map(eventLine);
@@ -1002,6 +1093,7 @@ export class SootEngine implements OrchestrationService {
         decisions,
         ...(isAcp ? { acpRoutes } : {}),
         stopRequested: control.stopRequested(),
+        sandbox: describeSandbox(sandbox),
         report,
         costRecords,
         costSummary: summarizeCosts(costRecords),
@@ -1012,6 +1104,7 @@ export class SootEngine implements OrchestrationService {
       const text = [
         `soot run ${runId} (${report.status.toUpperCase()})`,
         `Plan: ${source.kind === 'fixture' ? `${planLabel} (no model-backed decomposition)` : planLabel}; agent: ${agentLabel}; policy: ${cfg.config.policy}; routing history: ${String(outcomes.length)} stored outcomes; peak concurrency ${String(result.run.maxObservedConcurrency)}`,
+        `Sandbox: ${sandboxLine(sandbox)}`,
         ...(source.kind === 'model'
           ? [`Planning call: ${describePlanningCost(source, planning)}`]
           : []),
@@ -1111,6 +1204,7 @@ export class SootEngine implements OrchestrationService {
     decomposition?: JsonValue;
     agent?: string;
     agentLabel?: string;
+    sandbox?: JsonValue;
   } | null {
     const path = this.#reportPath(runId);
     if (!existsSync(path)) return null;
@@ -1120,6 +1214,7 @@ export class SootEngine implements OrchestrationService {
       decomposition?: JsonValue;
       agent?: string;
       agentLabel?: string;
+      sandbox?: JsonValue;
     };
   }
 
@@ -1195,6 +1290,7 @@ export class SootEngine implements OrchestrationService {
       const text = [
         `Run ${runId}: ${state}`,
         `Prompt: ${run.originalPrompt}`,
+        `Sandbox: ${savedSandboxLine(saved?.sandbox)}`,
         ...tasks.map(
           (t) =>
             `- ${t.taskId} [${t.complexity}] ${t.state}, ${String(t.attempts)} attempt(s)${t.models.length > 0 ? ` (${t.models.map((m) => m ?? 'no model').join(' → ')})` : ''}${t.verdict === null ? '' : `, verdict ${t.verdict}${t.complete ? ' (complete)' : ''}`}`,
@@ -1221,6 +1317,18 @@ export class SootEngine implements OrchestrationService {
           // The runner that ran every task (saved report); null until the run has a report.
           agent: saved?.agent ?? null,
           agentLabel: saved?.agentLabel ?? null,
+          // The run's sandbox (ADR-051); null for runs saved before it was recorded (unknown).
+          sandbox: saved?.sandbox ?? null,
+          // Every soot-run command with the backend it ran under (soot.sqlite, ADR-051).
+          commands: store.commandRuns(runId).map((c) => ({
+            taskId: c.taskId,
+            attempt: c.attempt,
+            stage: c.stage,
+            name: c.name,
+            status: c.status,
+            exitCode: c.exitCode,
+            sandbox: c.sandbox,
+          })),
           // Run-level final validation from the saved report (output tails left out); null
           // until the run has a report or when no final validation ran.
           finalValidation:
@@ -1231,6 +1339,8 @@ export class SootEngine implements OrchestrationService {
               required: c.required,
               exitCode: c.exitCode,
               durationMs: c.durationMs,
+              // Absent in reports saved before ADR-051: shown as unknown.
+              sandbox: c.sandbox ?? null,
             })) ?? null,
           problems: saved === null ? [] : [...saved.report.problems],
         }) as Record<string, JsonValue>,
@@ -1432,6 +1542,7 @@ export class SootEngine implements OrchestrationService {
     }));
     const decomposer = this.#decomposerModel(cfg, registry);
     const optInHints = unusedOptInKeyHints(registry.providers(), this.#o.modelEnv ?? process.env);
+    const sandbox = this.#sandbox(cfg);
     const data = {
       configFile: cfg.path,
       dataDir: this.#o.dataDir,
@@ -1465,6 +1576,7 @@ export class SootEngine implements OrchestrationService {
       acceptance: json(cfg.acceptance),
       protectedPaths: this.#protectedPaths(repoRoot, cfg),
       allowedExecutables: [...cfg.policy.allowedExecutables],
+      sandbox: json(describeSandbox(sandbox)),
       providers: json(providers),
       models: registry.models().length,
       autoModels: { enabled: cfg.config.autoModels, providers: [...priced.auto] },
@@ -1502,6 +1614,13 @@ export class SootEngine implements OrchestrationService {
       ),
       `Protected paths: ${data.protectedPaths.join(', ') || 'none'}`,
       `Allowed executables: ${data.allowedExecutables.join(', ') || 'none'}`,
+      `Sandbox (mode ${sandbox.settings.mode}${sandbox.settings.required ? ', required' : ''}): ${sandboxLine(sandbox)}`,
+      ...(sandbox.settings.readPaths.length > 0
+        ? [`  extra read paths: ${sandbox.settings.readPaths.join(', ')}`]
+        : []),
+      ...(sandbox.settings.writePaths.length > 0
+        ? [`  extra write paths: ${sandbox.settings.writePaths.join(', ')}`]
+        : []),
       'Providers (key variable names only; values are never read here):',
       ...providers.map(
         (p) =>

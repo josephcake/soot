@@ -5,6 +5,26 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (process sandbox for agent commands, ADR-051)
+
+- soot-run checks and the ACP agent process (`--agent acp`, and the Claude Code and Codex
+  runners of ADR-047) now run under a process sandbox picked
+  per OS from what is already installed: `bwrap` on Linux (when it is on PATH and works),
+  `sandbox-exec` on macOS, otherwise the `none` fallback. Default policy: writes only in the
+  task worktree and a private temp dir; home and soot's state directory hidden; git internals
+  read-only; no network.
+- The fallback is labelled as **not isolation** everywhere. It still strips credential-like
+  environment variables, pins the cwd to the worktree, uses no shell, times out, kills the whole
+  process group, and caps output at 16 MiB.
+- New `sandbox` block in `soot.config.json`: `mode` (`auto` | `bwrap` | `sandbox-exec` |
+  `none`), `network`, `readPaths`, `writePaths`, `required`, `bwrapPath`. `required: true`,
+  or a named backend that is unavailable, blocks tasks instead of running them unsandboxed.
+- The backend is recorded per check (report, `soot status`, and a new `command_runs` table in
+  `soot.sqlite`, schema v6) and per run; `soot config` shows the effective sandbox. The
+  dashboard shows it, with `unknown` for runs that did not record one.
+- Exercised for real with bwrap 0.12.0 on Linux. `sandbox-exec` is unit-tested only (never run
+  on a Mac). Windows has no backend.
+
 ### Added (Gemini and OpenRouter, opt-in, ADR-049)
 
 - Provider kind `google` for the Gemini API (via `@ai-sdk/google` 4.0.118). Thinking tokens

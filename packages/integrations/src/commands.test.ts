@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_SANDBOX_SETTINGS, resolveSandbox } from '@soot/agent-runtime';
 import { checkCommand, runCheck, scrubbedEnv } from './commands.js';
 import { NODE, POLICY } from './test-fixtures.js';
 
@@ -79,6 +80,34 @@ describe('command controls (M5-08)', () => {
       expect(refused).toMatchObject({ status: 'refused', exitCode: null });
     } finally {
       delete process.env.FAKE_PROVIDER_API_KEY;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('records the sandbox backend (ADR-051); a blocked sandbox refuses instead of running', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'soot-cmd-'));
+    try {
+      const ok = await runCheck(
+        { name: 'ok', kind: 'test', argv: [NODE, '-e', 'process.exit(0)'] },
+        { cwd: dir, policy: POLICY, commit: null },
+      );
+      expect(ok).toMatchObject({ status: 'passed', sandbox: 'none' });
+      const blocked = resolveSandbox(
+        { ...DEFAULT_SANDBOX_SETTINGS, required: true },
+        { platform: 'win32', home: null, dataDir: null, path: '' },
+      );
+      const refused = await runCheck(
+        { name: 'b', kind: 'test', argv: [NODE, '-e', 'require("fs").writeFileSync("ran", "1")'] },
+        { cwd: dir, policy: POLICY, commit: null, sandbox: blocked },
+      );
+      expect(refused).toMatchObject({ status: 'refused', sandbox: null });
+      expect(refused.reason).toMatch(/required/);
+      const notAllowed = await runCheck(
+        { name: 'rm', kind: 'test', argv: ['rm', '-rf', dir] },
+        { cwd: dir, policy: { allowedExecutables: ['rm'] }, commit: null },
+      );
+      expect(notAllowed.sandbox).toBeNull();
+    } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });

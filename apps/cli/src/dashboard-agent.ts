@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import type { Logger } from '@soot/core';
 import { unattendedApprovals, withApply } from './approvals.js';
 import { CONFIG_FILE } from './config.js';
@@ -86,6 +87,11 @@ export function createComposerAgent(o: ComposerAgentOptions) {
       gitEnv: { ...o.env },
       agentEnv: { ...o.env },
       modelEnv: { ...o.env },
+      // Sandbox host facts from the same environment (ADR-051): home is hidden from agents.
+      sandboxHost: {
+        home: o.env.HOME ?? homedir(),
+        path: o.env.PATH ?? '',
+      },
       ...(o.log === undefined ? {} : { log: o.log }),
     });
 

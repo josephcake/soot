@@ -22,6 +22,10 @@ The optional local dashboard (ADR-031: `soot dashboard`, 127.0.0.1 only, read-on
 stays the default) is tracked in `docs/project/TASKS.md` (D-01, charts D-02, palette and chart types D-03) and changes no milestone status. The
 elaborate web dashboard stays deferred (`docs/project/FUTURE_FEATURES.md`).
 
+The process sandbox for commands soot launches for an agent (ADR-051, TASKS SB-01:
+`bwrap` on Linux, `sandbox-exec` on macOS, an honest `none` fallback) is Implemented and changes
+no milestone status. Only the Linux backend has been exercised for real.
+
 The MVP (MVP-01…MVP-08) is reached at the end of M5 for the engine and M6 for the first
 harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-009.
 

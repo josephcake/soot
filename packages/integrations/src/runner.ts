@@ -4,6 +4,7 @@ import type {
   ApprovalDecision,
   ApprovalGate,
   ApprovalRequest,
+  Sandbox,
   TaskPermissions,
 } from '@soot/agent-runtime';
 import { buildAgentContext } from '@soot/context-manager';
@@ -85,6 +86,13 @@ export interface IsolatedRunnerOptions {
    * A change to one fails the attempt as `out-of-scope`.
    */
   readonly protectedPaths?: readonly string[];
+  /**
+   * Process sandbox for soot-run checks (ADR-051). When it is `blocked` (required isolation
+   * is unavailable), every task comes back `blocked` before its agent starts.
+   */
+  readonly sandbox?: Sandbox;
+  /** Called after each soot-run check (e.g. to persist it with its sandbox backend). */
+  readonly onCheck?: (taskId: string, attempt: number, evidence: CheckEvidence) => void;
 }
 
 const attemptLabel = (input: AgentTaskInput) => `${input.task.id} attempt ${String(input.attempt)}`;
@@ -125,6 +133,22 @@ export class IsolatedTaskRunner implements AgentRunner {
   async #run(input: AgentTaskInput, signal: AbortSignal): Promise<unknown> {
     const { task } = input;
     const { repo, audit } = this.#o;
+    const blocked = this.#o.sandbox?.blocked ?? null;
+    if (blocked !== null) {
+      // ADR-051: required isolation is unavailable, so nothing runs for this task.
+      audit.record('sandbox-blocked', task.id, { attempt: input.attempt, reason: blocked });
+      const result: AgentResult = {
+        taskId: task.id,
+        attempt: input.attempt,
+        status: 'blocked',
+        summary: `[soot] blocked: ${blocked}`.slice(0, 2000),
+        findings: [{ kind: 'issue', message: `[soot] sandbox: ${blocked}`.slice(0, 2000) }],
+        patch: null,
+        evidence: [],
+        usage: { inputTokens: 0, outputTokens: 0, durationMs: 0, costUsd: null, model: null },
+      };
+      return result;
+    }
     const base = await this.#baseFor(task);
     const { worktree, reset } = await repo.ensureWorktree(task.id, base);
     audit.record(reset ? 'worktree-reset' : 'worktree-created', task.id, {
@@ -291,8 +315,10 @@ export class IsolatedTaskRunner implements AgentRunner {
         policy: this.#o.policy,
         commit,
         signal,
+        ...(this.#o.sandbox === undefined ? {} : { sandbox: this.#o.sandbox }),
       });
       evidence.push(e);
+      this.#o.onCheck?.(task.id, input.attempt, e);
       audit.record(e.status === 'refused' ? 'command-refused' : 'command-run', task.id, {
         check: e.name,
         argv: [...e.argv],
@@ -300,6 +326,7 @@ export class IsolatedTaskRunner implements AgentRunner {
         exitCode: e.exitCode,
         durationMs: e.durationMs,
         reason: e.reason,
+        sandbox: e.sandbox,
       });
     }
     const bad = evidence.filter((e) => e.required && e.status !== 'passed');

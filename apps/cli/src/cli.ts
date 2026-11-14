@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 import { parseArgs } from 'node:util';
@@ -190,6 +191,11 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
       gitEnv: { ...io.env },
       agentEnv: { ...io.env },
       modelEnv: { ...io.env },
+      // Sandbox host facts from the same environment (ADR-051): home is hidden from agents.
+      sandboxHost: {
+        home: io.env.HOME ?? homedir(),
+        path: io.env.PATH ?? '',
+      },
       log,
     });
     try {

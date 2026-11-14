@@ -36,6 +36,8 @@ export const AUDIT_EVENT_TYPES = [
   // accept, fail, stop), and for ACP whether the agent applied the routed model (ADR-028).
   'routing-decision',
   'model-route',
+  // Process sandbox (ADR-051): a task blocked because required isolation is unavailable.
+  'sandbox-blocked',
 ] as const;
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
 

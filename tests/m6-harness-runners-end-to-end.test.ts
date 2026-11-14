@@ -7,7 +7,7 @@
  * nothing here verifies Claude Code or Codex.
  */
 import { simulatedHarnessScript, type HarnessId, type MockAcpStep } from '@soot/harness-adapters';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -49,8 +49,11 @@ function useSimulatedHarness(
   tasks: Record<string, MockAcpStep>,
   o: { mode?: string; requireAuth?: boolean; harness?: Record<string, unknown> } = {},
 ): { log: () => Record<string, unknown>[] } {
-  const scriptPath = join(r.top, `simulated-${id}.json`);
-  const logPath = join(r.top, `simulated-${id}.jsonl`);
+  // The adapter writes its log outside the worktree, so the sandbox (ADR-051) must allow it.
+  const simDir = join(r.top, `simulated-${id}`);
+  mkdirSync(simDir, { recursive: true });
+  const scriptPath = join(simDir, 'script.json');
+  const logPath = join(simDir, 'log.jsonl');
   writeFileSync(
     scriptPath,
     JSON.stringify(
@@ -66,6 +69,7 @@ function useSimulatedHarness(
   config.harnesses = {
     [id]: { command: process.execPath, args: [MOCK_ACP_BIN, scriptPath, logPath], ...o.harness },
   };
+  config.sandbox = { writePaths: [simDir] };
   writeFileSync(configPath, JSON.stringify(config, null, 2));
   r.commitAll(`use a simulated ${id} adapter`);
   return {
@@ -82,6 +86,7 @@ function useSimulatedHarness(
 interface RunJson {
   agent: string;
   agentLabel: string;
+  sandbox: { backend: string; isolation: boolean; blocked: string | null };
   report: {
     status: string;
     tasks: {
@@ -106,6 +111,28 @@ describe.each(['claude-code', 'codex'] as const)(
   'soot run --agent %s with a simulated adapter (spec §17 Test 1 prompt)',
   (id) => {
     it(
+      'a sandbox that is named but unavailable blocks the run; the adapter never starts (ADR-051)',
+      async () => {
+        const r = (repo = createDemoRepo());
+        const sim = useSimulatedHarness(r, id, {
+          'update-page-title': { writes: demoWrites('update-page-title') },
+          'update-button-color': { writes: demoWrites('update-button-color') },
+        });
+        const configPath = join(r.root, 'soot.config.json');
+        const config = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+        config.sandbox = { mode: 'bwrap', bwrapPath: '/nonexistent/bwrap' };
+        writeFileSync(configPath, JSON.stringify(config, null, 2));
+        r.commitAll('require an unavailable sandbox');
+        const run = await cli(r, ['run', TEST_1, '--agent', id, '--run-id', `hb-${id}`, '--json']);
+        const out = parse(run.stdout);
+        expect(out.sandbox.blocked).toMatch(/mode is "bwrap"/);
+        for (const t of out.report.tasks) expect(t.verdict).not.toBe('verified');
+        expect(sim.log()).toEqual([]); // the simulated adapter was never spawned
+      },
+      SLOW,
+    );
+
+    it(
       'unattended: the permission-asking task is refused; the other is verified and merged',
       async () => {
         const r = (repo = createDemoRepo());
@@ -123,6 +150,9 @@ describe.each(['claude-code', 'codex'] as const)(
         expect(out.agent).toBe('acp');
         expect(out.agentLabel).toContain(`${id} (your ACP adapter command: ${process.execPath}`);
         expect(out.agentLabel).toContain('tested against simulated adapters only');
+        // The adapter is spawned under the run's sandbox (ADR-051); never a claim it can't back.
+        expect(out.sandbox.blocked).toBeNull();
+        expect(out.sandbox.isolation).toBe(out.sandbox.backend !== 'none');
         expect(taskOf(out, 'update-button-color')).toMatchObject({
           verdict: 'verified',
           integration: 'merged',
@@ -138,7 +168,11 @@ describe.each(['claude-code', 'codex'] as const)(
         for (const s of log.filter((e) => e.method === 'start')) {
           expect(String(s.cwd).startsWith(join(r.dataDir, 'worktrees', `h-${id}`))).toBe(true);
           expect(s.env as string[]).not.toContain('FAKE_PROVIDER_API_KEY');
+          // Under bwrap the adapter lives in its own PID namespace (ADR-051), so its PID is
+          // tiny; a host spawn never gets PID <= 3.
+          if (out.sandbox.backend === 'bwrap') expect(Number(s.pid)).toBeLessThanOrEqual(3);
         }
+        expect(log.some((e) => e.method === 'start')).toBe(true);
         const answers = log.filter((e) => e.method === 'permission-answer').map((e) => e.outcome);
         expect(answers.length).toBeGreaterThanOrEqual(1);
         for (const a of answers) expect(a).toEqual({ outcome: 'selected', optionId: REJECT[id] });

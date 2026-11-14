@@ -4,7 +4,7 @@
  * here is soot's own scripted mock ACP agent (`node .../mock-agent-bin.js`); no vendor harness,
  * model, key or network is involved, and nothing here verifies any vendor integration.
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -52,8 +52,12 @@ function useMockAcpAgent(
   extra: Record<string, unknown> = {},
   scriptExtra: Record<string, unknown> = {},
 ): { log: () => Record<string, unknown>[]; logPath: string } {
-  const scriptPath = join(r.top, 'mock-acp-script.json');
-  const logPath = join(r.top, 'mock-acp-log.jsonl');
+  // Script and log live in their own directory outside the repo. HOME is r.top here, and the
+  // process sandbox (ADR-051) hides home, so the mock agent gets that one directory writable.
+  const acpDir = join(r.top, 'acp');
+  mkdirSync(acpDir, { recursive: true });
+  const scriptPath = join(acpDir, 'mock-acp-script.json');
+  const logPath = join(acpDir, 'mock-acp-log.jsonl');
   writeFileSync(
     scriptPath,
     JSON.stringify({ version: 1, label: 'test double', tasks, ...scriptExtra }),
@@ -65,6 +69,7 @@ function useMockAcpAgent(
     args: [MOCK_ACP_BIN, scriptPath, logPath],
     ...extra,
   };
+  config.sandbox = { writePaths: [acpDir] };
   writeFileSync(configPath, JSON.stringify(config, null, 2));
   r.commitAll('use the mock ACP agent');
   return {
@@ -162,7 +167,11 @@ describe('soot run --agent acp with the mock ACP agent (spec §17 Test 1 prompt)
       // One agent process per attempt, each started in its own soot worktree.
       const starts = log.filter((e) => e.method === 'start');
       expect(starts.length).toBeGreaterThanOrEqual(2);
-      expect(new Set(starts.map((s) => s.pid)).size).toBe(starts.length);
+      // Under bwrap (ADR-051) each agent gets its own PID namespace, so PIDs repeat; the
+      // separate cwd per worktree still shows one process per attempt.
+      expect(new Set(starts.map((s) => `${String(s.pid)}:${String(s.cwd)}`)).size).toBe(
+        starts.length,
+      );
       for (const s of starts) {
         expect(String(s.cwd).startsWith(join(r.dataDir, 'worktrees', 'acp1'))).toBe(true);
         const names = s.env as string[];
