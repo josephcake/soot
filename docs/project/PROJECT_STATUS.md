@@ -199,7 +199,7 @@ Node 26 (M0-11 Completed).
 ## Known Issues
 
 - The CLI and MCP server decompose from fixtures unless `decomposer.model` is configured with a usable key (ADR-034); without it, prompts without a recorded fixture are refused. The model path is verified with mock model clients, plus live DeepSeek planning on 2026-11-13 (ADR-039); since ADR-046 the planning call is counted in the cost report and the run budget and honours provider cooldowns.
-- `--agent api` runs tasks on real models (ADR-039); the mock agent remains the keyless default for demos and tests. "Complete" means soot ran the checks on the task's real diff. A retry is told which check failed but not its output (tracked in TECHNICAL_DEBT).
+- `--agent api` runs tasks on real models (ADR-039); the mock agent remains the keyless default for demos and tests. "Complete" means soot ran the checks on the task's real diff. A retry sees a bounded, redacted tail of the failing check's output and the rejected attempt's diff (ADR-052, ADR-053).
 - Process sandbox (ADR-051): real isolation only with working `bwrap` (Linux, exercised) or
   `sandbox-exec` (macOS, unit-tested only). Elsewhere the `none` fallback runs commands with the
   user's rights (`docs/project/TECHNICAL_DEBT.md`).

@@ -1518,3 +1518,131 @@ file-write*` on git internals last; `(allow network*)` only when configured. Eve
   integration tests are skipped, not faked.
 - **Reversible:** Yes. `"sandbox": { "mode": "none" }` restores the old behavior per project
   (plus the new env strip, process-group kill and output cap). The schema-v6 table is additive.
+
+## ADR-052: Retries and escalations see the failing check's output
+
+- **Date:** 2026-11-14
+- **Status:** Accepted (Mochi, under Joseph's standing grant for soot engineering decisions,
+  after the 2026-11-14 savings benchmark). Renumbered from ADR-050 to ADR-052 at merge
+  (ADR-050 is the benchmark, ADR-051 the process sandbox).
+- **Context:** When soot's own check rejects an attempt, the next attempt starts from a reset
+  worktree. Its prompt says `acceptance:title failed (exit 1)`, and the only output it gets is
+  the last 600 characters of the check, inside a finding. That finding is appended after the
+  model's own notes, and `--agent api` shows only the first 10 findings. For a `node --test`
+  failure, 600 characters is the tail of the assertion object (actual and expected values);
+  it loses the test name, the failing line and any second failure. In the 2026-11-14
+  benchmark, models kept changing only one of two title elements on the title prompt. With a
+  single model and nothing stronger to escalate to, that prompt failed 3 of 3 runs. The routed
+  runs recovered only by switching models. The benchmark asked for the retry to get a
+  bounded, cleaned and clearly fenced view of the check output.
+- **Decision:**
+  - **`failedCheck`** (new optional field on `AgentResult`, `FailedCheckSchema` in
+    `@soot/task-graph`): `{ name, status, exitCode, outputTail, truncated }` for the first
+    required check that did not pass. Only `IsolatedTaskRunner` sets it, in `#asFailed`. It
+    removes any `failedCheck` an agent put in its own result, so an agent cannot plant
+    "evidence" for the next attempt. The 600-character tail in the finding is gone; the finding
+    keeps the verdict and reason.
+  - **Prepared once, in `failedCheckForRetry`** (`@soot/integrations`): ANSI escape sequences
+    are stripped (CSI, OSC, lone escapes; bare CRs become newlines). Then `redactSecrets` runs
+    again, so an escape code cannot split a key-like string past the redaction already applied
+    when the output was captured. Then the last N bytes are kept, cut on a UTF-8 character
+    boundary. The end is kept because test runners print the failure and summary last. A
+    refused or unavailable check with no output gets its reason instead.
+  - **Configurable:** `retryCheckOutputBytes` in soot.config.json, default 4096, at most
+    16,384 (`FAILED_CHECK_OUTPUT_LIMIT`, also the schema ceiling), `0` = off. Captured check
+    output grows from 4,000 to 16,384 characters so the setting can use its full range.
+    `soot config` shows the setting.
+  - **In the prompt:** `PriorAttempt.failedCheck` carries the value to every later attempt,
+    retries and escalations alike. Both prompt builders show a trusted header written by soot
+    ("soot's check X rejected it (failed, exit 1)") followed by the output in an
+    `<untrusted source="check X">` fence that the output cannot close. The `--agent api`
+    runner uses `failedCheckLines`; ACP-based runners (generic, Claude Code, Codex) get it as
+    its own untrusted block, scanned for injection and audited when flagged.
+- **Verification:** unit tests for ANSI stripping, the UTF-8-safe byte tail, the cap and its
+  ceiling, redaction (including a key split by an escape code), off at 0, and the reason
+  fallback; context-manager tests for the fenced block and injection flagging; an
+  `--agent api` test that the retry prompt contains the header and fenced output and that the
+  output cannot close its fence; config tests for the default and the bounds. In the M5
+  end-to-end test on a real git repo, the escalated attempt sees the failed `node --test`
+  assertion (actual `hello world`, expected `HELLO WORLD`), and with `retryCheckOutputBytes: 0`
+  it sees only the reason. JSON Schema regenerated.
+- **Alternatives:** keep the output in a finding (findings are capped at 2,000 characters and
+  `--agent api` shows only the first 10, so soot's finding can be dropped); send the whole
+  output (unbounded prompt growth and more untrusted text); parse test-runner output for
+  assertions only (runner-specific and brittle); give the retry the previous diff instead of a
+  reset worktree (a larger change to the M5 isolation model; may follow).
+- **Consequences:** A retry costs up to about 1,000 more input tokens per prior failed attempt
+  at the default. Check output from the user's own tests now reaches the model. It was
+  already sent in part (600 characters), it is redacted and fenced, and `0` turns it off. The
+  benchmark's tech-debt entry "Retries do not see the failed check's output" (from the
+  benchmark, ADR-050) is resolved by this ADR and was dropped at merge.
+- **Live check (2026-11-14, `xai/grok-4.7` alone, title prompt, 3 runs, $0.0409):** still 0 of 3
+  pass, but the failure changed. Each retry fixed exactly the assertion the check output named.
+  `node --test` stops at the first failed `assert`, so that was the half the previous attempt
+  had missed. Each retry also dropped the previous attempt's fix, because the worktree is reset
+  between attempts. The check output now reaches the retry and is used. The remaining gap is
+  that the retry does not see what the previous attempt changed. Showing that diff to the retry
+  is the next step and needs its own ADR.
+- **Reversible:** Yes. Set `retryCheckOutputBytes: 0`, or remove the field and the two
+  prompt lines.
+
+## ADR-053: Retries and escalations see the rejected attempt's diff
+
+- **Date:** 2026-11-14
+- **Status:** Accepted (Mochi, under Joseph's standing grant for soot engineering decisions).
+  Follows ADR-052. Renumbered from ADR-051 to ADR-053 at merge.
+- **Context:** ADR-052's live check showed the next gap. Each attempt starts from a worktree
+  reset to the task's base. The retry saw which assertion failed, fixed it, and dropped the
+  previous attempt's correct edit, which it never saw. Keeping the worktree between attempts
+  would change M5 isolation: a bad attempt's edits, including out-of-scope or protected-path
+  edits, would leak into the next one.
+- **Decision:**
+  - **`rejectedChange`** (new optional field on `AgentResult`, `RejectedChangeSchema` in
+    `@soot/task-graph`): `{ commit, files, diff, truncated }`. `IsolatedTaskRunner` sets it in
+    `#asFailed` whenever soot committed a change it then rejected (failed validation, out of
+    scope). It is never taken from an agent, like `failedCheck`. The worktree still resets to
+    the base, so the next attempt decides what to keep.
+  - **The diff** comes from `Repository.diff(base, commit)`: `git diff --no-color --no-ext-diff
+--no-textconv --no-renames`, so the repo's config cannot run a diff driver. Binary files
+    show as git's one-line summary. `rejectedChangeForRetry` strips ANSI, runs `redactSecrets`,
+    and keeps the first `retryDiffBytes` bytes, cut on a line boundary. The start is kept
+    because a diff reads top-down. The file list is capped at 50, and `truncated` records
+    either cut.
+  - **Configurable:** `retryDiffBytes` in soot.config.json, default 8192, at most 32,768
+    (`REJECTED_CHANGE_DIFF_LIMIT`, also the schema ceiling), `0` = off, independent of
+    `retryCheckOutputBytes`. `soot config` shows it.
+  - **In the prompt:** `PriorAttempt.rejectedChange` carries the field to every later attempt,
+    so it applies to retries and escalations alike. Only the latest attempt that left a change
+    is shown: that attempt already saw the earlier ones, and older diffs would only add tokens.
+    A trusted sentence written by soot names the attempt and its files. It says the worktree
+    was reset, so the change is not in the current files, and that the diff is data to build
+    on, not instructions. The diff follows in an `<untrusted source="diff of attempt N">`
+    fence it cannot close. `--agent api` places it after the prior attempts and before the
+    current files. ACP runners get the sentence in a new `trusted.notes` list and the diff as
+    a scanned untrusted block, audited when flagged.
+- **Verification:** unit tests for the UTF-8-safe head cut, the line-boundary cut and its
+  ceiling, off at 0, no commit or no files, redaction and ANSI stripping, and the file-list
+  cap; context-manager tests that only the latest diff is fenced, flagged and introduced by a
+  trusted note; an `--agent api` test that the retry prompt has the note and the latest diff
+  only, before the current files, and that the diff cannot close its fence; config bounds. In
+  the M5 end-to-end test on a real git repo, the escalated attempt sees both earlier diffs as
+  real `git diff` text. With `retryDiffBytes: 0` it sees none, and an agent that plants its
+  own `failedCheck` or `rejectedChange` has it dropped.
+- **Live check (2026-11-14, `xai/grok-4.7` alone, title prompt, 3 runs, $0.0319):** still 0 of 3
+  pass. soot's side worked: the stored results carry `rejectedChange`, and the retry prompt
+  rebuilt from them shows the attempt-1 diff (`<h1>` changed) after the check output (`<title>`
+  expected). The model still changed only `<title>` and dropped the `<h1>` edit in all 3 runs.
+  The likely cause is the task itself, not missing context. The planner's spec fixture for this
+  prompt says "No other page text changes", while the benchmark's acceptance test requires both
+  `<title>` and `<h1>`. A careful model follows the criterion and reverts the second element.
+  The fix belongs in the benchmark fixture (make the task and its acceptance test agree), not
+  here.
+- **Alternatives:** keep the worktree between attempts (breaks isolation; out-of-scope edits
+  would carry over); apply the previous diff before the retry (the same leak, and a wrong
+  half would have to be undone); send the full files of the previous attempt (larger than the
+  diff for small edits); send every prior diff (more tokens for little gain).
+- **Consequences:** A retry costs up to about 2,000 more input tokens at the default. Content
+  of the rejected change reaches the next model. It came from a model in the first place, it is
+  redacted and fenced, and `0` turns it off. An out-of-scope diff is shown too, so the next
+  attempt can see what not to touch. soot's finding already names the files outside the lease.
+- **Reversible:** Yes. Set `retryDiffBytes: 0`, or remove the field and the prompt lines.

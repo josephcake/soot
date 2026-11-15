@@ -18,6 +18,12 @@ import {
   type TaskGraph,
 } from '@soot/task-graph';
 import { runCheck, type CheckCommand, type CheckEvidence, type CommandPolicy } from './commands.js';
+import {
+  DEFAULT_RETRY_CHECK_OUTPUT_BYTES,
+  DEFAULT_RETRY_DIFF_BYTES,
+  failedCheckForRetry,
+  rejectedChangeForRetry,
+} from './retry-output.js';
 import type { FileChange, Repository, Worktree } from './repository.js';
 import { WriteLeases, withinScope } from './scope.js';
 
@@ -93,6 +99,25 @@ export interface IsolatedRunnerOptions {
   readonly sandbox?: Sandbox;
   /** Called after each soot-run check (e.g. to persist it with its sandbox backend). */
   readonly onCheck?: (taskId: string, attempt: number, evidence: CheckEvidence) => void;
+  /**
+   * Bytes of the failing check's output (ANSI-stripped, redacted, last part) handed to the next
+   * attempt as `failedCheck`. Default 4096; `0` turns it off.
+   */
+  readonly retryCheckOutputBytes?: number;
+  /**
+   * Bytes of a rejected attempt's diff (redacted, first part) handed to the next attempt as
+   * `rejectedChange`, so it can build on the earlier change. Default 8192; `0` turns it off.
+   */
+  readonly retryDiffBytes?: number;
+}
+
+/** `failedCheck` and `rejectedChange` are soot's to set: drop any an agent supplied. */
+function withoutSootFields(result: AgentResult): AgentResult {
+  if (result.failedCheck === undefined && result.rejectedChange === undefined) return result;
+  const copy = { ...result };
+  delete copy.failedCheck;
+  delete copy.rejectedChange;
+  return copy;
 }
 
 const attemptLabel = (input: AgentTaskInput) => `${input.task.id} attempt ${String(input.attempt)}`;
@@ -194,7 +219,7 @@ export class IsolatedTaskRunner implements AgentRunner {
       audit.record('attempt-finished', task.id, { attempt: input.attempt, status: 'invalid' });
       return raw;
     }
-    const result = parsed.value;
+    const result = withoutSootFields(parsed.value);
     audit.record('attempt-finished', task.id, { attempt: input.attempt, status: result.status });
     if (signal.aborted) return result;
     return this.#verify(input, result, worktree, signal);
@@ -276,10 +301,10 @@ export class IsolatedTaskRunner implements AgentRunner {
           : []),
       ];
       const v = record('out-of-scope', reasons.join('; '));
-      return this.#asFailed(result, v);
+      return await this.#asFailed(result, v);
     }
     if (isWrite && files.length === 0) {
-      return this.#asFailed(
+      return await this.#asFailed(
         result,
         record('no-changes', 'the agent reported success but changed no files'),
       );
@@ -343,7 +368,7 @@ export class IsolatedTaskRunner implements AgentRunner {
           : 'validation was cancelled',
         evidence,
       );
-      return this.#asFailed(result, v);
+      return await this.#asFailed(result, v);
     }
     const v = record(
       'verified',
@@ -368,16 +393,28 @@ export class IsolatedTaskRunner implements AgentRunner {
     };
   }
 
-  /** The agent's result as soot sees it: `failed`, with the reason as a finding. */
-  #asFailed(result: AgentResult, v: TaskVerification): AgentResult {
-    const failing = v.checks.find((c) => c.required && c.status !== 'passed');
+  /**
+   * The agent's result as soot sees it: `failed`, with the reason as a finding, the check that
+   * rejected it and the change it made (both for the next attempt).
+   */
+  async #asFailed(result: AgentResult, v: TaskVerification): Promise<AgentResult> {
+    const failedCheck = failedCheckForRetry(
+      v.checks,
+      this.#o.retryCheckOutputBytes ?? DEFAULT_RETRY_CHECK_OUTPUT_BYTES,
+    );
+    const diffBytes = this.#o.retryDiffBytes ?? DEFAULT_RETRY_DIFF_BYTES;
+    const rejectedChange =
+      diffBytes > 0 && v.commit !== null && v.files.length > 0
+        ? rejectedChangeForRetry(
+            v.commit,
+            v.files,
+            await this.#o.repo.diff(v.base, v.commit),
+            diffBytes,
+          )
+        : null;
     const finding: Finding = {
       kind: 'issue',
-      message:
-        `[soot] not verified (${v.verdict}): ${v.reason}${failing === undefined || failing.outputTail === '' ? '' : `\noutput (untrusted): ${failing.outputTail.slice(-600)}`}`.slice(
-          0,
-          2000,
-        ),
+      message: `[soot] not verified (${v.verdict}): ${v.reason}`.slice(0, 2000),
       ...(v.outOfScope.length > 0 ? { files: v.outOfScope.slice(0, 50) } : {}),
     };
     return {
@@ -386,6 +423,8 @@ export class IsolatedTaskRunner implements AgentRunner {
       summary: `[soot] ${v.verdict}: ${v.reason}`.slice(0, 2000),
       findings: [...result.findings.slice(0, 49), finding],
       patch: null,
+      ...(failedCheck === null ? {} : { failedCheck }),
+      ...(rejectedChange === null ? {} : { rejectedChange }),
     };
   }
 

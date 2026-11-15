@@ -49,6 +49,10 @@ export interface CodebaseWorkflowOptions {
   readonly acceptance?: Readonly<Record<string, readonly CheckCommand[]>>;
   /** Paths no task may change even inside its lease (acceptance tests, CI config, …). */
   readonly protectedPaths?: readonly string[];
+  /** Bytes of a failing check's output given to the next attempt (default 4096; 0 = off). */
+  readonly retryCheckOutputBytes?: number;
+  /** Bytes of a rejected attempt's diff given to the next attempt (default 8192; 0 = off). */
+  readonly retryDiffBytes?: number;
   readonly policy: CommandPolicy;
   readonly approvals: ApprovalGate;
   readonly supervisor?: AttemptSupervisor;
@@ -163,6 +167,10 @@ export async function runCodebaseWorkflow(o: CodebaseWorkflowOptions): Promise<C
     checks: o.checks,
     ...(o.acceptance === undefined ? {} : { acceptance: o.acceptance }),
     ...(o.protectedPaths === undefined ? {} : { protectedPaths: o.protectedPaths }),
+    ...(o.retryCheckOutputBytes === undefined
+      ? {}
+      : { retryCheckOutputBytes: o.retryCheckOutputBytes }),
+    ...(o.retryDiffBytes === undefined ? {} : { retryDiffBytes: o.retryDiffBytes }),
     policy: o.policy,
     approvals: o.approvals,
     audit,

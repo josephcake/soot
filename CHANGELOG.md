@@ -5,6 +5,26 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Changed (retries build on the rejected change)
+
+- A retry or escalation now also sees what the previous attempt changed. The worktree is reset
+  between attempts, so before this the next attempt redid the task from the base and often
+  lost the half it had got right. soot stores the changed files and the start of the rejected
+  attempt's diff (`retryDiffBytes`, default 8192, at most 32768, 0 = off; ANSI-stripped,
+  key-redacted). The next attempt is told the change is not in its files and gets the diff in
+  an untrusted fence. Only the latest rejected diff is shown. Agent results gain an optional,
+  soot-set `rejectedChange` field (JSON Schema updated); an agent cannot supply one.
+
+### Changed (retries see why a check failed)
+
+- When soot's own check rejects an attempt, the retry or escalation now gets the end of that
+  check's output in its own field (for `node --test`, the test name, the failing line and the
+  assertion with actual and expected values), instead of the last 600 characters inside a
+  finding that could be crowded out. The output is ANSI-stripped, key-redacted, capped
+  at `retryCheckOutputBytes` (default 4096, at most 16384, 0 = off) and fenced as untrusted
+  data in the prompt. Agent results gain an optional, soot-set `failedCheck` field (JSON Schema
+  updated); an agent cannot supply one.
+
 ### Verified (live acceptance runs and the first savings benchmark, ADR-050)
 
 - `scripts/benchmark.mjs` and `examples/bench-app`: a reproducible savings benchmark (issue #3,

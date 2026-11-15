@@ -203,6 +203,26 @@ export class Repository {
     return changes;
   }
 
+  /**
+   * Unified diff between two commits, as plain text: no color, no external diff or textconv
+   * drivers from the repo's config, binary files summarised by git.
+   */
+  async diff(from: string, to: string): Promise<string> {
+    return (
+      await this.#git([
+        '-c',
+        'core.quotePath=false',
+        'diff',
+        '--no-color',
+        '--no-ext-diff',
+        '--no-textconv',
+        '--no-renames',
+        from,
+        to,
+      ])
+    ).stdout;
+  }
+
   /** Dry-run merge of `theirs` into `ours` without touching any working tree (git ≥ 2.38). */
   async mergeTree(ours: string, theirs: string): Promise<MergeTreeResult> {
     const r = await this.#git(
