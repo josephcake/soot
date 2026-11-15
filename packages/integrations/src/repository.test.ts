@@ -187,3 +187,68 @@ describe('structured edits for the minimal executor (ADR-020, M5-09)', () => {
     await repo.cleanup();
   });
 });
+
+describe('Repository: resume (ADR-054)', () => {
+  it('pins the original base, removes leftover worktrees, restores kept branches, deletes re-run ones', async () => {
+    fx = createFixtureRepo();
+    // Process 1 makes worktrees and commits, then "dies" (no cleanup).
+    const dead = await open(fx);
+    const base = dead.baseCommit;
+    const a = (await dead.ensureWorktree('a', base)).worktree;
+    const b = (await dead.ensureWorktree('b', base)).worktree;
+    writeFileSync(join(a.path, 'src/title.ts'), "export const PAGE_TITLE: string = 'A';\n");
+    const ca = (await dead.commitAll(a, 'a')) ?? '';
+    writeFileSync(join(b.path, 'src/title.ts'), "export const PAGE_TITLE: string = 'half';\n");
+    await dead.commitAll(b, 'b half done');
+    // Meanwhile the user commits, so HEAD moves.
+    writeFileSync(join(fx.root, 'README.md'), 'moved\n');
+    fx.git('add', '-A');
+    fx.git('commit', '--quiet', '-m', 'user work');
+    fx.git('update-ref', 'refs/heads/soot/r1/a', base); // someone moved a's branch
+
+    const resumed = await Repository.open({
+      root: fx.root,
+      worktreesDir: join(fx.dataDir, 'worktrees'),
+      runId: 'r1',
+      gitEnv: fx.gitEnv,
+      baseCommit: base,
+    });
+    expect(resumed.baseCommit).toBe(base);
+    const actions = await resumed.reclaimRun(new Map([['a', ca]]), new Set(['b']));
+    expect(actions.map((x) => [x.taskId, x.action])).toEqual([
+      ['a', 'worktree-removed'],
+      ['b', 'worktree-removed'],
+      ['a', 'branch-restored'],
+      ['b', 'branch-deleted'],
+    ]);
+    expect(await resumed.listWorktrees()).toEqual([fx.root]);
+    expect(fx.git('rev-parse', 'soot/r1/a')).toBe(ca);
+    // b's next attempt starts on a fresh branch from the base.
+    const fresh = await resumed.ensureWorktree('b', base);
+    expect(fresh.reset).toBe(false);
+    expect(readFileSync(join(fresh.worktree.path, 'src/title.ts'), 'utf8')).toContain("'Hello'");
+    await resumed.cleanup();
+
+    // A kept task whose commit is gone is reported (and re-run by the caller).
+    const again = await Repository.open({
+      root: fx.root,
+      worktreesDir: join(fx.dataDir, 'worktrees'),
+      runId: 'r1',
+      gitEnv: fx.gitEnv,
+      baseCommit: base,
+    });
+    expect(
+      (await again.reclaimRun(new Map([['a', 'f'.repeat(40)]]), new Set())).map((x) => x.action),
+    ).toEqual(['commit-missing']);
+    expect(await again.listBranches()).toEqual(['soot/r1/b']);
+    await expect(
+      Repository.open({
+        root: fx.root,
+        worktreesDir: join(fx.dataDir, 'worktrees'),
+        runId: 'r1',
+        gitEnv: fx.gitEnv,
+        baseCommit: 'e'.repeat(40),
+      }),
+    ).rejects.toThrow(/not in .* any more; it cannot be resumed/);
+  });
+});

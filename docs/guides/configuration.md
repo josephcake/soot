@@ -340,10 +340,14 @@ key)`. The dashboard's project panel reads config without probing and shows `not
 ## CLI state files
 
 Under the state directory: `soot.sqlite` (runs, attempts, model outcomes, provider cooldowns,
-per-attempt spend), `reports/<run>.json` (the consolidated report and cost records),
+per-attempt spend, and since schema v7 the run and resume sessions, the run lock, persisted
+verdicts and user cancellations used by `soot resume`, ADR-054), `reports/<run>.json` (the consolidated report and cost records),
 `reports/<run>.events.jsonl` (live routing events), `audit/<run>.jsonl` (security-relevant
 actions and every routing decision), `worktrees/<run>/` (removed after the run) and
-`control/<run>.lock|.stop|.stop-task.<id>` (used by `soot stop`).
+`control/<run>.lock|.stop|.stop-task.<id>` (used by `soot stop`). A run also holds a lock row in
+`soot.sqlite` (owner pid, host, heartbeat). A row whose pid is gone, or whose heartbeat is older
+than 2 minutes, is stale, and `soot resume` takes it over. Otherwise the run counts as live and is
+not resumed.
 
 ### Attempt timeout
 

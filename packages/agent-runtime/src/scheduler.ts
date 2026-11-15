@@ -95,6 +95,13 @@ export interface SchedulerOptions {
   readonly journal?: ExecutionJournal;
   /** Results of tasks that already succeeded in an earlier run; they are not re-run. */
   readonly completed?: ReadonlyMap<string, AgentResult>;
+  /**
+   * Final non-success outcomes carried over from an earlier session that must NOT run again
+   * (ADR-054: a task blocked on sign-in, approval, budget or escalation stays blocked on
+   * resume; a task a person cancelled stays cancelled). They are reported with
+   * `resumed: true`, not journaled again, and their dependents are skipped.
+   */
+  readonly restored?: ReadonlyMap<string, RestoredOutcome>;
   /** Attempts already started per task in earlier runs; new attempts continue the count. */
   readonly previousAttempts?: ReadonlyMap<string, number>;
   readonly onEvent?: (event: SchedulerEvent) => void;
@@ -111,6 +118,14 @@ export interface SchedulerOptions {
   readonly attemptTimeoutMs?: number;
   /** Reviewed attempts from earlier runs (e.g. loaded from the state store), per task. */
   readonly previousAttemptRecords?: ReadonlyMap<string, readonly AttemptRecord[]>;
+}
+
+/** A carried-over final outcome (see `SchedulerOptions.restored`). */
+export interface RestoredOutcome {
+  readonly state: 'failed' | 'cancelled';
+  readonly attempt: number | null;
+  readonly result: AgentResult | null;
+  readonly error: string;
 }
 
 export interface RunReport {
@@ -211,6 +226,23 @@ export class Scheduler {
         attempts: [...(this.#history.get(taskId) ?? [])],
       });
     }
+    const held: string[] = [];
+    for (const [taskId, restored] of this.#options.restored ?? []) {
+      if (!this.#byId.has(taskId) || this.#outcomes.has(taskId)) continue;
+      this.#record({
+        taskId,
+        state: restored.state,
+        attempt: restored.attempt,
+        result: restored.result,
+        error: restored.error,
+        startedAt: null,
+        finishedAt: null,
+        resumed: true,
+        attempts: [...(this.#history.get(taskId) ?? [])],
+      });
+      held.push(taskId);
+    }
+    for (const taskId of held) this.#skipDependents(taskId);
     if (signal?.aborted === true) this.#cancelRun();
 
     await new Promise<void>((resolve) => {

@@ -181,7 +181,7 @@ describe('execution store: attempt history (Milestone 4)', () => {
     expect(run.attemptCounts.get('b')).toBe(2);
   });
 
-  it('migrates a v1 database in place to v4 and refuses unknown future versions', () => {
+  it('migrates a v1 database in place to the current version and refuses unknown future versions', () => {
     const dataDir = tempDir();
     const store = openExecutionStore({ dataDir });
     const runId = store.createRun({ intake, graph: buildTaskGraph([task('a')]) });
@@ -190,7 +190,9 @@ describe('execution store: attempt history (Milestone 4)', () => {
     // or attempt_spend tables, schema_version 1.
     const db = new DatabaseSync(join(dataDir, STATE_DB_FILE));
     db.exec(
-      `DROP TABLE attempt_details; DROP TABLE model_outcomes; DROP TABLE provider_cooldowns; DROP TABLE attempt_spend; DROP TABLE command_runs; UPDATE meta SET value = '1' WHERE key = 'schema_version';`,
+      `DROP TABLE attempt_details; DROP TABLE model_outcomes; DROP TABLE provider_cooldowns; DROP TABLE attempt_spend; DROP TABLE command_runs;
+       DROP TABLE run_sessions; DROP TABLE run_locks; DROP TABLE task_verifications; DROP TABLE task_cancellations;
+       ALTER TABLE task_attempts DROP COLUMN session; UPDATE meta SET value = '1' WHERE key = 'schema_version';`,
     );
     db.close();
 
@@ -199,11 +201,16 @@ describe('execution store: attempt history (Milestone 4)', () => {
     migrated.close();
     const check = new DatabaseSync(join(dataDir, STATE_DB_FILE));
     expect(check.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get()).toEqual({
-      value: '6',
+      value: '7',
     });
-    check.exec(`UPDATE meta SET value = '7' WHERE key = 'schema_version';`);
+    expect(
+      (check.prepare('PRAGMA table_info(task_attempts)').all() as { name: string }[]).map(
+        (c) => c.name,
+      ),
+    ).toContain('session');
+    check.exec(`UPDATE meta SET value = '8' WHERE key = 'schema_version';`);
     check.close();
-    expect(() => openExecutionStore({ dataDir })).toThrow(/Unsupported state schema version 7/);
+    expect(() => openExecutionStore({ dataDir })).toThrow(/Unsupported state schema version 8/);
   });
 
   it('migrates v4 model outcomes to v5: old rows get runner "unknown", new rows keep theirs', () => {
@@ -235,7 +242,7 @@ describe('execution store: attempt history (Milestone 4)', () => {
     store.close();
   });
 
-  it('a v5 database from before run_planning gets run_planning and command_runs side by side at v6', () => {
+  it('a v5 database from before run_planning gets run_planning and command_runs side by side at v7', () => {
     const dataDir = tempDir();
     const before = openExecutionStore({ dataDir });
     const runId = before.createRun({ intake, graph: buildTaskGraph([task('a')]) });
@@ -268,12 +275,63 @@ describe('execution store: attempt history (Milestone 4)', () => {
     store.close();
     const check = new DatabaseSync(join(dataDir, STATE_DB_FILE));
     expect(check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({
-      value: '6',
+      value: '7',
     });
     check.close();
   });
 
-  it('records soot-run commands with their sandbox backend (ADR-051), and migrates v5 to v6', () => {
+  it('a v6 database from the sandbox release keeps command_runs and gains the resume schema at v7', () => {
+    const dataDir = tempDir();
+    const before = openExecutionStore({ dataDir });
+    const runId = before.createRun({ intake, graph: buildTaskGraph([task('a')]) });
+    before.recordCommandRun({
+      runId,
+      taskId: 'a',
+      attempt: 1,
+      stage: 'task-check',
+      name: 'test',
+      status: 'passed',
+      exitCode: 0,
+      sandbox: 'bwrap',
+    });
+    before.close();
+    const db = new DatabaseSync(join(dataDir, STATE_DB_FILE));
+    db.exec(
+      `DROP TABLE run_sessions; DROP TABLE run_locks; DROP TABLE task_verifications; DROP TABLE task_cancellations;
+       ALTER TABLE task_attempts DROP COLUMN session; UPDATE meta SET value = '6' WHERE key = 'schema_version';`,
+    );
+    db.close();
+    const store = openExecutionStore({ dataDir });
+    expect(store.commandRuns(runId).map((c) => c.sandbox)).toEqual(['bwrap']);
+    store.close();
+    const check = new DatabaseSync(join(dataDir, STATE_DB_FILE));
+    expect(check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({
+      value: '7',
+    });
+    const tables = (
+      check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as {
+        name: string;
+      }[]
+    ).map((t) => t.name);
+    expect(tables).toEqual(
+      expect.arrayContaining([
+        'command_runs',
+        'run_planning',
+        'run_sessions',
+        'run_locks',
+        'task_verifications',
+        'task_cancellations',
+      ]),
+    );
+    expect(
+      (check.prepare('PRAGMA table_info(task_attempts)').all() as { name: string }[]).map(
+        (c) => c.name,
+      ),
+    ).toContain('session');
+    check.close();
+  });
+
+  it('records soot-run commands with their sandbox backend (ADR-051), and migrates v5 forward', () => {
     const dataDir = tempDir();
     openExecutionStore({ dataDir }).close();
     const db = new DatabaseSync(join(dataDir, STATE_DB_FILE));

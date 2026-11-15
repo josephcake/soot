@@ -137,7 +137,7 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   actual, else routed estimate) and is reloaded when a supervisor is created, so a restarted run
   counts every earlier attempt, also of finished tasks. **[Intentional]** An attempt that was
   interrupted keeps its routed estimate as its spend (no actual was reported; none is
-  invented), which errs on the side of stopping early. The CLI still has no resume command.
+  invented), which errs on the side of stopping early. `soot resume` (ADR-054) reloads this ledger, so a resumed run keeps its spend.
 - **[Intentional] Latency is not a trigger.** Slow attempts are handled only by
   `attemptTimeoutMs`, which defaults to 30 minutes (`DEFAULT_ATTEMPT_TIMEOUT_MS`, ADR-030). The
   default is a safety net, not a tuned value; calibrate it once real agents run (M2-07, M6-04/05).
@@ -213,8 +213,17 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   results stay on the integration branch. The MCP server is tested with the official SDK client
   only (SDK v2.4.0; compatibility with older clients is untested).
 - **[Intentional] Stop and status use files in the state directory** (`control/<run>.lock`,
-  `.stop`, polled every 200 ms). A run whose process died shows as `interrupted`; there is no
-  daemon and no automatic resume from the CLI yet.
+  `.stop`, polled every 200 ms). A run whose process died shows as `interrupted` until someone
+  runs `soot resume <run-id>` (ADR-054). There is no daemon and no automatic resume.
+- **[Intentional] `soot resume` limits (ADR-054).** soot does not detect that a block (sign-in,
+  approval, budget, exhausted escalation) was resolved: the user passes `--retry-blocked`.
+  `--latest` means the newest run, not the newest unfinished one. Runs from before schema v7
+  have no fingerprint, recorded agent or persisted verdicts. They need `--allow-config-change`
+  and `--agent`, and their succeeded tasks run again. On the same host, a pid that is alive but
+  has not refreshed its heartbeat for 2 minutes counts as stale, so a run frozen that long can be
+  taken over. It aborts at its next heartbeat. Not tested with a real harness or provider.
+- **[Debt] No MCP `soot_resume` tool and no dashboard or VS Code resume button.** Resume is
+  CLI-only today.
 - **[Intentional] Prompts must match a recorded fixture** (spec examples or the project's
   `fixtures` file) unless a usable `decomposer.model` is configured (ADR-034, mocks only). The
   config surface exists; real-model use still needs user-supplied keys (M2-07).

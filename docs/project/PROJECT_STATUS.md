@@ -13,7 +13,7 @@ Milestone 6 — Universal Skill and CLI (in progress, partial: CLI, MCP server, 
 ## Current Status
 
 Milestone 6 is In Progress (partial, ADR-026). The `soot` CLI (`run`, `models`, `status`,
-`config`, `cost`, `stop`, `install-skill`, `mcp`) runs the full workflow on a real git
+`config`, `cost`, `stop`, `resume`, `install-skill`, `mcp`) runs the full workflow on a real git
 repository from one prompt, but only for **recorded prompts** and with the **scripted mock
 agent** (`--agent mock`); every run says so. The MCP server exposes the same service and is
 tested with the official MCP SDK client (in process and over stdio). The universal skill
@@ -185,6 +185,8 @@ Node 26 (M0-11 Completed).
 - [ ] Milestone 2. M2-03 (local endpoint) is Implemented: covered by mocked HTTP, but the live test skipped because no Ollama or LM Studio was running. M2-09 (Gemini and OpenRouter, ADR-049) is Implemented against mocked HTTP and fake keys; neither is auto-detected and no live call has been made. M2-07 is Verified (xAI and DeepSeek live, ADR-050).
 - [ ] Milestone 6. M6-01, M6-03 and M6-09 (generic ACP driver, mock ACP agent only) Completed; M6-02 and M6-06 Implemented; M6-04 and M6-05 Implemented (simulated only, ADR-047; a real-product run is still needed); M6-07 (Tests 1, 2, 4 live) and M6-08 (savings benchmark) Verified (ADR-050). Exit criteria not met.
 
+- [ ] Cross-cutting R-01 `soot resume` (ADR-054, schema v7): Implemented on `feat/soot-resume`, tested with the scripted mock agent and built-binary subprocesses (SIGKILL mid-task, live and double-resume refusal, drift, held blocks, approval asked again, budget carry-over). Not Verified in a harness or editor. The schema v6 number collides with the sandbox branch (ADR-051); whichever merges second bumps to v7.
+
 - [ ] Milestone 7. M7-01 (VS Code extension), M7-05 (graph), M7-07 (cost) and M7-08 (cancellation, on/off after the ADR-041 fix) Verified in a real VS Code (2026-11-14, mock agent); M7-06 (models, escalation events) Implemented; M7-02…M7-04 (Cursor, Windsurf, Kilo Code) Not Started. Exit criteria not met.
 
 ## Not Started
@@ -204,7 +206,7 @@ Node 26 (M0-11 Completed).
   `sandbox-exec` (macOS, unit-tested only). Elsewhere the `none` fallback runs commands with the
   user's rights (`docs/project/TECHNICAL_DEBT.md`).
 - Only the OpenAI-compatible adapter has been verified live (xAI and DeepSeek). The Anthropic, OpenAI, Gemini and OpenRouter adapters are verified against mocked HTTP only.
-- Escalation triggers still use agent signals, plus soot's own verification since M5. Provider cooldowns, run spend and model outcomes are persisted (ADR-030); the CLI has no resume command yet.
+- Escalation triggers still use agent signals, plus soot's own verification since M5. Provider cooldowns, run spend and model outcomes are persisted (ADR-030). `soot resume` (ADR-054, R-01) continues interrupted runs. It is Implemented and tested with mock agents only, and has no MCP tool or dashboard button yet.
 - See `docs/project/TECHNICAL_DEBT.md`.
 
 ## Next Actions
@@ -229,5 +231,6 @@ Recorded 2026-11-12 ~12:42 PST from a real run of `bash scripts/ci.sh` in `/work
 - **Re-run after ADR-033 (2026-11-12 ~4:33 PM PST):** `bash scripts/ci.sh` passed again (Node 24.22.1): 70 test files (69 passed, 1 skipped), 508 tests (507 passed, 1 skipped, the same live local-endpoint test). The global `fetch` audit above was not repeated for this run; the new planner tests replace `fetch` with a spy that fails on any call.
 - **Re-run after ADR-034 (2026-11-12 ~5:16 PM PST):** `bash scripts/ci.sh` passed (Node 24.22.1, pnpm 10.34.6): 71 test files (70 passed, 1 skipped), 520 tests (519 passed, 1 skipped, the same live local-endpoint test). The global `fetch` audit was not repeated; the new P-02 tests replace `fetch` with a spy that fails on any call. Since ADR-034 the built CLI imports `@soot/provider-adapters`, but it builds a client only when `decomposer.model` is configured, which no subprocess test does.
 - **Re-run after ADR-050 (2026-11-14 ~1:38 PM PST):** `bash scripts/ci.sh` with `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` unset passed on `feat/benchmark` (rebased on `dd6ff34`): 97 test files (96 passed, 1 skipped), 917 tests (916 passed, 1 skipped). The benchmark script is not part of CI.
+- **Re-run for `soot resume` (ADR-054, 2026-11-14 ~2:18 PM PST, branch `feat/soot-resume`):** `env -u DEEPSEEK_API_KEY -u XAI_API_KEY -u ANTHROPIC_API_KEY -u OPENAI_API_KEY bash scripts/ci.sh` passed (Node 24.22.1, pnpm 10.34.6): 101 test files (100 passed, 1 skipped), 945 tests (944 passed, 1 skipped: the same live local-endpoint test). Mock agents only; no key variables set.
 - **Hosted CI:** GitHub Actions [run 43334786373](https://github.com/josephcake/soot/actions/runs/43334786373) on `8a38865` passed for Node 24 and Node 26 (started 2026-11-12 4:09 PM PT, finished 4:11 PM PT); the earlier [run 43329225136](https://github.com/josephcake/soot/actions/runs/43329225136) on `30aaf29` also passed.
 - **Quick start:** `docs/guides/installation.md` reproduced step by step from a fresh `git clone` of this repo in `/tmp` (demo runs: unattended INCOMPLETE exit 2, interactive `y` COMPLETE exit 0 with fast-forward, Test 4 shape INCOMPLETE with the review unverified, skill installed into a temp dir).

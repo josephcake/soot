@@ -26,6 +26,19 @@ export interface RepositoryOptions {
   readonly identity?: GitIdentity;
   /** Environment for git (default `process.env`). */
   readonly gitEnv?: NodeJS.ProcessEnv;
+  /**
+   * Resume (ADR-054): pin this commit as the run's base instead of the current HEAD, so tasks
+   * re-run on the same base as the work already done. Must exist in the repository.
+   */
+  readonly baseCommit?: string;
+}
+
+/** What `reclaimRun` did to one leftover worktree or task branch (recorded in the audit log). */
+export interface ReclaimAction {
+  readonly taskId: string | null;
+  readonly action:
+    'worktree-removed' | 'branch-deleted' | 'branch-restored' | 'branch-kept' | 'commit-missing';
+  readonly detail: string;
 }
 
 export interface Worktree {
@@ -103,7 +116,23 @@ export class Repository {
     const root = realpathSync(top);
     const status = (await git(['status', '--porcelain'], { cwd: root, env })).stdout;
     if (status.trim() !== '') throw new DirtyWorkingTreeError(root, status);
-    const base = (await git(['rev-parse', 'HEAD'], { cwd: root, env })).stdout.trim();
+    let base = (await git(['rev-parse', 'HEAD'], { cwd: root, env })).stdout.trim();
+    if (options.baseCommit !== undefined) {
+      const pinned = await git(
+        ['rev-parse', '--verify', '--quiet', `${options.baseCommit}^{commit}`],
+        {
+          cwd: root,
+          env,
+          allowExitCodes: [1],
+        },
+      );
+      if (pinned.exitCode !== 0) {
+        throw new Error(
+          `the run's base commit ${options.baseCommit} is not in ${root} any more; it cannot be resumed`,
+        );
+      }
+      base = pinned.stdout.trim();
+    }
     const branch = await git(['symbolic-ref', '--quiet', '--short', 'HEAD'], {
       cwd: root,
       env,
@@ -278,6 +307,87 @@ export class Repository {
   fastForwardTo(commit: string): Promise<void> {
     return this.#serial(async () => {
       await this.#git(['merge', '--ff-only', '--quiet', commit]);
+    });
+  }
+
+  /** The commit if `sha` names a commit object in this repository, else `null`. */
+  async commitOf(sha: string): Promise<string | null> {
+    const r = await this.#git(
+      ['rev-parse', '--verify', '--quiet', `${sha}^{commit}`],
+      this.root,
+      [1],
+    );
+    return r.exitCode === 0 ? r.stdout.trim() : null;
+  }
+
+  /**
+   * Resume (ADR-054): clean up what a dead process left of this run. Every leftover worktree
+   * of the run is removed (a half-finished attempt is never trusted). Task branches of tasks in
+   * `keep` are set to their verified commit (restored when missing, reset when they moved).
+   * Branches of tasks in `rerun` are deleted, so the task's next attempt starts on a fresh
+   * branch from its known-good base. Kept tasks whose commit object is gone are reported as
+   * `commit-missing` (the caller re-runs them). Other branches (held tasks' unmerged work, the
+   * integration branch) are left alone so they stay inspectable.
+   */
+  reclaimRun(
+    keep: ReadonlyMap<string, string>,
+    rerun: ReadonlySet<string>,
+  ): Promise<ReclaimAction[]> {
+    return this.#serial(async () => {
+      const actions: ReclaimAction[] = [];
+      const dir = realpathSync(this.worktreesDir);
+      const leftovers = (await this.listWorktrees()).filter((p) => p.startsWith(dir));
+      for (const path of leftovers) {
+        await this.#git(['worktree', 'remove', '--force', path]);
+        const name = path.slice(dir.length + 1);
+        actions.push({
+          taskId: name.startsWith('_') ? null : name,
+          action: 'worktree-removed',
+          detail: path,
+        });
+      }
+      await this.#git(['worktree', 'prune']);
+      this.#worktrees.clear();
+      const prefix = `soot/${this.runId}/`;
+      const branches = (
+        await this.#git(['for-each-ref', '--format=%(refname:short)', `refs/heads/${prefix}`])
+      ).stdout
+        .split('\n')
+        .filter((l) => l !== '');
+      for (const [taskId, commit] of keep) {
+        const branch = this.branchFor(taskId);
+        const exists = await this.#git(
+          ['rev-parse', '--verify', '--quiet', `${commit}^{commit}`],
+          this.root,
+          [1],
+        );
+        if (exists.exitCode !== 0) {
+          // Its next attempt needs a fresh branch, like any re-run task.
+          if (branches.includes(branch)) await this.#git(['branch', '-D', '--quiet', branch]);
+          actions.push({ taskId, action: 'commit-missing', detail: `${commit} (${branch})` });
+          continue;
+        }
+        const at = branches.includes(branch)
+          ? (await this.#git(['rev-parse', `refs/heads/${branch}`])).stdout.trim()
+          : null;
+        if (at === commit) {
+          actions.push({ taskId, action: 'branch-kept', detail: `${branch} at ${commit}` });
+          continue;
+        }
+        await this.#git(['branch', '--force', branch, commit]);
+        actions.push({
+          taskId,
+          action: 'branch-restored',
+          detail: `${branch} ${at === null ? 'recreated' : `moved from ${at}`} at ${commit}`,
+        });
+      }
+      for (const branch of branches) {
+        const taskId = branch.slice(prefix.length);
+        if (!rerun.has(taskId)) continue;
+        await this.#git(['branch', '-D', '--quiet', branch]);
+        actions.push({ taskId, action: 'branch-deleted', detail: branch });
+      }
+      return actions;
     });
   }
 

@@ -77,6 +77,20 @@ soot models            # the demo registry (real model ids and sourced prices; f
 soot config            # resolved config; key variable names only
 ```
 
+If a run was interrupted (the process was killed or crashed, you stopped it, or a task was
+blocked), continue it instead of starting over (ADR-054):
+
+```sh
+soot resume <run-id>   # or: soot resume --latest
+```
+
+Done tasks are kept. Unfinished tasks run again on fresh worktrees. Blocked tasks (sign-in,
+approval, budget, exhausted escalation) stay blocked unless you pass `--retry-blocked`, and an
+approval is asked again, never assumed. soot refuses to resume a run that another soot process
+is still running. If the config, models, routes or agent changed since the run, it also
+refuses unless you pass `--allow-config-change`, which records what changed. Resuming a
+complete run does nothing. `soot status <run-id>` lists each run and resume session.
+
 Other recorded prompts the demo understands (build spec §17 Tests 2 and 4, and §3):
 
 ```sh

@@ -5,6 +5,31 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (`soot resume`, ADR-054)
+
+- `soot resume <run-id>` / `soot resume --latest` continues an interrupted, stopped, crashed or
+  blocked run from `soot.sqlite` and its branches instead of starting over. Done and verified
+  tasks are kept at their verified commit. Pending and interrupted tasks run again as new
+  attempts on fresh worktrees. Tasks blocked on sign-in, approval, budget or exhausted
+  escalation stay blocked unless `--retry-blocked` is passed, and a pending approval is asked
+  again (never auto-approved). A task cancelled with `soot stop --task` stays cancelled.
+- A crash-safe run lock in `soot.sqlite` (owner pid, host, heartbeat; taken in `BEGIN
+IMMEDIATE`). A live run and a second concurrent resume are refused. A dead or expired owner's
+  lock is reclaimed and audited. A run that loses its lock stops.
+- Config drift (config, models, fixtures, routes, agent, mock script) is refused unless
+  `--allow-config-change` is passed, which records what changed. Resuming a complete run is a
+  no-op (exit 0).
+- Spend from earlier sessions counts against the run budget. Each attempt is listed once in
+  `soot cost` and the dashboard.
+- `soot status <run>` and the report show sessions (run, resume #n), kept / re-run / held
+  counts, config changes and each attempt's session. New audit events: `run-resumed`,
+  `run-lock-reclaimed`, `worktree-reclaimed`, `branch-reset`. Audit `seq` continues across
+  sessions.
+- Schema v7: `run_sessions`, `run_locks`, `task_verifications`, `task_cancellations`,
+  `task_attempts.session`, migrated from v6 (the sandbox's `command_runs`) and older.
+- Tested with the scripted mock agent and built-binary subprocesses only (SIGKILL mid-task,
+  refusals, drift, held blocks, budget). No MCP tool and no dashboard button yet.
+
 ### Changed (retries build on the rejected change)
 
 - A retry or escalation now also sees what the previous attempt changed. The worktree is reset

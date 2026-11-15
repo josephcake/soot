@@ -24,6 +24,7 @@ export {
   type FileStatus,
   type GitIdentity,
   type MergeTreeResult,
+  type ReclaimAction,
   type RepositoryOptions,
   type Worktree,
 } from './repository.js';
@@ -91,4 +92,5 @@ export {
   type CodebaseRunResult,
   type CodebaseWorkflowOptions,
   type OutcomeSink,
+  type WorkflowResume,
 } from './workflow.js';

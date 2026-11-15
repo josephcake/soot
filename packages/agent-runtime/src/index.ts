@@ -61,6 +61,7 @@ export {
   Scheduler,
   runTaskGraph,
   type ExecutionJournal,
+  type RestoredOutcome,
   type RunReport,
   type SchedulerEvent,
   type SchedulerOptions,

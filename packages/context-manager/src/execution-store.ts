@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { PersistedProviderCooldown, UnavailableReason } from '@soot/model-registry';
@@ -12,6 +13,7 @@ import type {
   TaskFinalState,
   TaskOutcome,
 } from '@soot/agent-runtime';
+import { lockState, type LockCheck, type LockState, type RunLockRow } from './run-lock.js';
 import {
   ComplexitySchema,
   parseAgentResult,
@@ -26,10 +28,13 @@ import {
 export const STATE_DB_FILE = 'soot.sqlite';
 /**
  * v2 (Milestone 4) adds `attempt_details`; v3 (Milestone 5) adds `model_outcomes`; v4 adds
- * `provider_cooldowns` and `attempt_spend` (ADR-030). Older databases are migrated in place
- * (every change only adds tables).
+ * `provider_cooldowns` and `attempt_spend` (ADR-030); v5 adds `model_outcomes.runner`; v6
+ * (ADR-051, process sandbox) adds `command_runs`; v7 (ADR-054, `soot resume`) adds
+ * `run_sessions`, `run_locks`, `task_verifications`, `task_cancellations` and
+ * `task_attempts.session`. Older databases are migrated in place
+ * (every change only adds tables or nullable columns).
  */
-const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /** Spend attributed to one attempt for budgets: a reported actual, or the routed estimate. */
 export interface AttemptSpend {
@@ -48,6 +53,97 @@ export interface RunPlanningCost {
   readonly usd: number | null;
   /** Whether the planning model had a list price. */
   readonly priced: boolean;
+}
+
+/** How a session of a run started: the first `soot run`, or a `soot resume`. */
+export type RunSessionKind = 'run' | 'resume';
+
+/**
+ * One process's turn at a run (ADR-054). Session 1 is the `soot run` that created it; every
+ * `soot resume` adds one. `status` is `null` while the session has not finished; with no live
+ * lock that means the process died (shown as `crashed`).
+ */
+export interface RunSession {
+  readonly runId: string;
+  readonly session: number;
+  readonly kind: RunSessionKind;
+  readonly pid: number;
+  readonly host: string;
+  readonly startedAt: string;
+  readonly finishedAt: string | null;
+  /** Consolidated report status (`complete`, `incomplete`, `cancelled`) or `error`. */
+  readonly status: string | null;
+  readonly repoRoot: string;
+  /** Pinned base commit; `null` until the repository was opened. */
+  readonly baseCommit: string | null;
+  /** What the run's behaviour depends on, hashed per part (config, models, agent, ...). */
+  readonly fingerprint: Readonly<Record<string, string>>;
+  /** The agent mode the session ran with (CLI `--agent`), as JSON. */
+  readonly agent: unknown;
+  /** Plan metadata for the saved report (planner, fixture). Session 1 only. */
+  readonly meta: unknown;
+  /** Fingerprint parts that differed from the previous session (accepted with a flag). */
+  readonly changes: readonly ConfigChange[];
+  /** Per-task resume decisions (resume sessions only). */
+  readonly decisions: readonly unknown[];
+}
+
+export interface ConfigChange {
+  readonly part: string;
+  readonly before: string | null;
+  readonly after: string | null;
+}
+
+export interface BeginSessionInput {
+  readonly kind: RunSessionKind;
+  readonly repoRoot: string;
+  readonly fingerprint: Readonly<Record<string, string>>;
+  readonly agent: unknown;
+  readonly meta?: unknown;
+  readonly changes?: readonly ConfigChange[];
+  readonly decisions?: readonly unknown[];
+  /** Lease check settings; `isAlive` defaults to a signal-0 probe. */
+  readonly ttlMs: number;
+  readonly isAlive?: (pid: number) => boolean;
+  /** Default `os.hostname()`. */
+  readonly host?: string;
+  /** Default `process.pid`. */
+  readonly pid?: number;
+}
+
+export type BeginSessionResult =
+  | {
+      readonly ok: true;
+      readonly session: number;
+      readonly owner: string;
+      /** The stale lock taken over, if any (crash recovery). */
+      readonly reclaimed: Extract<LockState, { state: 'stale' }> | null;
+    }
+  | { readonly ok: false; readonly lock: Extract<LockState, { state: 'live' }> };
+
+/** soot's verdict on one attempt, persisted so a resumed run can integrate earlier work. */
+export interface PersistedVerification {
+  readonly taskId: string;
+  readonly attempt: number;
+  readonly model: string | null;
+  readonly verdict: string;
+  readonly reason: string;
+  readonly branch: string | null;
+  readonly base: string;
+  readonly commit: string | null;
+  readonly files: readonly { readonly path: string; readonly status: string }[];
+  /** Check evidence without output tails (those are untrusted text and not needed later). */
+  readonly checks: readonly Readonly<Record<string, unknown>>[];
+}
+
+/** Signal-0 existence probe; EPERM means the pid exists but belongs to someone else. */
+export function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
 }
 
 /** Per-run spend ledger in `soot.sqlite` (`attempt_spend`), used to rebuild run budgets. */
@@ -76,6 +172,8 @@ export interface PersistedAttempt {
   readonly assignment: Assignment | null;
   readonly failure: AttemptFailure | null;
   readonly review: ReviewDecision | null;
+  /** Run session that started this attempt (ADR-054); `null` before schema v7. */
+  readonly session: number | null;
 }
 
 export interface PersistedRun {
@@ -159,6 +257,7 @@ interface AttemptRow {
   assignment_json: string | null;
   failure_json: string | null;
   review_json: string | null;
+  session: number | null;
 }
 
 /**
@@ -200,6 +299,7 @@ export class ExecutionStore {
         finished_at TEXT,
         result_json TEXT,
         error TEXT,
+        session INTEGER,
         PRIMARY KEY (run_id, task_id, attempt)
       );
       CREATE TABLE IF NOT EXISTS attempt_details (
@@ -252,6 +352,46 @@ export class ExecutionStore {
         recorded_at TEXT NOT NULL,
         PRIMARY KEY (run_id, seq)
       );
+      CREATE TABLE IF NOT EXISTS run_sessions (
+        run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+        session INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        pid INTEGER NOT NULL,
+        host TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        status TEXT,
+        repo_root TEXT NOT NULL,
+        base_commit TEXT,
+        fingerprint_json TEXT NOT NULL,
+        agent_json TEXT NOT NULL,
+        meta_json TEXT,
+        changes_json TEXT NOT NULL,
+        decisions_json TEXT NOT NULL,
+        PRIMARY KEY (run_id, session)
+      );
+      CREATE TABLE IF NOT EXISTS run_locks (
+        run_id TEXT PRIMARY KEY REFERENCES runs(run_id) ON DELETE CASCADE,
+        owner TEXT NOT NULL,
+        pid INTEGER NOT NULL,
+        host TEXT NOT NULL,
+        session INTEGER NOT NULL,
+        acquired_at TEXT NOT NULL,
+        heartbeat_ms INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS task_verifications (
+        run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+        task_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        verification_json TEXT NOT NULL,
+        PRIMARY KEY (run_id, task_id, attempt)
+      );
+      CREATE TABLE IF NOT EXISTS task_cancellations (
+        run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+        task_id TEXT NOT NULL,
+        requested_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, task_id)
+      );
       CREATE TABLE IF NOT EXISTS attempt_spend (
         run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
         task_id TEXT NOT NULL,
@@ -262,6 +402,14 @@ export class ExecutionStore {
         PRIMARY KEY (run_id, task_id, attempt)
       );
     `);
+    // Idempotent column additions: run for every version, so any older database (or one a
+    // pre-merge build of the resume branch wrote as "v6") still gets the column.
+    const attemptColumns = this.#db.prepare('PRAGMA table_info(task_attempts)').all() as {
+      name: string;
+    }[];
+    if (!attemptColumns.some((c) => c.name === 'session')) {
+      this.#db.exec('ALTER TABLE task_attempts ADD COLUMN session INTEGER');
+    }
     const version = this.#db
       .prepare('SELECT value FROM meta WHERE key = ?')
       .get('schema_version') as { value: string } | undefined;
@@ -269,10 +417,11 @@ export class ExecutionStore {
       this.#db
         .prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
         .run('schema_version', String(SCHEMA_VERSION));
-    } else if ([1, 2, 3, 4, 5].includes(Number(version.value))) {
+    } else if ([1, 2, 3, 4, 5, 6].includes(Number(version.value))) {
       // v1–v3 → v4 added tables (created above). v4 → v5 adds model_outcomes.runner.
-      // v5 → v6 adds the command_runs table (created above, ADR-051). run_planning (ADR-046)
-      // is created above for every version as well.
+      // v5 → v6 adds the command_runs table (ADR-051); v6 → v7 adds the resume tables and
+      // task_attempts.session (ADR-054). All are created above for every version, as is
+      // run_planning (ADR-046), so only the version number is updated here.
       const columns = this.#db.prepare('PRAGMA table_info(model_outcomes)').all() as {
         name: string;
       }[];
@@ -525,6 +674,234 @@ export class ExecutionStore {
     this.#db.close();
   }
 
+  /**
+   * Start a session of a run and take its lock, atomically (ADR-054). Refused while another
+   * live process holds the run; a stale lock (dead owner, or expired lease) is taken over and
+   * returned as `reclaimed`. The check and the takeover run in one `BEGIN IMMEDIATE`
+   * transaction, so two processes can never both win.
+   */
+  beginSession(runId: string, input: BeginSessionInput): BeginSessionResult {
+    this.#requireRun(runId);
+    const host = input.host ?? hostname();
+    const pid = input.pid ?? process.pid;
+    const nowMs = this.#now().getTime();
+    const check: LockCheck = {
+      now: nowMs,
+      ttlMs: input.ttlMs,
+      host,
+      isAlive: input.isAlive ?? pidAlive,
+    };
+    this.#db.exec('BEGIN IMMEDIATE');
+    try {
+      const state = lockState(this.runLock(runId), check);
+      if (state.state === 'live') {
+        this.#db.exec('ROLLBACK');
+        return { ok: false, lock: state };
+      }
+      const next =
+        (
+          this.#db
+            .prepare('SELECT COALESCE(MAX(session), 0) AS n FROM run_sessions WHERE run_id = ?')
+            .get(runId) as { n: number }
+        ).n + 1;
+      const at = this.#now().toISOString();
+      const owner = randomUUID();
+      this.#db
+        .prepare(
+          `INSERT INTO run_sessions (run_id, session, kind, pid, host, started_at, repo_root,
+             fingerprint_json, agent_json, meta_json, changes_json, decisions_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          runId,
+          next,
+          input.kind,
+          pid,
+          host,
+          at,
+          input.repoRoot,
+          JSON.stringify(input.fingerprint),
+          JSON.stringify(input.agent ?? null),
+          input.meta === undefined ? null : JSON.stringify(input.meta),
+          JSON.stringify(input.changes ?? []),
+          JSON.stringify(input.decisions ?? []),
+        );
+      this.#db
+        .prepare(
+          `INSERT OR REPLACE INTO run_locks (run_id, owner, pid, host, session, acquired_at, heartbeat_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(runId, owner, pid, host, next, at, nowMs);
+      this.#db.exec('COMMIT');
+      return {
+        ok: true,
+        session: next,
+        owner,
+        reclaimed: state.state === 'stale' ? state : null,
+      };
+    } catch (error) {
+      if (this.#db.isTransaction) this.#db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /** The run's lock row, or `null`. */
+  runLock(runId: string): RunLockRow | null {
+    const row = this.#db
+      .prepare(
+        'SELECT run_id, owner, pid, host, session, acquired_at, heartbeat_ms FROM run_locks WHERE run_id = ?',
+      )
+      .get(runId) as
+      | {
+          run_id: string;
+          owner: string;
+          pid: number;
+          host: string;
+          session: number;
+          acquired_at: string;
+          heartbeat_ms: number;
+        }
+      | undefined;
+    if (row === undefined) return null;
+    return {
+      runId: row.run_id,
+      owner: row.owner,
+      pid: row.pid,
+      host: row.host,
+      session: row.session,
+      acquiredAt: row.acquired_at,
+      heartbeatMs: row.heartbeat_ms,
+    };
+  }
+
+  /** Whether the run is held by a live process right now. */
+  runLockState(
+    runId: string,
+    options: { ttlMs: number; isAlive?: (pid: number) => boolean; host?: string },
+  ): LockState {
+    return lockState(this.runLock(runId), {
+      now: this.#now().getTime(),
+      ttlMs: options.ttlMs,
+      host: options.host ?? hostname(),
+      isAlive: options.isAlive ?? pidAlive,
+    });
+  }
+
+  /**
+   * Refresh the owner's lease. Returns `false` when the lock is no longer this owner's (it was
+   * taken over after the lease expired): the caller must stop working on the run.
+   */
+  heartbeatRunLock(runId: string, owner: string): boolean {
+    const changed = this.#db
+      .prepare('UPDATE run_locks SET heartbeat_ms = ? WHERE run_id = ? AND owner = ?')
+      .run(this.#now().getTime(), runId, owner);
+    return Number(changed.changes) === 1;
+  }
+
+  /** Drop the lock if this owner still holds it. */
+  releaseRunLock(runId: string, owner: string): void {
+    this.#db.prepare('DELETE FROM run_locks WHERE run_id = ? AND owner = ?').run(runId, owner);
+  }
+
+  /** Record the base commit a session pinned. */
+  setSessionBase(runId: string, session: number, baseCommit: string): void {
+    this.#db
+      .prepare('UPDATE run_sessions SET base_commit = ? WHERE run_id = ? AND session = ?')
+      .run(baseCommit, runId, session);
+  }
+
+  /** Replace a session's resume decisions (worktree actions are added once the repo is open). */
+  setSessionDecisions(runId: string, session: number, decisions: readonly unknown[]): void {
+    this.#db
+      .prepare('UPDATE run_sessions SET decisions_json = ? WHERE run_id = ? AND session = ?')
+      .run(JSON.stringify(decisions), runId, session);
+  }
+
+  finishSession(runId: string, session: number, status: string): void {
+    this.#db
+      .prepare(
+        'UPDATE run_sessions SET finished_at = ?, status = ? WHERE run_id = ? AND session = ?',
+      )
+      .run(this.#now().toISOString(), status, runId, session);
+  }
+
+  /** The run's sessions, oldest first (empty for runs from before schema v7). */
+  sessions(runId: string): RunSession[] {
+    const rows = this.#db
+      .prepare('SELECT * FROM run_sessions WHERE run_id = ? ORDER BY session')
+      .all(runId) as unknown as {
+      run_id: string;
+      session: number;
+      kind: string;
+      pid: number;
+      host: string;
+      started_at: string;
+      finished_at: string | null;
+      status: string | null;
+      repo_root: string;
+      base_commit: string | null;
+      fingerprint_json: string;
+      agent_json: string;
+      meta_json: string | null;
+      changes_json: string;
+      decisions_json: string;
+    }[];
+    return rows.map((r) => ({
+      runId: r.run_id,
+      session: r.session,
+      kind: r.kind === 'resume' ? 'resume' : 'run',
+      pid: r.pid,
+      host: r.host,
+      startedAt: r.started_at,
+      finishedAt: r.finished_at,
+      status: r.status,
+      repoRoot: r.repo_root,
+      baseCommit: r.base_commit,
+      fingerprint: JSON.parse(r.fingerprint_json) as Record<string, string>,
+      agent: JSON.parse(r.agent_json) as unknown,
+      meta: r.meta_json === null ? null : (JSON.parse(r.meta_json) as unknown),
+      changes: JSON.parse(r.changes_json) as ConfigChange[],
+      decisions: JSON.parse(r.decisions_json) as unknown[],
+    }));
+  }
+
+  /** Persist soot's verdict on an attempt (ADR-054). */
+  saveVerification(runId: string, v: PersistedVerification): void {
+    this.#db
+      .prepare(
+        'INSERT OR REPLACE INTO task_verifications (run_id, task_id, attempt, verification_json) VALUES (?, ?, ?, ?)',
+      )
+      .run(runId, v.taskId, v.attempt, JSON.stringify(v));
+  }
+
+  /** Every persisted verification of a run, by task and attempt order. */
+  verifications(runId: string): PersistedVerification[] {
+    return (
+      this.#db
+        .prepare(
+          'SELECT verification_json FROM task_verifications WHERE run_id = ? ORDER BY task_id, attempt',
+        )
+        .all(runId) as { verification_json: string }[]
+    ).map((r) => JSON.parse(r.verification_json) as PersistedVerification);
+  }
+
+  /** A person cancelled one task (`soot stop <run> --task <id>`); resume keeps it cancelled. */
+  recordTaskCancellation(runId: string, taskId: string): void {
+    this.#db
+      .prepare(
+        'INSERT OR REPLACE INTO task_cancellations (run_id, task_id, requested_at) VALUES (?, ?, ?)',
+      )
+      .run(runId, taskId, this.#now().toISOString());
+  }
+
+  taskCancellations(runId: string): string[] {
+    return (
+      this.#db
+        .prepare('SELECT task_id FROM task_cancellations WHERE run_id = ? ORDER BY task_id')
+        .all(runId) as { task_id: string }[]
+    ).map((r) => r.task_id);
+  }
+
   createRun(input: CreateRunInput): string {
     const runId = input.runId ?? randomUUID();
     this.#db
@@ -558,17 +935,20 @@ export class ExecutionStore {
     ).map((r) => r.run_id);
   }
 
-  /** A journal that records a run's task transitions as they happen. */
-  journal(runId: string): ExecutionJournal {
+  /**
+   * A journal that records a run's task transitions as they happen. `session` links every
+   * attempt it starts to the run session that ran it (ADR-054).
+   */
+  journal(runId: string, session: number | null = null): ExecutionJournal {
     this.#requireRun(runId);
     const start = this.#db.prepare(
-      `INSERT INTO task_attempts (run_id, task_id, attempt, state, started_at) VALUES (?, ?, ?, 'running', ?)`,
+      `INSERT INTO task_attempts (run_id, task_id, attempt, state, started_at, session) VALUES (?, ?, ?, 'running', ?, ?)`,
     );
     const finishStarted = this.#db.prepare(
       'UPDATE task_attempts SET state = ?, finished_at = ?, result_json = ?, error = ? WHERE run_id = ? AND task_id = ? AND attempt = ?',
     );
     const finishUnstarted = this.#db.prepare(
-      `INSERT OR REPLACE INTO task_attempts (run_id, task_id, attempt, state, finished_at, error) VALUES (?, ?, 0, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO task_attempts (run_id, task_id, attempt, state, finished_at, error, session) VALUES (?, ?, 0, ?, ?, ?, ?)`,
     );
     const details = this.#db.prepare(
       'INSERT OR REPLACE INTO attempt_details (run_id, task_id, attempt, assignment_json, failure_json, review_json) VALUES (?, ?, ?, ?, ?, ?)',
@@ -580,7 +960,7 @@ export class ExecutionStore {
       value === null || value === undefined ? null : JSON.stringify(value);
     return {
       taskStarted: ({ taskId, attempt, assignment }) => {
-        start.run(runId, taskId, attempt, this.#now().toISOString());
+        start.run(runId, taskId, attempt, this.#now().toISOString(), session);
         details.run(runId, taskId, attempt, json(assignment), null, null);
       },
       attemptFinished: (record: AttemptRecord) => {
@@ -607,7 +987,7 @@ export class ExecutionStore {
       taskFinished: (outcome: TaskOutcome) => {
         const at = this.#now().toISOString();
         if (outcome.attempt === null) {
-          finishUnstarted.run(runId, outcome.taskId, outcome.state, at, outcome.error);
+          finishUnstarted.run(runId, outcome.taskId, outcome.state, at, outcome.error, session);
           return;
         }
         const resultJson =
@@ -662,6 +1042,7 @@ export class ExecutionStore {
       assignment: r.assignment_json === null ? null : (JSON.parse(r.assignment_json) as Assignment),
       failure: r.failure_json === null ? null : (JSON.parse(r.failure_json) as AttemptFailure),
       review: r.review_json === null ? null : (JSON.parse(r.review_json) as ReviewDecision),
+      session: r.session ?? null,
     }));
     const attemptRecords = new Map<string, AttemptRecord[]>();
     for (const a of attempts) {
