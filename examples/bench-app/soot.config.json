@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "policy": "balanced",
+  "fixtures": "fixtures.json",
+  "allowedExecutables": ["node"],
+  "checks": [
+    { "name": "test", "kind": "test", "argv": ["node", "--test", "tests/**/*.test.js"] },
+    { "name": "lint", "kind": "lint", "argv": ["node", "scripts/lint.mjs"] }
+  ],
+  "acceptance": {
+    "update-page-title": [
+      {
+        "name": "acceptance:title",
+        "kind": "acceptance",
+        "argv": ["node", "--test", "acceptance/title.test.js"]
+      }
+    ],
+    "update-button-color": [
+      {
+        "name": "acceptance:button",
+        "kind": "acceptance",
+        "argv": ["node", "--test", "acceptance/button.test.js"]
+      }
+    ],
+    "rename-theme-variable": [
+      {
+        "name": "acceptance:theme",
+        "kind": "acceptance",
+        "argv": ["node", "--test", "acceptance/theme.test.js"]
+      }
+    ],
+    "fix-paginate": [
+      {
+        "name": "acceptance:paginate",
+        "kind": "acceptance",
+        "argv": ["node", "--test", "acceptance/paginate.test.js"]
+      }
+    ],
+    "add-slugify": [
+      {
+        "name": "acceptance:slugify",
+        "kind": "acceptance",
+        "argv": ["node", "--test", "acceptance/slugify.test.js"]
+      }
+    ],
+    "add-parse-duration": [
+      {
+        "name": "acceptance:duration",
+        "kind": "acceptance",
+        "argv": ["node", "--test", "acceptance/duration.test.js"]
+      }
+    ],
+    "add-rate-limiter": [
+      {
+        "name": "acceptance:rate-limiter",
+        "kind": "acceptance",
+        "argv": ["node", "--test", "acceptance/rate-limiter.test.js"]
+      }
+    ]
+  },
+  "protectedPaths": ["acceptance/", "tests/", "scripts/", "fixtures.json"]
+}

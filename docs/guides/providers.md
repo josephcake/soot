@@ -1,8 +1,8 @@
 # Providers
 
-> **Status:** adapters exist and are tested against **mocked HTTP only**. No real provider has
-> been called, and the CLI does not use providers yet: `soot run` works only with the scripted
-> mock agent. Real calls need your own keys (M2-07, blocked on BYOK).
+> **Status:** `soot run --agent api` calls the routed models with your own keys. The
+> `openai-compatible` adapter has run live against xAI and DeepSeek (ADR-039, ADR-050: M2-07
+> Verified). The other adapters are tested against mocked HTTP only.
 
 ## Supported provider kinds
 

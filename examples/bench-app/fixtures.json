@@ -1,0 +1,190 @@
+[
+  {
+    "id": "bench-title-button",
+    "prompt": "Change the page title and heading to HELLO WORLD and update the primary button to purple.",
+    "tasks": [
+      {
+        "id": "update-page-title",
+        "title": "Set the page title and heading to HELLO WORLD",
+        "instructions": "In src/pages/index.html change two things to \"HELLO WORLD\": the document title (the <title> element) and the main heading (<h1 id=\"title\">). Change no other text.",
+        "acceptanceCriteria": [
+          "The <title> element reads exactly \"HELLO WORLD\".",
+          "The <h1 id=\"title\"> heading reads exactly \"HELLO WORLD\".",
+          "No other page text changes."
+        ],
+        "requiredCapabilities": ["code-edit"],
+        "complexity": "low",
+        "estimate": {
+          "inputTokens": 2000,
+          "outputTokens": 300,
+          "costUsd": null
+        },
+        "files": {
+          "read": ["src/pages/"],
+          "write": ["src/pages/index.html"]
+        },
+        "dependsOn": []
+      },
+      {
+        "id": "update-button-color",
+        "title": "Update primary button to purple",
+        "instructions": "Locate the primary button styling and change its color to purple. Leave other button variants unchanged.",
+        "acceptanceCriteria": [
+          "The primary button renders purple.",
+          "Secondary and other button variants are unaffected."
+        ],
+        "requiredCapabilities": ["code-edit", "css"],
+        "complexity": "low",
+        "estimate": {
+          "inputTokens": 2500,
+          "outputTokens": 300,
+          "costUsd": null
+        },
+        "files": {
+          "read": ["src/styles/"],
+          "write": ["src/styles/button.css"]
+        },
+        "dependsOn": []
+      }
+    ]
+  },
+  {
+    "id": "bench-theme-rename",
+    "prompt": "Rename the --brand CSS variable to --accent in the theme.",
+    "tasks": [
+      {
+        "id": "rename-theme-variable",
+        "title": "Rename --brand to --accent",
+        "instructions": "In src/styles/theme.css rename the custom property --brand to --accent: its declaration and every var(--brand) use. Keep its value and every other property unchanged.",
+        "acceptanceCriteria": [
+          "No --brand remains in the theme.",
+          "--accent has the old value and both uses read var(--accent).",
+          "Other custom properties are unchanged."
+        ],
+        "requiredCapabilities": ["code-edit", "css"],
+        "complexity": "low",
+        "estimate": {
+          "inputTokens": 1500,
+          "outputTokens": 300,
+          "costUsd": null
+        },
+        "files": {
+          "read": ["src/styles/"],
+          "write": ["src/styles/theme.css"]
+        },
+        "dependsOn": []
+      }
+    ]
+  },
+  {
+    "id": "bench-paginate-bug",
+    "prompt": "Fix the paging bug in paginate().",
+    "tasks": [
+      {
+        "id": "fix-paginate",
+        "title": "Fix paginate()",
+        "instructions": "src/lib/paginate.js takes a 1-based page number but treats it as 0-based, and its page count drops a last partial page. Fix both so page 1 is the first page and `pages` counts a partial last page (0 pages for no items). Keep the signature and return shape { items, page, pages }.",
+        "acceptanceCriteria": [
+          "Page 1 returns the first `size` items.",
+          "The page count includes a last partial page and is 0 for an empty list.",
+          "The existing tests still pass."
+        ],
+        "requiredCapabilities": ["code-edit", "debugging"],
+        "complexity": "medium",
+        "estimate": {
+          "inputTokens": 2500,
+          "outputTokens": 500,
+          "costUsd": null
+        },
+        "files": {
+          "read": ["src/lib/", "tests/"],
+          "write": ["src/lib/paginate.js"]
+        },
+        "dependsOn": []
+      }
+    ]
+  },
+  {
+    "id": "bench-slugify",
+    "prompt": "Add a slugify helper.",
+    "tasks": [
+      {
+        "id": "add-slugify",
+        "title": "Add slugify()",
+        "instructions": "Create src/feature/slugify.js exporting slugify(text): lowercase, strip accents (Unicode NFD, drop combining marks), replace every run of characters other than a-z and 0-9 with a single hyphen, and trim leading and trailing hyphens. Text with no letters or digits gives an empty string.",
+        "acceptanceCriteria": [
+          "slugify('Hello World!') is 'hello-world'.",
+          "Accents are stripped, separators collapse, and edge hyphens are trimmed.",
+          "Input with no letters or digits gives ''."
+        ],
+        "requiredCapabilities": ["code-edit"],
+        "complexity": "low",
+        "estimate": {
+          "inputTokens": 1500,
+          "outputTokens": 500,
+          "costUsd": null
+        },
+        "files": {
+          "read": ["src/"],
+          "write": ["src/feature/slugify.js"]
+        },
+        "dependsOn": []
+      }
+    ]
+  },
+  {
+    "id": "bench-duration",
+    "prompt": "Add a strict parseDuration helper.",
+    "tasks": [
+      {
+        "id": "add-parse-duration",
+        "title": "Add parseDuration()",
+        "instructions": "Create src/lib/duration.js exporting parseDuration(text) that turns strings like '45s', '2m', '1h30m' or '1d2h3m4s' into a number of seconds. Units are d, h, m, s, each at most once and in that order; amounts are non-negative integers. Throw a TypeError for a non-string and a RangeError for anything else that does not match exactly (empty, no unit, unknown unit, repeated or out-of-order units, decimals, signs, whitespace).",
+        "acceptanceCriteria": [
+          "Valid strings return the total seconds.",
+          "Malformed strings throw RangeError; non-strings throw TypeError."
+        ],
+        "requiredCapabilities": ["code-edit", "testing"],
+        "complexity": "medium",
+        "estimate": {
+          "inputTokens": 2000,
+          "outputTokens": 900,
+          "costUsd": null
+        },
+        "files": {
+          "read": ["src/lib/"],
+          "write": ["src/lib/duration.js"]
+        },
+        "dependsOn": []
+      }
+    ]
+  },
+  {
+    "id": "bench-rate-limiter",
+    "prompt": "Add a per-key token-bucket rate limiter.",
+    "tasks": [
+      {
+        "id": "add-rate-limiter",
+        "title": "Add a token-bucket rate limiter",
+        "instructions": "Create src/lib/rate-limiter.js exporting createRateLimiter({ capacity, refillPerSecond, now = Date.now }). Each key has its own bucket that starts full and refills continuously at refillPerSecond tokens per second, never above capacity. tryTake(key, cost = 1) takes `cost` tokens and returns true, or returns false and takes nothing. retryAfterMs(key, cost = 1) returns 0 if `cost` tokens are available now, else the milliseconds until they will be (rounded up). A cost above capacity throws RangeError; capacity or refillPerSecond that is not a positive number throws RangeError. Read time only through `now()`.",
+        "acceptanceCriteria": [
+          "Bursts up to capacity are allowed, then refused.",
+          "Refill is continuous and capped at capacity; keys are independent.",
+          "retryAfterMs is exact for an injected clock; invalid options and costs throw RangeError."
+        ],
+        "requiredCapabilities": ["code-edit", "testing"],
+        "complexity": "high",
+        "estimate": {
+          "inputTokens": 3000,
+          "outputTokens": 1500,
+          "costUsd": null
+        },
+        "files": {
+          "read": ["src/lib/"],
+          "write": ["src/lib/rate-limiter.js"]
+        },
+        "dependsOn": []
+      }
+    ]
+  }
+]

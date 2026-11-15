@@ -1,0 +1,6 @@
+{
+  "name": "soot-bench-app",
+  "private": true,
+  "type": "module",
+  "description": "Fixture project for soot's savings benchmark (scripts/benchmark.mjs). Real models edit a throwaway copy."
+}

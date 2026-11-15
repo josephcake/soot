@@ -168,16 +168,22 @@ and nothing loads `.env` files yet. Details: [`docs/guides/configuration.md`](do
 
 ## Example execution and cost optimization
 
-No user-facing command exists yet. The Milestone 1 flow (prompt → fixture decomposition →
+To run it yourself, see [installation](docs/guides/installation.md) (`soot run`). The Milestone 1 flow (prompt → fixture decomposition →
 graph → concurrent mock execution → persisted results) runs in
 [`tests/m1-end-to-end.test.ts`](tests/m1-end-to-end.test.ts). Per-task routing of the spec's
 fixture prompts under each policy, with explanations, runs in
 [`tests/m3-routing-end-to-end.test.ts`](tests/m3-routing-end-to-end.test.ts) against a
 fictional registry. Milestone 5 runs mock agents against real temporary git repositories,
 with soot running `node --test`, `tsc` and lint on each task's diff, in
-[`tests/m5-codebase-end-to-end.test.ts`](tests/m5-codebase-end-to-end.test.ts). No savings are claimed. The
-target behavior is described in [`docs/specs/build-spec.md`](docs/specs/build-spec.md);
-savings will only be reported from real benchmark data.
+[`tests/m5-codebase-end-to-end.test.ts`](tests/m5-codebase-end-to-end.test.ts). The
+target behavior is described in [`docs/specs/build-spec.md`](docs/specs/build-spec.md).
+
+Savings are reported only from measured runs. The first benchmark
+([`docs/benchmarks/2026-11-14.md`](docs/benchmarks/2026-11-14.md)) ran six prompts three times
+each with real xAI and DeepSeek models. On the light and medium prompts that passed both ways,
+soot's routing cost $0.0190 against $0.1288 for sending every task to `xai/grok-4.7` (85% less).
+On the one high-complexity prompt both picked the same model, so routing saved nothing. It is
+a small sample from two vendors; read the caveats before quoting it.
 
 ## Repository layout
 
