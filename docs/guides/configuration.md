@@ -138,7 +138,9 @@ prices over the network.
 
 The `soot` CLI reads `soot.config.json` from the repository root (or `--config <file>`). Commit
 it with the project: it is the only source of the commands soot runs, and soot protects it from
-task edits. Unknown keys are rejected.
+task edits. Unknown keys are rejected. `soot init` will write this file from package.json
+scripts (test, lint, typecheck) and other common markers; a decomposer model is added only if
+you pass `--decomposer` (ADR-055). soot never writes a vendor default into the file.
 
 ```json
 {

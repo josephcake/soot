@@ -77,6 +77,24 @@ soot models            # the demo registry (real model ids and sourced prices; f
 soot config            # resolved config; key variable names only
 ```
 
+## Start on your own repository
+
+The demo app is a fixture-backed walkthrough. For a real project, write a `soot.config.json`
+with `soot init` (ADR-055) and, if you want prompts that are not in the recorded fixtures
+planned by a model, pass `--decomposer` yourself:
+
+```sh
+cd /path/to/your/repo
+soot init
+# or, to plan free-form prompts (needs the model's key in the environment):
+soot init --decomposer auto
+soot config            # shows whether the decomposer is usable; key values are never printed
+```
+
+`soot init` discovers `test`, `lint` and `typecheck` scripts in `package.json`, or `pytest`,
+`go test` or `cargo test` when those markers are present. It does not write a vendor model
+unless you asked. The working tree must be a clean git repository before `soot run`.
+
 If a run was interrupted (the process was killed or crashed, you stopped it, or a task was
 blocked), continue it instead of starting over (ADR-054):
 

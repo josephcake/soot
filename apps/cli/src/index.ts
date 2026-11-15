@@ -36,6 +36,16 @@ export {
 export { MockScriptFileSchema, loadMockScript } from './mock-script.js';
 export { interactiveApprovals, unattendedApprovals } from './approvals.js';
 export {
+  InitError,
+  detectPackageManager,
+  discoverChecks,
+  formatInitResult,
+  initConfig,
+  type InitConfigOptions,
+  type InitConfigResult,
+  type InitDiscovery,
+} from './init-config.js';
+export {
   DEFAULT_SKILL_SOURCE,
   SKILL_NAME,
   SKILL_TARGETS,

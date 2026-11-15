@@ -11,6 +11,7 @@ import { allowProject, disallowProject, projectId, readAllowlist } from './dashb
 import type { createComposerAgent } from './dashboard-agent.js';
 import { SootEngine, runtimeFromEnv, type AgentMode } from './engine.js';
 import { SKILL_TARGETS, installSkill, type SkillTarget } from './install-skill.js';
+import { formatInitResult, initConfig } from './init-config.js';
 import { VERSION } from './version.js';
 
 export { VERSION };
@@ -41,6 +42,8 @@ Usage:
   soot config [--repo <dir>]
   soot stop <run-id> [--task <task-id>]
   soot mcp [--agent mock --mock-script <file> | --agent acp | --agent claude-code | --agent codex]   MCP server on stdio (unattended)
+  soot init [--repo <dir>] [--force] [--decomposer auto | --decomposer <provider/modelId>]
+                                write soot.config.json from discovered project checks
   soot install-skill [--target <dir>] [--harness agents,claude,grok] [--force]
   soot dashboard [--port <n>] [--open] [--agent api | --agent mock --mock-script <file> | --agent acp | --agent claude-code | --agent codex] [--apply]
                                 optional local dashboard on 127.0.0.1 (default port 8787)
@@ -76,6 +79,12 @@ Decomposition: recorded fixtures. Prompts with no fixture go to the optional "de
 model in soot.config.json, only when its key variable is set ("soot config" shows whether it
 is usable). Without it, such prompts are refused.
 
+Init: "soot init" writes soot.config.json from package.json scripts (test, lint, typecheck)
+and other common markers (pytest, go test, cargo test). It sets allowedExecutables from those
+commands. A decomposer is opt-in only: pass --decomposer auto or --decomposer <provider/modelId>,
+or enter one when the command asks on a terminal. soot never writes a vendor default or a
+decomposer model unless you asked. --force overwrites an existing file.
+
 Dashboard: off unless you run "soot dashboard". It binds 127.0.0.1 only, fails if the port is
 taken (no other port is tried), and opens a browser only with --open. Each start makes a new
 access link with a token. On a terminal it is printed; otherwise (output redirected) it is only
@@ -107,6 +116,7 @@ const OPTIONS = {
   latest: { type: 'boolean' },
   'allow-config-change': { type: 'boolean' },
   'retry-blocked': { type: 'boolean' },
+  decomposer: { type: 'string' },
   help: { type: 'boolean', short: 'h' },
   version: { type: 'boolean' },
 } as const;
@@ -147,6 +157,35 @@ function runExitCode(out: CommandOutput): number {
   if (!out.ok) return 1;
   const status = (out.data.report as { status?: string } | undefined)?.status;
   return status === 'complete' ? 0 : status === 'cancelled' ? 3 : 2;
+}
+
+/** Ask on a terminal whether to set an opt-in decomposer. Blank means fixtures only. */
+async function askDecomposer(io: CliIo): Promise<string | undefined> {
+  io.stderr(
+    'Configure a decomposer model so prompts with no recorded fixture can be planned?\n' +
+      'Enter a model reference (provider/modelId), "auto", or leave blank to skip: ',
+  );
+  const line = await new Promise<string>((resolve) => {
+    let buf = '';
+    const onData = (chunk: Buffer | string) => {
+      buf += String(chunk);
+      if (buf.includes('\n') || buf.includes('\r')) {
+        io.stdin.off('data', onData);
+        resolve(buf.split(/\r?\n/)[0] ?? '');
+      }
+    };
+    if (io.stdin.readableEnded) {
+      resolve('');
+      return;
+    }
+    io.stdin.on('data', onData);
+    io.stdin.once('end', () => {
+      io.stdin.off('data', onData);
+      resolve(buf.split(/\r?\n/)[0] ?? '');
+    });
+  });
+  const trimmed = line.trim();
+  return trimmed === '' ? undefined : trimmed;
 }
 
 /** Run the CLI. Returns the process exit code. */
@@ -198,6 +237,8 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
       throw new UsageError(
         '--latest, --allow-config-change and --retry-blocked are only for soot resume',
       );
+    if (values.decomposer !== undefined && command !== 'init')
+      throw new UsageError('--decomposer is only for soot init');
     const base = interactive
       ? interactiveApprovals({ input: io.stdin, ask: io.stderr })
       : { gate: unattendedApprovals(), close: () => undefined };
@@ -278,6 +319,43 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
           const out = await engine.stop(rest[0], values.task);
           print(io, out, asJson);
           return out.ok ? 0 : 1;
+        }
+        case 'init': {
+          if (rest.length > 0) throw new UsageError('init takes no positional arguments');
+          if (values.agent !== undefined || values.apply === true)
+            throw new UsageError('soot init does not take --agent or --apply');
+          let decomposer = values.decomposer;
+          if (decomposer === undefined && io.stdinIsTTY) {
+            decomposer = await askDecomposer(io);
+          }
+          const result = initConfig({
+            root: resolve(io.cwd, values.repo ?? '.'),
+            force: values.force === true,
+            ...(decomposer === undefined || decomposer.trim() === ''
+              ? {}
+              : { decomposer: decomposer.trim() }),
+          });
+          print(
+            io,
+            {
+              ok: true,
+              text: formatInitResult(result, io.cwd),
+              data: {
+                path: result.path,
+                checks: result.discovery.checks.map((c) => ({
+                  name: c.check.name,
+                  kind: c.check.kind,
+                  argv: [...c.check.argv],
+                  source: c.source,
+                })),
+                notes: [...result.discovery.notes],
+                allowedExecutables: [...result.config.allowedExecutables],
+                decomposer: result.config.decomposer?.model ?? null,
+              },
+            },
+            asJson,
+          );
+          return 0;
         }
         case 'install-skill': {
           const harnesses = (values.harness ?? Object.keys(SKILL_TARGETS).join(','))
