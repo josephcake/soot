@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentRunner, AgentTaskInput } from '@soot/agent-runtime';
+import { failedCheckLines, latestRejectedChange, rejectedChangeLines } from '@soot/context-manager';
 import { withinScope } from '@soot/integrations';
 import { ProviderError, type ModelClient, type Usage } from '@soot/provider-adapters';
 import type { AgentResult, Finding } from '@soot/task-graph';
@@ -248,8 +249,11 @@ export function taskMessage(input: AgentTaskInput, files: readonly FileView[]): 
       `Attempt ${String(p.attempt)}${p.model === null ? '' : ` by ${p.model}`} was not accepted (${p.outcome}): ${p.failure}`,
       ...(p.summary === null ? [] : [`It reported: ${p.summary}`]),
       ...p.findings.slice(0, 10).map((f) => `- ${f.kind}: ${f.message}`),
+      ...(p.failedCheck === undefined ? [] : failedCheckLines(p.failedCheck)),
     );
   }
+  const rejected = latestRejectedChange(input.priorAttempts ?? []);
+  if (rejected !== null) lines.push('', ...rejectedChangeLines(rejected.attempt, rejected.change));
   lines.push('', 'Current files:');
   for (const f of files) {
     if (f.content === null) lines.push('', `=== ${f.path} (${f.note ?? 'not sent'}) ===`);

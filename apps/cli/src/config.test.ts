@@ -25,6 +25,8 @@ describe('soot.config.json', () => {
       concurrency: 4,
       checks: [],
       protectedPaths: [],
+      retryCheckOutputBytes: 4096,
+      retryDiffBytes: 8192,
     });
     expect(cfg.policy).toEqual({ allowedExecutables: [] });
   });
@@ -68,6 +70,31 @@ describe('soot.config.json', () => {
     expect(bad({ writePaths: [homedir()] })).toThrow(/home directory/);
     expect(bad({ mode: 'none', required: true })).toThrow(/cannot be combined/);
     expect(bad({ allowAll: true })).toThrow(/Unrecognized key/);
+  });
+
+  it('retryCheckOutputBytes: 0 turns retry check output off; more than 16384 is refused', () => {
+    expect(
+      loadProjectConfig(file('r0.json', { version: 1, retryCheckOutputBytes: 0 })).config
+        .retryCheckOutputBytes,
+    ).toBe(0);
+    expect(() =>
+      loadProjectConfig(file('r1.json', { version: 1, retryCheckOutputBytes: 16_385 })),
+    ).toThrow(/retryCheckOutputBytes/);
+    expect(() =>
+      loadProjectConfig(file('r2.json', { version: 1, retryCheckOutputBytes: -1 })),
+    ).toThrow(/retryCheckOutputBytes/);
+  });
+
+  it('retryDiffBytes: 0 turns the retry diff off; more than 32768 is refused', () => {
+    expect(
+      loadProjectConfig(file('d0.json', { version: 1, retryDiffBytes: 0 })).config.retryDiffBytes,
+    ).toBe(0);
+    expect(() =>
+      loadProjectConfig(file('d1.json', { version: 1, retryDiffBytes: 32_769 })),
+    ).toThrow(/retryDiffBytes/);
+    expect(() => loadProjectConfig(file('d2.json', { version: 1, retryDiffBytes: 1.5 }))).toThrow(
+      /retryDiffBytes/,
+    );
   });
 
   it('rejects unknown keys, escaping protected paths, unsafe task ids and a missing file', () => {

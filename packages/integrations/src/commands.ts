@@ -139,7 +139,8 @@ export function scrubbedEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.Pro
   return env;
 }
 
-const TAIL = 4000;
+/** Characters of output kept per check; enough for the largest retry tail (16 KiB). */
+const TAIL = 16_384;
 
 export interface RunCheckOptions {
   readonly cwd: string;

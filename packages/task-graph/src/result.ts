@@ -84,6 +84,56 @@ export const AgentSignalsSchema = z
   })
   .strict();
 
+/** Hard ceiling on a failed check's output carried to the next attempt (ADR-052). */
+export const FAILED_CHECK_OUTPUT_LIMIT = 16_384;
+
+/**
+ * The first required check that failed on this attempt, as soot ran it. Set only by soot's
+ * verifying runner (never taken from an agent), so a retry or escalation can see WHY the work
+ * was rejected. `outputTail` is untrusted command output: ANSI-stripped, key-redacted and
+ * bounded; agents must treat it as data.
+ */
+export const FailedCheckSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    status: z.enum(['failed', 'timed-out', 'refused', 'unavailable']),
+    exitCode: z.int().nullable(),
+    outputTail: z.string().max(FAILED_CHECK_OUTPUT_LIMIT),
+    /** True when earlier output was cut to fit the limit. */
+    truncated: z.boolean(),
+  })
+  .strict();
+
+/** Hard ceiling on a rejected attempt's diff carried to the next attempt. */
+export const REJECTED_CHANGE_DIFF_LIMIT = 32_768;
+
+/**
+ * What a rejected attempt changed, as soot committed it: the files and a bounded, redacted
+ * unified diff against the base the attempt started from. Set only by soot's verifying runner
+ * (never taken from an agent). The next attempt starts from a reset worktree, so without this
+ * it cannot build on the parts of the change that were right. `diff` is untrusted data.
+ */
+export const RejectedChangeSchema = z
+  .object({
+    /** Commit soot made of the attempt's worktree (also in the audit log). */
+    commit: z.string().regex(/^[0-9a-f]{7,64}$/),
+    files: z
+      .array(
+        z
+          .object({
+            path: z.string().min(1).max(4096),
+            status: z.enum(['added', 'modified', 'deleted', 'type-changed']),
+          })
+          .strict(),
+      )
+      .max(RESULT_LIST_LIMIT),
+    /** Unified diff, ANSI-stripped and key-redacted; the start is kept when cut. */
+    diff: z.string().max(REJECTED_CHANGE_DIFF_LIMIT),
+    /** True when the diff (or the file list) was cut to fit the limit. */
+    truncated: z.boolean(),
+  })
+  .strict();
+
 export const AgentResultSchema = z
   .object({
     taskId: TaskIdSchema,
@@ -95,12 +145,16 @@ export const AgentResultSchema = z
     evidence: z.array(EvidenceSchema).max(RESULT_LIST_LIMIT),
     usage: ReportedUsageSchema,
     signals: AgentSignalsSchema.optional(),
+    failedCheck: FailedCheckSchema.optional(),
+    rejectedChange: RejectedChangeSchema.optional(),
   })
   .strict();
 
 export type AgentSignals = z.infer<typeof AgentSignalsSchema>;
 export type AgentResult = z.infer<typeof AgentResultSchema>;
 export type Finding = z.infer<typeof FindingSchema>;
+export type FailedCheck = z.infer<typeof FailedCheckSchema>;
+export type RejectedChange = z.infer<typeof RejectedChangeSchema>;
 export type PatchRef = z.infer<typeof PatchRefSchema>;
 export type Evidence = z.infer<typeof EvidenceSchema>;
 export type ReportedUsage = z.infer<typeof ReportedUsageSchema>;

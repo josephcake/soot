@@ -1,4 +1,11 @@
-import type { AgentResult, Complexity, Finding, Task } from '@soot/task-graph';
+import type {
+  AgentResult,
+  Complexity,
+  FailedCheck,
+  Finding,
+  RejectedChange,
+  Task,
+} from '@soot/task-graph';
 
 /*
  * Attempt-level vocabulary for adaptive execution (Milestone 4). The scheduler owns the
@@ -84,6 +91,17 @@ export interface PriorAttempt {
   readonly summary: string | null;
   readonly findings: readonly Finding[];
   readonly failure: string;
+  /**
+   * The check soot ran that rejected this attempt, with a bounded, redacted tail of its output
+   * (untrusted). Absent when the attempt failed for another reason or the feature is off.
+   */
+  readonly failedCheck?: FailedCheck;
+  /**
+   * What this attempt changed before soot rejected it (files plus a bounded, redacted diff;
+   * untrusted). The next attempt starts from a reset worktree, so this is the only way it can
+   * keep the parts that were right. Absent when nothing was committed or the feature is off.
+   */
+  readonly rejectedChange?: RejectedChange;
   /** Why the supervisor moved on (e.g. "escalated: agent reported higher complexity"). */
   readonly note: string | null;
 }
@@ -96,6 +114,10 @@ export function toPriorAttempt(record: AttemptRecord): PriorAttempt {
     summary: record.result?.summary ?? null,
     findings: record.result?.findings ?? [],
     failure: record.failure?.message ?? 'not accepted',
+    ...(record.result?.failedCheck === undefined ? {} : { failedCheck: record.result.failedCheck }),
+    ...(record.result?.rejectedChange === undefined
+      ? {}
+      : { rejectedChange: record.result.rejectedChange }),
     note: record.review?.action === 'retry' ? record.review.note : null,
   };
 }

@@ -227,6 +227,17 @@ export const ProjectConfigSchema = z
      */
     modelCallTimeoutMs: z.number().int().min(100).max(3_600_000).optional(),
     /**
+     * Bytes of a failing check's output (last part, ANSI-stripped, key-redacted) that soot hands
+     * to the retry or escalation of that task. Default 4096, at most 16384; 0 turns it off.
+     */
+    retryCheckOutputBytes: z.number().int().min(0).max(16_384).default(4096),
+    /**
+     * Bytes of a rejected attempt's diff (first part, key-redacted) that soot hands to the
+     * retry or escalation of that task, which starts from a reset worktree. Default 8192, at
+     * most 32768; 0 turns it off.
+     */
+    retryDiffBytes: z.number().int().min(0).max(32_768).default(8192),
+    /**
      * What `--agent api` models may reply with (ADR-048): `auto` = targeted "replace" edits,
      * new files, or whole files; `whole` = ADR-039 whole-file replies only. Default `auto`.
      */

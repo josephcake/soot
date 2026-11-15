@@ -55,6 +55,15 @@ export {
   type RunCheckOptions,
 } from './commands.js';
 export {
+  DEFAULT_RETRY_CHECK_OUTPUT_BYTES,
+  failedCheckForRetry,
+  DEFAULT_RETRY_DIFF_BYTES,
+  headBytes,
+  rejectedChangeForRetry,
+  stripAnsi,
+  tailBytes,
+} from './retry-output.js';
+export {
   IsolatedTaskRunner,
   type IsolatedRunnerOptions,
   type TaskVerification,

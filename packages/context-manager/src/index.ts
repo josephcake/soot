@@ -32,7 +32,11 @@ export {
 } from './execution-store.js';
 export {
   buildAgentContext,
+  failedCheckLines,
   fenceUntrusted,
+  latestRejectedChange,
+  rejectedChangeHeader,
+  rejectedChangeLines,
   renderAgentContext,
   scanForInjection,
   type AgentContextInput,

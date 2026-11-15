@@ -182,6 +182,79 @@
         }
       },
       "additionalProperties": false
+    },
+    "failedCheck": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "status": {
+          "type": "string",
+          "enum": ["failed", "timed-out", "refused", "unavailable"]
+        },
+        "exitCode": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputTail": {
+          "type": "string",
+          "maxLength": 16384
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": ["name", "status", "exitCode", "outputTail", "truncated"],
+      "additionalProperties": false
+    },
+    "rejectedChange": {
+      "type": "object",
+      "properties": {
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,64}$"
+        },
+        "files": {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "status": {
+                "type": "string",
+                "enum": ["added", "modified", "deleted", "type-changed"]
+              }
+            },
+            "required": ["path", "status"],
+            "additionalProperties": false
+          }
+        },
+        "diff": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": ["commit", "files", "diff", "truncated"],
+      "additionalProperties": false
     }
   },
   "required": ["taskId", "attempt", "status", "summary", "findings", "patch", "evidence", "usage"],
