@@ -112,6 +112,7 @@ import {
   type DecomposerModel,
   type ModelClientFactory,
 } from './decomposer-model.js';
+import { gatherRepoSketch } from './repo-sketch.js';
 import { holdRun, requestStop, requestTaskStop, runningInfo, type RunControl } from './control.js';
 import {
   fileHash,
@@ -792,7 +793,10 @@ export class SootEngine implements OrchestrationService {
       );
     }
 
-    const intake = createPromptIntake({ prompt: request.prompt });
+    const intake = createPromptIntake({
+      prompt: request.prompt,
+      context: gatherRepoSketch(repoRoot),
+    });
     // Fixtures first; the configured decomposer model only for prompts no fixture matches, and
     // only when a client could be built (ADR-034). No client: fixture-only, no network.
     let decomposerModel = this.#decomposerModel(cfg, registry);

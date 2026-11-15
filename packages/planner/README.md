@@ -13,7 +13,8 @@
   `promptSha256` identifies it byte-for-byte. Invalid UTF-8 and lone surrogates are rejected
   because they cannot round-trip.
 - `context` is validated against `ProjectContextSchema` (name, relevant files, issue/doc
-  references, notes). Unknown fields are rejected.
+  references, notes). Unknown fields are rejected. The CLI fills this with a bounded
+  repository sketch (ADR-056) and the model-backed decomposer fences it as untrusted data.
 - `intendedOutcome` is the caller's statement (`source: 'user'`) or, if none is given, the
   prompt itself (`source: 'prompt'`). No interpretation happens in Milestone 1.
 
