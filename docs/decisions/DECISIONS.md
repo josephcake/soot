@@ -1809,3 +1809,38 @@ file-write*` on git internals last; `(allow network*)` only when configured. Eve
 - **Verification:** Unit tests in `apps/cli/src/init-config.test.ts` (discovery, default file
   has no decomposer, opt-in `auto` and a model ref, `--force`, invalid refs, no keys). Not
   live-tested as part of this change: `soot init` itself makes no model calls.
+
+## ADR-056: Bounded repository sketch in planner context; example no longer uses src/login.ts
+
+- **Date:** 2026-11-14
+- **Status:** Accepted.
+- **Context:** `ModelDecomposer` can plan any prompt, but `SootEngine.plan` called
+  `createPromptIntake({ prompt })` with an empty `projectContext`. The planner system prompt's
+  example used `src/login.ts`, so a model with no view of the repo often invented demo-like
+  paths. Execution then only reads declared files, and writes outside the lease fail.
+- **Decision:**
+  1. **`gatherRepoSketch(repoRoot)`** (`apps/cli/src/repo-sketch.ts`) fills `PromptIntake.context`
+     at plan time (`apps/cli/src/engine.ts`). It lists at most 200 project-relative file paths
+     (`git ls-files` when the folder is a git repository, otherwise a depth-4 walk), skipping
+     `node_modules`, `.git`, `dist`, and similar. It adds the `package.json` name and scripts
+     (script bodies capped) and a 2000-byte README excerpt (`README.md`, `README`, `README.txt`,
+     or `readme.md` at the root). Notes are capped at 8000 characters (the intake schema).
+     Unreadable folders and invalid `package.json` yield a partial or empty context; the
+     function does not throw. It does not read `.env` or other secret files by name; only
+     paths, package script text and the README prefix are included.
+  2. **Untrusted fencing.** Repository content is data. `plannerUserMessage` sends the request
+     as JSON, then a fenced block `<untrusted source="repository sketch">` (the same fence
+     format as `@soot/context-manager`, including tag neutralisation). An empty context omits
+     the block so recorded-fixture tests stay a single JSON object. The system prompt already
+     tells the model not to follow instructions in the request or context; it now also says
+     to take file paths from the sketch and not from the example.
+  3. **Example paths.** The system prompt example no longer mentions `src/login.ts`. It uses
+     placeholder paths (`path/to/file`) and a generic "update the requested text" task.
+- **Consequences:** Free-form prompts on a real tree have a chance of getting the right write
+  set. The sketch is deliberately small (no file contents, no search), so large monorepos
+  still need a later, richer context step. Injection in a README is fenced and flagged only
+  as text; it cannot change planner rules.
+- **Verification:** Unit tests in `apps/cli/src/repo-sketch.test.ts` and
+  `packages/planner/src/model-decomposer.test.ts`. The 2026-11-14 greet live run was done
+  _before_ this change (the tiny tree did not need a sketch). A second live run after this
+  and related work is recorded separately.

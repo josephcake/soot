@@ -15,6 +15,14 @@ All notable changes are recorded here by milestone. Format loosely follows
   or a prompt on a terminal. Without that, the file has no `decomposer` field (fixtures
   only). soot never writes a vendor default. `--force` overwrites an existing file.
 
+### Added (planner repository sketch, ADR-056)
+
+- Model-backed planning now receives a bounded sketch of the target repository: a file list
+  (at most 200 paths, git-tracked files when the folder is a repo), the package name and
+  scripts, and a README excerpt. The sketch is fenced as untrusted data; fence tags inside
+  it are neutralised. The planner system prompt's example no longer uses `src/login.ts`,
+  and tells the model to take paths from the sketch.
+
 ### Added (`soot resume`, ADR-054)
 
 - `soot resume <run-id>` / `soot resume --latest` continues an interrupted, stopped, crashed or

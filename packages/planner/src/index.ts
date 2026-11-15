@@ -41,6 +41,8 @@ export {
 export {
   DEFAULT_MAX_DECOMPOSITION_TASKS,
   DECOMPOSITION_SYSTEM_PROMPT,
+  fenceRepoSketch,
+  plannerUserMessage,
   FixtureThenModelDecomposer,
   ModelDecomposer,
   ModelDecompositionError,
