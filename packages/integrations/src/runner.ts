@@ -124,6 +124,19 @@ function withoutSootFields(result: AgentResult): AgentResult {
 
 const attemptLabel = (input: AgentTaskInput) => `${input.task.id} attempt ${String(input.attempt)}`;
 
+/**
+ * Extra acceptance commands for one task (ADR-057): the per-id list if present, otherwise
+ * the generic `"*"` list, otherwise none. Project `checks` are separate and already run on
+ * every write that changed files.
+ */
+export function acceptanceForTask(
+  taskId: string,
+  acceptance: Readonly<Record<string, readonly CheckCommand[]>> | undefined,
+): readonly CheckCommand[] {
+  if (acceptance === undefined) return [];
+  return acceptance[taskId] ?? acceptance['*'] ?? [];
+}
+
 export class IsolatedTaskRunner implements AgentRunner {
   readonly kind: string;
   readonly leases = new WriteLeases();
@@ -339,12 +352,14 @@ export class IsolatedTaskRunner implements AgentRunner {
 
     const checks = [
       ...(files.length > 0 ? this.#o.checks : []),
-      ...(this.#o.acceptance?.[task.id] ?? []),
+      ...acceptanceForTask(task.id, this.#o.acceptance),
     ];
     if (checks.length === 0) {
       record(
         'unverified',
-        'read-only task with no soot-run acceptance checks; only the agent reported success',
+        isWrite
+          ? 'write task with no soot-run project checks or acceptance checks; only the agent reported success'
+          : 'read-only task with no soot-run acceptance checks; only the agent reported success',
       );
       return result;
     }

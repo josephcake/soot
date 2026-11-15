@@ -213,8 +213,12 @@ export const ProjectConfigSchema = z
     policy: z.enum(['economy', 'balanced', 'quality']).default('balanced'),
     /** Project checks soot runs for every task that changes files. */
     checks: z.array(CheckSchema).default([]),
-    /** Extra acceptance commands per task id (also run for read-only tasks). */
-    acceptance: z.record(SafeId, z.array(CheckSchema)).default({}),
+    /**
+     * Extra acceptance commands per task id (also run for read-only tasks). The key `"*"`
+     * (ADR-057) is used when the task id has no specific entry, so a model-planned id can
+     * still be verified.
+     */
+    acceptance: z.record(z.union([SafeId, z.literal('*')]), z.array(CheckSchema)).default({}),
     /** Paths no task may change, even inside its lease. */
     protectedPaths: z.array(RelativePath).default([]),
     /** Exact `argv[0]` values allowed to run. */

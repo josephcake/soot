@@ -12,7 +12,8 @@
    with its prerequisites' verified commits. Retries reset the same worktree.
 3. **Verify:** soot commits the worktree, reads the real diff, rejects edits outside the write
    set and asks for approval before deletions. It then runs the configured project checks
-   (test, typecheck, lint) and per-task acceptance commands itself. Only that evidence makes a
+   (test, typecheck, lint) and per-task acceptance commands itself (`acceptance["*"]` when the
+   task id has no specific entry; ADR-057). Only that evidence makes a
    task `verified`; agent-reported evidence is kept as a claim. A failed verification is
    returned to the supervisor as a failure, so it can retry or escalate.
 4. **Integrate:** verified tasks are merged one by one onto the current `HEAD` with

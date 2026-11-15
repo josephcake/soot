@@ -23,6 +23,14 @@ All notable changes are recorded here by milestone. Format loosely follows
   it are neutralised. The planner system prompt's example no longer uses `src/login.ts`,
   and tells the model to take paths from the sketch.
 
+### Changed (generic project checks, ADR-057)
+
+- `acceptance["*"]` is used when a task id has no specific acceptance list, so a model-planned
+  task can still be verified and landed. Per-id entries still win over `"*"`. Project `checks`
+  were already run on every write that changed files; this does not change that.
+- A write task with no soot-run checks is still `unverified`, but the reason no longer claims
+  the task was read-only.
+
 ### Added (`soot resume`, ADR-054)
 
 - `soot resume <run-id>` / `soot resume --latest` continues an interrupted, stopped, crashed or
