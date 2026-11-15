@@ -1772,3 +1772,40 @@ file-write*` on git internals last; `(allow network*)` only when configured. Eve
   Mutation checks on the guards are recorded in `docs/project/TASKS.md` (R-01).
 - **Reversible:** Yes. Remove the command and its helpers. The v7 tables are additive, and older
   code ignores them, but the database version cannot go back down without a migration.
+
+## ADR-055: `soot init` writes soot.config.json from discovered checks; decomposer stays opt-in
+
+- **Date:** 2026-11-14
+- **Status:** Accepted.
+- **Context:** `soot run` and the dashboard refuse a folder that has no `soot.config.json`,
+  and checks are not inferred at run time (they come only from that file, ADR-025). Getting
+  past the bundled demo required hand-writing the file, including `allowedExecutables`.
+  Free-form prompts already work when `decomposer.model` is set (ADR-034, live DeepSeek
+  planning on 2026-11-13 and a 2026-11-14 throwaway greet repo), but soot must not commit or
+  invent a vendor default.
+- **Decision:**
+  1. **`soot init`** writes `soot.config.json` in `--repo` (default: the current directory).
+     It refuses if the file exists, unless `--force` is passed. The file is validated with
+     `ProjectConfigSchema` before it is written. No models file and no keys are written.
+  2. **Check discovery.** From `package.json` scripts, in order: `test` → a `test` check,
+     `lint` → a `lint` check, `typecheck` / `type-check` / `types` / `typings` → a
+     `typecheck` check. The argv is the project's package manager (`pnpm`, `yarn`, `bun`, or
+     `npm`, chosen by lockfile) plus the script name, so soot does not parse script bodies or
+     invoke a shell itself. If there is no test script, soot looks at language markers:
+     `Cargo.toml` → `cargo test`, `go.mod` → `go test ./...`, pytest config or `test_*.py`
+     files → `python3 -m pytest`. A tsconfig or ESLint config without a matching script is
+     mentioned in the command output, not turned into a guessed command. `allowedExecutables`
+     is the unique `argv[0]` of the discovered checks.
+  3. **Decomposer stays opt-in (ADR-034).** The field is written only when the user passes
+     `--decomposer auto` or `--decomposer <provider/modelId>`, or types one of those when
+     `soot init` asks on a terminal. A blank answer, a non-terminal stdin, and the default
+     all leave the field out. soot never picks a vendor. The shipped demo and bench configs
+     are unchanged.
+- **Consequences:** A real repository can get a valid config without copying the demo app.
+  Discovery is conservative: a script that uses shell features still runs through the package
+  manager, not through soot's command runner's shell (soot never uses a shell). Projects with
+  no recognizable checks get an empty `checks` array and a note that write tasks will not be
+  verified until a check is added.
+- **Verification:** Unit tests in `apps/cli/src/init-config.test.ts` (discovery, default file
+  has no decomposer, opt-in `auto` and a model ref, `--force`, invalid refs, no keys). Not
+  live-tested as part of this change: `soot init` itself makes no model calls.

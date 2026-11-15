@@ -5,6 +5,16 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Added (`soot init`, ADR-055)
+
+- `soot init` writes `soot.config.json` from package.json scripts (`test`, `lint`,
+  `typecheck` / `type-check`) invoked through the project's package manager, or from
+  `cargo test`, `go test ./...`, or `python3 -m pytest` when those markers are present and
+  there is no test script. `allowedExecutables` is set from the discovered commands.
+- A decomposer model is **opt-in**: `--decomposer auto` or `--decomposer <provider/modelId>`,
+  or a prompt on a terminal. Without that, the file has no `decomposer` field (fixtures
+  only). soot never writes a vendor default. `--force` overwrites an existing file.
+
 ### Added (`soot resume`, ADR-054)
 
 - `soot resume <run-id>` / `soot resume --latest` continues an interrupted, stopped, crashed or
