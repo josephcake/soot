@@ -1844,3 +1844,43 @@ file-write*` on git internals last; `(allow network*)` only when configured. Eve
   `packages/planner/src/model-decomposer.test.ts`. The 2026-11-14 greet live run was done
   _before_ this change (the tiny tree did not need a sketch). A second live run after this
   and related work is recorded separately.
+
+## ADR-057: Generic acceptance for model-planned task ids
+
+- **Date:** 2026-11-14
+- **Status:** Accepted. Implemented and tested with the scripted mock agent and fixture
+  repositories. Not itself a live model run; a later combined live run on a throwaway repo
+  may exercise this together with `soot init` (ADR-055) and the planner repo sketch (ADR-056).
+- **Context:** Project `checks` already run on every task that changes files, so a write can
+  be verified without a per-id acceptance list. Two gaps remained once the planner started
+  inventing task ids instead of using recorded fixture ids. First, `acceptance` was keyed only
+  by `SafeId`, so there was no way to attach extra commands (or any check at all for a
+  read-only task) to an unknown id. Second, a write with an empty `checks` list was marked
+  `unverified` with the reason "read-only task with no soot-run acceptance checks…", which was
+  wrong and made `--apply` refusals harder to diagnose.
+- **Decision:**
+  1. `acceptance` keys may be a `SafeId` or the literal `"*"`. `"*"` is used only when the
+     task id has no specific entry. A listed id never also runs `"*"`.
+  2. Project `checks` are unchanged: they still run on every write that changed files, and
+     they are not used as a stand-in for per-task acceptance. `soot init` (ADR-055) continues
+     to put discovered commands in `checks`, not in `acceptance["*"]`.
+  3. When no checks run, the `unverified` reason distinguishes a write ("write task with no
+     soot-run project checks or acceptance checks; only the agent reported success") from a
+     read-only task (the previous wording).
+- **Alternatives:** A top-level `defaultAcceptance` array (another field to teach). Treating
+  `"*"` as a glob that also runs alongside a matching id (surprising, and would double-run
+  checks). Auto-inventing acceptance from `package.json` for every unknown id (that is already
+  what project `checks` are for). Relaxing `SafeId` so any string is a key (paths and odd
+  characters in task ids).
+- **Consequences:** A model-planned write is verified by project `checks` when those exist, and
+  can pick up extra commands from `acceptance["*"]`. A read-only task still needs an
+  acceptance entry, either for its id or `"*"`, to leave `unverified`. Existing configs without
+  `"*"` behave as before for known ids; unknown ids that only had project checks already
+  verified on writes, and still do.
+- **Tests:** `packages/integrations/src/runner-acceptance.test.ts` (per-id wins, `"*"`
+  fallback, empty), `apps/cli/src/config.test.ts` (`"*" ` accepted; `**` and empty keys
+  rejected), `tests/m5-codebase-end-to-end.test.ts` (a model-invented write id is verified by
+  project checks; `"*"` acceptance runs only when there is no per-id entry; write vs
+  read-only unverified reasons).
+- **Reversible:** Yes. Remove the `"*"` key from the schema and the fallback in
+  `acceptanceForTask`. Existing configs without `"*"` need no change.

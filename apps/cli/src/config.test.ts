@@ -112,6 +112,24 @@ describe('soot.config.json', () => {
     expect(() => loadProjectConfig(join(dir, 'missing.json'))).toThrow(/no soot config at/);
     expect(() => loadProjectConfig(file('d.json', '{ nope'))).toThrow(/cannot read/);
   });
+
+  it('accepts acceptance["*"] as the generic fallback and still rejects unsafe keys (ADR-057)', () => {
+    const generic = { name: 'test', kind: 'test', argv: ['node', '--test'] };
+    expect(
+      loadProjectConfig(
+        file('star.json', {
+          version: 1,
+          acceptance: { '*': [generic], 'update-title': [generic] },
+        }),
+      ).acceptance,
+    ).toEqual({ '*': [generic], 'update-title': [generic] });
+    expect(() =>
+      loadProjectConfig(file('star2.json', { version: 1, acceptance: { '**': [] } })),
+    ).toThrow(/invalid/);
+    expect(() =>
+      loadProjectConfig(file('star3.json', { version: 1, acceptance: { '': [] } })),
+    ).toThrow(/invalid/);
+  });
 });
 
 describe('soot.config.json "decomposer" (ADR-034)', () => {

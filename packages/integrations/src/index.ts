@@ -66,6 +66,7 @@ export {
 } from './retry-output.js';
 export {
   IsolatedTaskRunner,
+  acceptanceForTask,
   type IsolatedRunnerOptions,
   type TaskVerification,
   type Verdict,

@@ -990,3 +990,130 @@ describe('Milestone 5: cancellation cleans up (M5-01 with M4-06)', () => {
     SLOW,
   );
 });
+
+describe('generic project checks for model-planned task ids (ADR-057)', () => {
+  it(
+    'verifies a write whose id is not in acceptance using project checks alone',
+    async () => {
+      const f = (fx = createFixtureRepo());
+      const task = writeTask('update-greeting-string', ['src/title.ts']);
+      const mock = new MockAgentRunner({
+        scripts: { 'update-greeting-string': { writes: { 'src/title.ts': TITLE_OK } } },
+      });
+      const { report } = await runCodebaseWorkflow(
+        options(f, [task], mock, { acceptance: ACCEPTANCE }),
+      );
+      const row = report.tasks.find((t) => t.taskId === 'update-greeting-string');
+      expect(row?.verdict).toBe('verified');
+      expect(row?.checks.filter((c) => c.kind === 'acceptance')).toEqual([]);
+      expect(row?.checks.filter((c) => c.status === 'passed').map((c) => c.name)).toEqual(
+        expect.arrayContaining(['test', 'typecheck', 'lint']),
+      );
+    },
+    SLOW,
+  );
+
+  it(
+    'runs acceptance["*"] only when the task id has no specific entry',
+    async () => {
+      const failAlways = {
+        name: 'acceptance:wildcard-must-not-run',
+        kind: 'acceptance' as const,
+        argv: [NODE, '-e', 'process.exit(1)'],
+      };
+      const withStar = {
+        'update-page-title': [acceptance('title.test.ts')],
+        '*': [failAlways],
+      };
+
+      const known = (fx = createFixtureRepo());
+      const title = writeTask('update-page-title', ['src/title.ts']);
+      const knownRun = await runCodebaseWorkflow(
+        options(
+          known,
+          [title],
+          new MockAgentRunner({
+            scripts: { 'update-page-title': { writes: { 'src/title.ts': TITLE_OK } } },
+          }),
+          { acceptance: withStar },
+        ),
+      );
+      const knownRow = knownRun.report.tasks.find((t) => t.taskId === 'update-page-title');
+      expect(knownRow?.verdict).toBe('verified');
+      expect(knownRow?.checks.map((c) => c.name)).not.toContain('acceptance:wildcard-must-not-run');
+      expect(
+        knownRow?.checks.some(
+          (c) => c.name === 'acceptance:title.test.ts' && c.status === 'passed',
+        ),
+      ).toBe(true);
+      known.dispose();
+
+      const invented = (fx = createFixtureRepo());
+      const other = writeTask('update-greeting-string', ['src/title.ts']);
+      const inventedRun = await runCodebaseWorkflow(
+        options(
+          invented,
+          [other],
+          new MockAgentRunner({
+            scripts: { 'update-greeting-string': { writes: { 'src/title.ts': TITLE_OK } } },
+          }),
+          {
+            acceptance: { '*': [acceptance('title.test.ts')] },
+          },
+        ),
+      );
+      const inventedRow = inventedRun.report.tasks.find(
+        (t) => t.taskId === 'update-greeting-string',
+      );
+      expect(inventedRow?.verdict).toBe('verified');
+      expect(
+        inventedRow?.checks.some(
+          (c) => c.name === 'acceptance:title.test.ts' && c.status === 'passed',
+        ),
+      ).toBe(true);
+    },
+    SLOW,
+  );
+
+  it(
+    'describes a write with no checks as an unverified write, not as read-only',
+    async () => {
+      const f = (fx = createFixtureRepo());
+      const write = writeTask('update-greeting-string', ['src/title.ts']);
+      const writeRun = await runCodebaseWorkflow(
+        options(
+          f,
+          [write],
+          new MockAgentRunner({
+            scripts: { 'update-greeting-string': { writes: { 'src/title.ts': TITLE_OK } } },
+          }),
+          { checks: [], acceptance: {} },
+        ),
+      );
+      const writeRow = writeRun.report.tasks.find((t) => t.taskId === 'update-greeting-string');
+      expect(writeRow?.verdict).toBe('unverified');
+      expect(writeRow?.reason).toMatch(
+        /write task with no soot-run project checks or acceptance checks/,
+      );
+      expect(writeRow?.reason).not.toMatch(/read-only/);
+      f.dispose();
+
+      const g = (fx = createFixtureRepo());
+      const read = writeTask('inspect-title', []);
+      const readRun = await runCodebaseWorkflow(
+        options(
+          g,
+          [read],
+          new MockAgentRunner({
+            scripts: { 'inspect-title': { writes: {} } },
+          }),
+          { checks: [], acceptance: {} },
+        ),
+      );
+      const readRow = readRun.report.tasks.find((t) => t.taskId === 'inspect-title');
+      expect(readRow?.verdict).toBe('unverified');
+      expect(readRow?.reason).toMatch(/read-only task with no soot-run acceptance checks/);
+    },
+    SLOW,
+  );
+});
