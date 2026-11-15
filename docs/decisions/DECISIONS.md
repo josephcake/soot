@@ -1402,8 +1402,8 @@ generativelanguage.googleapis.com`, so the existing Gemini catalog prices apply.
   `bwrap` backend was exercised for real on the development box (bubblewrap 0.12.0, Linux
   6.12); the macOS `sandbox-exec` backend is built and unit-tested only and has never run on a
   Mac; Windows has no backend. Amends the "no OS sandbox" consequences of ADR-025 and ADR-027.
-  (Numbered 051 because ADR-050 is reserved for the benchmark branch. Based on `main`
-  dd6ff34, after ADR-044 to ADR-049.)
+  (Numbered 051 because ADR-050, the savings benchmark, was still being built; it merged
+  after this ADR. Based on `main` dd6ff34, after ADR-044 to ADR-049.)
 - **Context:** Worktrees isolate git state, not processes (TECHNICAL_DEBT). Every process soot
   starts for an agent ran with the user's full rights: it could write anywhere the user can,
   read home dotfiles, reach the network, and open soot's own state. The diff check only sees the
