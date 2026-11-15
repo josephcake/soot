@@ -1,6 +1,14 @@
 import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { forbiddenAgentArg } from '@soot/harness-adapters';
+import {
+  DEFAULT_SANDBOX_SETTINGS,
+  SANDBOX_MODES,
+  SECRET_ENV_NAME,
+  protectedWriteReason,
+  type SandboxSettings,
+} from '@soot/agent-runtime';
 import type { CheckCommand, CommandPolicy } from '@soot/integrations';
 import { z } from 'zod';
 
@@ -31,8 +39,11 @@ const RelativePath = z
     message: 'must be a relative path inside the repository',
   });
 
-/** Env names that look like credentials are never passed to an agent process (ADR-022). */
-const SECRET_LIKE = /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH/i;
+/**
+ * Env names that look like credentials are never passed to an agent process (ADR-022). The
+ * same pattern the sandbox layer strips (ADR-051), so a name accepted here is never dropped.
+ */
+const SECRET_LIKE = SECRET_ENV_NAME;
 
 /**
  * A user-supplied ACP agent command (ADR-027). soot only runs what is configured here, and only
@@ -125,6 +136,44 @@ export const DecomposerConfigSchema = z
   })
   .strict();
 
+const AbsolutePath = z
+  .string()
+  .min(1)
+  .max(4096)
+  .refine((p) => isAbsolute(p), 'must be an absolute path')
+  .refine((p) => !p.split(/[\\/]/).includes('..'), 'must not contain ".."');
+
+/**
+ * Process sandbox for commands soot runs for an agent (ADR-051). Absent: `auto` (bwrap on
+ * Linux, sandbox-exec on macOS, else the `none` fallback), no network, not required.
+ */
+export const SandboxConfigSchema = z
+  .object({
+    mode: z.enum(SANDBOX_MODES).default('auto'),
+    /** Allow network from sandboxed processes. Real harnesses need it to reach their model. */
+    network: z.boolean().default(false),
+    /** Extra absolute paths made readable (e.g. a tool installed under your home). */
+    readPaths: z.array(AbsolutePath).max(32).default([]),
+    /** Extra absolute paths made writable. Never home, dotfiles, .git, soot's state or /. */
+    writePaths: z
+      .array(
+        AbsolutePath.superRefine((p, ctx) => {
+          const why = protectedWriteReason(p, { home: homedir(), dataDir: null });
+          if (why !== null) ctx.addIssue({ code: 'custom', message: `not allowed: ${why}` });
+        }),
+      )
+      .max(32)
+      .default([]),
+    /** Block tasks rather than run them without real OS isolation. */
+    required: z.boolean().default(false),
+    /** bwrap executable when it is not on PATH. */
+    bwrapPath: AbsolutePath.optional(),
+  })
+  .strict()
+  .refine((s) => !(s.required && s.mode === 'none'), {
+    message: '"required": true cannot be combined with "mode": "none"',
+  });
+
 export const ProjectConfigSchema = z
   .object({
     version: z.literal(1),
@@ -192,6 +241,8 @@ export const ProjectConfigSchema = z
     harnesses: HarnessesConfigSchema.optional(),
     /** Model for prompts with no recorded fixture (ADR-034). Absent: fixtures only. */
     decomposer: DecomposerConfigSchema.optional(),
+    /** Process sandbox for checks and the ACP agent process (ADR-051). */
+    sandbox: SandboxConfigSchema.optional(),
   })
   .strict();
 
@@ -214,6 +265,8 @@ export interface LoadedConfig {
   readonly checks: readonly CheckCommand[];
   readonly acceptance: Readonly<Record<string, readonly CheckCommand[]>>;
   readonly policy: CommandPolicy;
+  /** Effective sandbox settings (defaults when the config has no `sandbox` block). */
+  readonly sandbox: SandboxSettings;
 }
 
 const toCheck = (c: z.infer<typeof CheckSchema>): CheckCommand => ({
@@ -256,6 +309,19 @@ export function loadProjectConfig(path: string): LoadedConfig {
       Object.entries(config.acceptance).map(([id, list]) => [id, list.map(toCheck)]),
     ),
     policy: { allowedExecutables: config.allowedExecutables },
+    sandbox: toSandboxSettings(config.sandbox),
+  };
+}
+
+function toSandboxSettings(s: ProjectConfig['sandbox']): SandboxSettings {
+  if (s === undefined) return DEFAULT_SANDBOX_SETTINGS;
+  return {
+    mode: s.mode,
+    network: s.network,
+    readPaths: s.readPaths,
+    writePaths: s.writePaths,
+    required: s.required,
+    ...(s.bwrapPath === undefined ? {} : { bwrapPath: s.bwrapPath }),
   };
 }
 

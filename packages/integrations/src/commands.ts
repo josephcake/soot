@@ -1,5 +1,10 @@
-import { execFile } from 'node:child_process';
 import { basename } from 'node:path';
+import {
+  runSandboxed,
+  unsandboxed,
+  type Sandbox,
+  type SandboxBackendName,
+} from '@soot/agent-runtime';
 import { redactSecrets } from '@soot/observability';
 
 /*
@@ -7,6 +12,8 @@ import { redactSecrets } from '@soot/observability';
  * configuration only (never from agent output), run as argument vectors without a shell, in
  * the task's worktree, with a scrubbed environment (no keys or tokens), a timeout, and an
  * executable allowlist. Destructive programs and git subcommands are refused outright.
+ * ADR-051: they run under the configured process sandbox (`runSandboxed`), and the evidence
+ * records which backend ran them (`none` = soot's protections only, not OS isolation).
  */
 
 export type CheckKind = 'test' | 'typecheck' | 'lint' | 'acceptance';
@@ -42,6 +49,11 @@ export interface CheckEvidence {
   readonly reason: string | null;
   /** Commit checked out where the command ran. */
   readonly commit: string | null;
+  /**
+   * Sandbox backend the command ran under (ADR-051): `bwrap` or `sandbox-exec` (OS isolation),
+   * `none` (fallback: soot's own protections only), or `null` when it never started.
+   */
+  readonly sandbox: SandboxBackendName | null;
 }
 
 const DESTRUCTIVE_PROGRAMS: ReadonlySet<string> = new Set([
@@ -135,9 +147,14 @@ export interface RunCheckOptions {
   readonly commit: string | null;
   readonly signal?: AbortSignal;
   readonly env?: NodeJS.ProcessEnv;
+  /** Process sandbox (ADR-051). Default: the `none` fallback (no OS isolation). */
+  readonly sandbox?: Sandbox;
 }
 
-export function runCheck(check: CheckCommand, options: RunCheckOptions): Promise<CheckEvidence> {
+export async function runCheck(
+  check: CheckCommand,
+  options: RunCheckOptions,
+): Promise<CheckEvidence> {
   const required = check.required ?? true;
   const base = {
     name: check.name,
@@ -148,68 +165,45 @@ export function runCheck(check: CheckCommand, options: RunCheckOptions): Promise
   };
   const decision = checkCommand(check.argv, options.policy);
   if (!decision.allowed) {
-    return Promise.resolve({
+    return {
       ...base,
       status: 'refused',
       exitCode: null,
       durationMs: 0,
       outputTail: '',
       reason: decision.reason,
-    });
+      sandbox: null,
+    };
   }
-  const [program = '', ...args] = check.argv;
-  const started = performance.now();
-  return new Promise((resolve) => {
-    execFile(
-      program,
-      args,
-      {
-        cwd: options.cwd,
-        env: options.env ?? scrubbedEnv(),
-        timeout: check.timeoutMs ?? 120_000,
-        maxBuffer: 16 * 1024 * 1024,
-        encoding: 'utf8',
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-      },
-      (error, stdout, stderr) => {
-        const durationMs = Math.round(performance.now() - started);
-        const output = redactSecrets(`${stdout}${stderr}`);
-        const outputTail = output.length > TAIL ? output.slice(-TAIL) : output;
-        if (error === null) {
-          resolve({ ...base, status: 'passed', exitCode: 0, durationMs, outputTail, reason: null });
-          return;
-        }
-        if (error.code === 'ENOENT') {
-          resolve({
-            ...base,
-            status: 'unavailable',
-            exitCode: null,
-            durationMs,
-            outputTail,
-            reason: `${program} not found`,
-          });
-          return;
-        }
-        if (error.killed) {
-          resolve({
-            ...base,
-            status: 'timed-out',
-            exitCode: null,
-            durationMs,
-            outputTail,
-            reason: 'killed after timeout or cancellation',
-          });
-          return;
-        }
-        resolve({
-          ...base,
-          status: 'failed',
-          exitCode: typeof error.code === 'number' ? error.code : null,
-          durationMs,
-          outputTail,
-          reason: null,
-        });
-      },
-    );
+  const r = await runSandboxed(check.argv, {
+    sandbox: options.sandbox ?? unsandboxed(),
+    cwd: options.cwd,
+    env: options.env ?? scrubbedEnv(),
+    timeoutMs: check.timeoutMs ?? 120_000,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
+  const output = redactSecrets(r.output);
+  const outputTail = output.length > TAIL ? output.slice(-TAIL) : output;
+  const common = { ...base, durationMs: r.durationMs, outputTail, sandbox: r.backend };
+  switch (r.kind) {
+    case 'exited':
+      return r.exitCode === 0
+        ? { ...common, status: 'passed', exitCode: 0, reason: null }
+        : { ...common, status: 'failed', exitCode: r.exitCode, reason: null };
+    case 'blocked':
+      return { ...common, status: 'refused', exitCode: null, reason: r.reason };
+    case 'not-found':
+    case 'spawn-error':
+      return { ...common, status: 'unavailable', exitCode: null, reason: r.reason };
+    case 'timed-out':
+    case 'cancelled':
+      return {
+        ...common,
+        status: 'timed-out',
+        exitCode: null,
+        reason: `killed after timeout or cancellation (${r.reason ?? r.kind})`,
+      };
+    case 'output-limit':
+      return { ...common, status: 'failed', exitCode: null, reason: r.reason };
+  }
 }

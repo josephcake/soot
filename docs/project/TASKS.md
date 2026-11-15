@@ -320,6 +320,38 @@ Dashboard notes (2026-11-12):
   checked by `overview.test.ts`, `ui.test.ts`, `view.test.ts`, `server.test.ts` and a headless
   screenshot of several mock runs. Not looked at in a desktop browser by anyone yet.
 
+## Process sandbox (cross-cutting, ADR-051)
+
+Not a milestone. Closes the "no OS sandbox" debt for the commands soot itself launches for an
+agent; it changes no milestone status.
+
+| ID    | Description                                                                                              | Priority | Milestone | Dependencies | Status      | Component                                                   | Acceptance criteria                                                                                                                                                                        |
+| ----- | -------------------------------------------------------------------------------------------------------- | -------- | --------- | ------------ | ----------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| SB-01 | Pluggable sandbox (`bwrap`, `sandbox-exec`, `none`) for checks and the ACP agent; deny-by-default policy | P1       | — (cross) | M5-04, M6-09 | Implemented | packages/agent-runtime, integrations, harness-adapters, cli | Writes only in the worktree + temp; home and state dir hidden; git read-only; no network by default; `required` blocks; backend recorded per check and run; `none` never claims isolation. |
+
+Sandbox notes (2026-11-14):
+
+- **SB-01 Implemented (not Verified as a whole):** spawn sites covered: `runCheck` (task checks
+  and final validation) and `spawnAcpAgent` (the ACP agent and its own tools). The API runner
+  spawns nothing; soot's own `git`, `--open` and the VS Code extension's CLI calls are not agent
+  work and stay unsandboxed (ADR-051).
+- **Linux `bwrap`: exercised for real** on the build box (bubblewrap 0.12.0, Linux 6.12): a
+  write outside the worktree fails, home and the DB are hidden and read-only, git internals are
+  `EROFS`, a TCP connect fails with `ENETUNREACH`, the mock ACP agent runs end to end under it,
+  and a configured check writing outside its worktree fails through the CLI. These tests skip
+  where bwrap does not work (they are not faked).
+- **macOS `sandbox-exec`: unit-tested only** (profile and argv). It has never run on a Mac.
+- **Fallback `none`:** real tests pin down what it does (secret stripping, no shell, process
+  group kill, output cap, `required` blocks) and that it does **not** stop writes outside the
+  worktree.
+- The Claude Code and Codex runners (ADR-047) spawn their adapter under the same sandbox
+  (`harness-profiles.test.ts` proves the adapter command goes through it and that a blocked
+  sandbox never starts it). Not run with any vendor harness.
+- Tests: `packages/agent-runtime/src/sandbox.test.ts`, `sandbox-process.test.ts`,
+  `packages/harness-adapters/src/acp/spawn.test.ts`, `packages/integrations/src/commands.test.ts`,
+  `apps/cli/src/config.test.ts`, `packages/context-manager/src/execution-store.test.ts`,
+  `apps/dashboard/src/view.test.ts`, `tests/m6-sandbox-end-to-end.test.ts`.
+
 ## Engine hardening (cross-cutting, ADR-030)
 
 Prepares the engine for real keys or a real harness; nothing here uses either. These rows do

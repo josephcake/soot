@@ -32,6 +32,11 @@ export interface CheckView {
   readonly kind: string;
   readonly status: string;
   readonly exitCode: number | null;
+  /**
+   * Sandbox backend the check ran under (ADR-051): `bwrap`, `sandbox-exec`, `none` (fallback,
+   * not isolation), `not started`, or null = unknown (not recorded, e.g. older runs).
+   */
+  readonly sandbox: string | null;
 }
 
 export interface AttemptView {
@@ -102,6 +107,11 @@ export interface DashboardRun {
   readonly prompt: string;
   readonly createdAt: string | null;
   readonly agent: { readonly kind: string | null; readonly label: string | null };
+  /**
+   * The run's process sandbox (ADR-051): backend and whether it is real OS isolation; both
+   * null (shown as "unknown") when the run did not record one.
+   */
+  readonly sandbox: { readonly backend: string | null; readonly isolation: boolean | null };
   readonly usage: UsageCharts;
   readonly assignment: {
     readonly prompt: string;
@@ -269,6 +279,7 @@ function check(c0: unknown): CheckView {
     kind: str(c.kind),
     status: str(c.status),
     exitCode: num(c.exitCode),
+    sandbox: !('sandbox' in c) ? null : c.sandbox === null ? 'not started' : strOrNull(c.sandbox),
   };
 }
 
@@ -505,6 +516,13 @@ export function toDashboardRun(
     prompt: str(status.prompt),
     createdAt: strOrNull(status.createdAt),
     agent: { kind: strOrNull(status.agent), label: strOrNull(status.agentLabel) },
+    sandbox: {
+      backend: strOrNull(rec(status.sandbox).backend),
+      isolation:
+        typeof rec(status.sandbox).isolation === 'boolean'
+          ? (rec(status.sandbox).isolation as boolean)
+          : null,
+    },
     usage,
     assignment: {
       prompt: str(status.prompt),

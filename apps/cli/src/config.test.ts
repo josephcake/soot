@@ -1,5 +1,5 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadMockScript, loadProjectConfig } from './index.js';
@@ -27,6 +27,47 @@ describe('soot.config.json', () => {
       protectedPaths: [],
     });
     expect(cfg.policy).toEqual({ allowedExecutables: [] });
+  });
+
+  it('sandbox (ADR-051): defaults to auto, no network, not required; validates paths', () => {
+    const cfg = loadProjectConfig(file('s.json', { version: 1 }));
+    expect(cfg.sandbox).toEqual({
+      mode: 'auto',
+      network: false,
+      readPaths: [],
+      writePaths: [],
+      required: false,
+    });
+    const set = loadProjectConfig(
+      file('t.json', {
+        version: 1,
+        sandbox: {
+          mode: 'bwrap',
+          network: true,
+          readPaths: ['/opt/tools'],
+          writePaths: ['/var/cache/soot-build'],
+          required: true,
+          bwrapPath: '/usr/local/bin/bwrap',
+        },
+      }),
+    );
+    expect(set.sandbox).toEqual({
+      mode: 'bwrap',
+      network: true,
+      readPaths: ['/opt/tools'],
+      writePaths: ['/var/cache/soot-build'],
+      required: true,
+      bwrapPath: '/usr/local/bin/bwrap',
+    });
+    const bad = (sandbox: unknown) => () =>
+      loadProjectConfig(file('u.json', { version: 1, sandbox }));
+    expect(bad({ mode: 'firejail' })).toThrow(/sandbox\.mode/);
+    expect(bad({ readPaths: ['rel'] })).toThrow(/sandbox\.readPaths\.0: must be an absolute path/);
+    expect(bad({ writePaths: ['/a/../b'] })).toThrow(/must not contain/);
+    expect(bad({ writePaths: [join(homedir(), '.ssh')] })).toThrow(/dotfile/);
+    expect(bad({ writePaths: [homedir()] })).toThrow(/home directory/);
+    expect(bad({ mode: 'none', required: true })).toThrow(/cannot be combined/);
+    expect(bad({ allowAll: true })).toThrow(/Unrecognized key/);
   });
 
   it('rejects unknown keys, escaping protected paths, unsafe task ids and a missing file', () => {

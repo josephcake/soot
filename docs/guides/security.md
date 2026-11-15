@@ -1,7 +1,7 @@
 # Security model
 
 What soot enforces today, and what it does not. Design records: ADR-015, ADR-016 (superseded by ADR-035), ADR-018,
-ADR-020, ADR-022, ADR-025, ADR-026.
+ADR-020, ADR-022, ADR-025, ADR-026, ADR-051.
 
 ## Approvals: never automatic
 
@@ -38,6 +38,36 @@ they passed. Agent-reported evidence is shown as a claim and never decides anyth
   (`push`, `reset`, `checkout`, …) are refused.
 - The environment is scrubbed to `PATH`, `HOME`, locale and temp variables: no keys or tokens,
   no `NODE_OPTIONS`.
+- They run under the process sandbox (below), and the report records which backend ran each one.
+
+## Process sandbox (ADR-051)
+
+Checks and the ACP agent process, including the Claude Code and Codex adapters (with every tool they run), are started inside a sandbox picked
+from what your OS already has. soot installs nothing.
+
+| Backend        | Where                                     | Isolation | Tested                                     |
+| -------------- | ----------------------------------------- | --------- | ------------------------------------------ |
+| `bwrap`        | Linux, `bwrap` on PATH (or `bwrapPath`)   | Yes       | Real runs on Linux (bubblewrap 0.12.0)     |
+| `sandbox-exec` | macOS (`/usr/bin/sandbox-exec`)           | Yes       | Unit tests only; never run on a Mac        |
+| `none`         | Anything else, or `bwrap` failing a probe | **No**    | Real runs; its limits have their own tests |
+
+With a real backend, by default:
+
+- Writes go only to the task's worktree and a private temp dir (plus `writePaths`).
+- Your home directory and soot's state directory (`soot.sqlite`, reports, audit log, other
+  tasks' worktrees) are hidden. Under bwrap they appear empty and read-only.
+- The repository and its `.git` are readable but not writable, and the worktree's `.git`
+  pointer cannot be changed.
+- No network (`network: true` turns it on). A real harness needs it to reach its model.
+
+The `none` fallback is **not isolation**: the process runs with your rights and network. It
+still strips credential-like variables, pins the cwd to the worktree, uses no shell, times out,
+kills the whole process group, and caps output at 16 MiB. `soot config`, `soot run` and
+`soot status` say which one you have.
+
+To refuse the fallback, set `"sandbox": { "required": true }`. Naming a backend (`"mode":
+"bwrap"`) has the same effect when it is unavailable. Tasks are then reported `blocked` and
+nothing runs.
 
 ## ACP agents
 
@@ -53,9 +83,11 @@ they passed. Agent-reported evidence is shown as a claim and never decides anyth
   `allowedModes`. Config arguments that skip approvals or the sandbox are refused for every ACP
   agent. Tested against simulated adapters only.
 - Over ACP the agent can read the worktree and write inside the write lease only. It may still
-  have its own tools: **a spawned agent runs with your user's rights**, so confine it with the
-  harness's own sandbox settings. soot's diff, protected paths and checks catch changes inside
-  the worktree, not outside it.
+  have its own tools. Under a real sandbox backend they are confined like the agent (worktree
+  writes only, no network unless configured). Under the `none` fallback **a spawned agent runs
+  with your user's rights**, so confine it with the harness's own sandbox settings. soot's diff,
+  protected paths and checks catch changes inside the worktree; the sandbox is what stops
+  changes outside it.
 
 ## Untrusted content
 
@@ -74,7 +106,8 @@ Bring your own keys, read only by the provider adapters from environment variabl
   commands run or refused, approvals, verdicts, merges and working-tree updates, plus every
   routing decision and ACP model-route outcome (ADR-030).
 - `soot.sqlite` stores the prompt, tasks, results, outcomes, provider cooldowns (provider id,
-  reason, until, error detail) and per-attempt spend in plain text (no encryption at rest); the
+  reason, until, error detail), per-attempt spend and each soot-run command with its sandbox
+  backend (`command_runs`) in plain text (no encryption at rest); the
   state directory is created with mode 0700. No credential is stored.
 
 ## Local dashboard (optional)
@@ -126,9 +159,13 @@ makes no outbound requests and never shows key values.
 
 ## Known limits
 
-- **No OS sandbox.** Worktrees isolate git state, not processes. A runner that writes outside
-  its worktree is not seen in the diff; real runners must be confined by the host harness or a
-  sandbox. Check commands also run unsandboxed.
+- **The sandbox depends on the OS.** Real isolation needs working `bwrap` (Linux) or
+  `sandbox-exec` (macOS, untested on a real Mac). Elsewhere, and when they are missing, the
+  `none` fallback is not isolation (set `required: true` to refuse it). Windows has no backend.
+- soot's own `git` commands, `soot dashboard --open` and the VS Code extension's CLI calls are
+  not sandboxed (they are not agent work).
+- The sandbox has not been used with any vendor harness. Claude Code and Codex keep state in
+  home dotfiles, which soot will not make writable.
 - Allowing an executable such as `node` allows whatever arguments the config gives it.
 - Injection detection is heuristic.
 - See [`TECHNICAL_DEBT.md`](../project/TECHNICAL_DEBT.md).

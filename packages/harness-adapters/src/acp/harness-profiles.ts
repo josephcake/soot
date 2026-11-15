@@ -1,4 +1,4 @@
-import type { ApprovalGate } from '@soot/agent-runtime';
+import type { ApprovalGate, Sandbox } from '@soot/agent-runtime';
 import { isAbsolute } from 'node:path';
 import {
   AcpAgentRunner,
@@ -108,6 +108,11 @@ export interface HarnessRunnerOptions {
   readonly env?: NodeJS.ProcessEnv;
   /** Tests: connect to a simulated agent instead of spawning `config.command`. */
   readonly connect?: AcpConnector;
+  /**
+   * Process sandbox the adapter (and every tool it runs) is spawned under (ADR-051). Default:
+   * the `none` fallback, which is not isolation.
+   */
+  readonly sandbox?: Sandbox;
 }
 
 export function harnessModePolicy(
@@ -144,7 +149,11 @@ export function createHarnessRunner(
     );
   }
   return new AcpAgentRunner({
-    connect: options.connect ?? spawnAcpAgent(config, options.env ?? process.env),
+    connect:
+      options.connect ??
+      spawnAcpAgent(config, options.env ?? process.env, {
+        ...(options.sandbox === undefined ? {} : { sandbox: options.sandbox }),
+      }),
     approvals: options.approvals,
     agentKind: `${id} runner`,
     modePolicy: harnessModePolicy(profile, config),

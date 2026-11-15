@@ -29,7 +29,7 @@ export const STATE_DB_FILE = 'soot.sqlite';
  * `provider_cooldowns` and `attempt_spend` (ADR-030). Older databases are migrated in place
  * (every change only adds tables).
  */
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 /** Spend attributed to one attempt for budgets: a reported actual, or the routed estimate. */
 export interface AttemptSpend {
@@ -112,6 +112,20 @@ export interface ModelOutcome {
    * rows stored before schema v5. Real-model routing ignores test-double outcomes.
    */
   readonly runner?: string;
+}
+
+/** One soot-run command as persisted (ADR-051). */
+export interface CommandRunRecord {
+  readonly runId: string;
+  /** Null for run-level commands (final validation). */
+  readonly taskId: string | null;
+  readonly attempt: number | null;
+  readonly stage: 'task-check' | 'final-validation';
+  readonly name: string;
+  readonly status: string;
+  readonly exitCode: number | null;
+  /** Backend name, or null when the command never started. */
+  readonly sandbox: string | null;
 }
 
 export interface CreateRunInput {
@@ -225,6 +239,19 @@ export class ExecutionStore {
         priced INTEGER NOT NULL,
         recorded_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS command_runs (
+        run_id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        task_id TEXT,
+        attempt INTEGER,
+        stage TEXT NOT NULL,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        exit_code INTEGER,
+        sandbox TEXT,
+        recorded_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, seq)
+      );
       CREATE TABLE IF NOT EXISTS attempt_spend (
         run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
         task_id TEXT NOT NULL,
@@ -242,8 +269,10 @@ export class ExecutionStore {
       this.#db
         .prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
         .run('schema_version', String(SCHEMA_VERSION));
-    } else if ([1, 2, 3, 4].includes(Number(version.value))) {
+    } else if ([1, 2, 3, 4, 5].includes(Number(version.value))) {
       // v1–v3 → v4 added tables (created above). v4 → v5 adds model_outcomes.runner.
+      // v5 → v6 adds the command_runs table (created above, ADR-051). run_planning (ADR-046)
+      // is created above for every version as well.
       const columns = this.#db.prepare('PRAGMA table_info(model_outcomes)').all() as {
         name: string;
       }[];
@@ -431,6 +460,65 @@ export class ExecutionStore {
         );
       },
     };
+  }
+
+  /**
+   * Record one soot-run command and the sandbox backend it ran under (ADR-051): `bwrap`,
+   * `sandbox-exec`, `none` (fallback, not isolation), or null when it never started.
+   */
+  recordCommandRun(c: CommandRunRecord): void {
+    const seq =
+      (
+        this.#db
+          .prepare('SELECT COALESCE(MAX(seq), 0) AS n FROM command_runs WHERE run_id = ?')
+          .get(c.runId) as { n: number }
+      ).n + 1;
+    this.#db
+      .prepare(
+        `INSERT INTO command_runs
+           (run_id, seq, task_id, attempt, stage, name, status, exit_code, sandbox, recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        c.runId,
+        seq,
+        c.taskId,
+        c.attempt,
+        c.stage,
+        c.name,
+        c.status,
+        c.exitCode,
+        c.sandbox,
+        this.#now().toISOString(),
+      );
+  }
+
+  /** The run's recorded commands, oldest first. */
+  commandRuns(runId: string): CommandRunRecord[] {
+    return (
+      this.#db
+        .prepare(
+          'SELECT task_id, attempt, stage, name, status, exit_code, sandbox FROM command_runs WHERE run_id = ? ORDER BY seq',
+        )
+        .all(runId) as {
+        task_id: string | null;
+        attempt: number | null;
+        stage: string;
+        name: string;
+        status: string;
+        exit_code: number | null;
+        sandbox: string | null;
+      }[]
+    ).map((r) => ({
+      runId,
+      taskId: r.task_id,
+      attempt: r.attempt,
+      stage: r.stage === 'final-validation' ? 'final-validation' : 'task-check',
+      name: r.name,
+      status: r.status,
+      exitCode: r.exit_code,
+      sandbox: r.sandbox,
+    }));
   }
 
   close(): void {

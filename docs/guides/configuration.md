@@ -182,9 +182,48 @@ task edits. Unknown keys are rejected.
 | `acpAgent`           | none       | ACP agent for `--agent acp`: `command`, `args`, `passEnv` (variable names; credential-like names are rejected).                                                                                                                |
 | `harnesses`          | none       | `claude-code` / `codex` ACP adapters for `--agent claude-code` / `--agent codex` (ADR-047, simulated only): absolute `command`, `args`, `passEnv`, optional `models` map, `allowedModes`, `startupTimeoutMs`, `cancelGraceMs`. |
 | `decomposer`         | none       | `{ "model": "<provider/modelId>" }` or `{ "model": "auto" }`: the model for prompts with no fixture (see below).                                                                                                               |
+| `sandbox`            | auto       | Process sandbox for checks, the ACP agent and the Claude Code/Codex adapters (see [Process sandbox](#process-sandbox-adr-051)).                                                                                                |
 
 Check entries: `name`, `kind` (`test`, `typecheck`, `lint`, `acceptance`), `argv`, optional
 `timeoutMs` and `required` (default `true`).
+
+### Process sandbox (ADR-051)
+
+Checks and the ACP agent process (`--agent acp`, `--agent claude-code`, `--agent codex`) run in a sandbox. Without a `sandbox` block, soot
+uses `auto` with no network:
+
+```json
+{
+  "version": 1,
+  "sandbox": {
+    "mode": "auto",
+    "network": false,
+    "readPaths": [],
+    "writePaths": [],
+    "required": false
+  }
+}
+```
+
+| Field        | Default | Meaning                                                                                                                             |
+| ------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `mode`       | `auto`  | `auto`: `bwrap` on Linux, `sandbox-exec` on macOS, else `none`. `bwrap` or `sandbox-exec`: that backend or block. `none`: fallback. |
+| `network`    | `false` | Allow network. Real harnesses need it to reach their model.                                                                         |
+| `readPaths`  | `[]`    | Absolute paths to make readable inside hidden places, e.g. a tool installed under your home.                                        |
+| `writePaths` | `[]`    | Absolute paths to make writable. Never `/`, home or above, a dotfile in home, a `.git` path, or soot's state directory.             |
+| `required`   | `false` | `true`: block every task when no real backend is available, instead of using the fallback. Not allowed with `mode: "none"`.         |
+| `bwrapPath`  | none    | Absolute path to `bwrap` when it is not on `PATH`.                                                                                  |
+
+- `none` is **not isolation**. It keeps soot's own protections (scrubbed environment, worktree
+  cwd, no shell, timeouts, process-group kill, 16 MiB output cap) and nothing more.
+- `soot config` prints the effective sandbox and whether it is real isolation (`sandbox` in
+  `--json`: `mode`, `backend`, `isolation`, `network`, `required`, `readPaths`, `writePaths`,
+  `reason`, `blocked`).
+- Each check's backend is in the run report and `soot status` (`checks[].sandbox`,
+  `commands[]` from `soot.sqlite`). `null` means the command never started.
+- Under bwrap, home is empty and read-only, so a tool that writes a cache there fails. Point it
+  elsewhere with its own flags or arguments.
+- See [security](security.md#process-sandbox-adr-051) for what each backend enforces.
 
 ### Decomposer model (optional, ADR-034)
 
@@ -338,6 +377,8 @@ the provider, so a timed-out try has no token count or cost (the provider may st
   rate limit or timeout stays skipped by later runs and restarted processes until its cooldown
   ends. Auth and "not configured" marks last for the process only, so fixing a key and running
   again is enough.
+- **Commands and their sandbox** (`command_runs`, schema v6, ADR-051): each soot-run check
+  with its stage, status, exit code and sandbox backend.
 - **Run-budget spend** (`attempt_spend`): one row per attempt, the reported actual cost when the
   runner sent one, otherwise the routed estimate. A restarted run rebuilds its budget from these
   rows, including tasks that already finished. Nothing is filled in: an attempt without a price

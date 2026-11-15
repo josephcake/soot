@@ -190,7 +190,7 @@ describe('execution store: attempt history (Milestone 4)', () => {
     // or attempt_spend tables, schema_version 1.
     const db = new DatabaseSync(join(dataDir, STATE_DB_FILE));
     db.exec(
-      `DROP TABLE attempt_details; DROP TABLE model_outcomes; DROP TABLE provider_cooldowns; DROP TABLE attempt_spend; UPDATE meta SET value = '1' WHERE key = 'schema_version';`,
+      `DROP TABLE attempt_details; DROP TABLE model_outcomes; DROP TABLE provider_cooldowns; DROP TABLE attempt_spend; DROP TABLE command_runs; UPDATE meta SET value = '1' WHERE key = 'schema_version';`,
     );
     db.close();
 
@@ -199,11 +199,11 @@ describe('execution store: attempt history (Milestone 4)', () => {
     migrated.close();
     const check = new DatabaseSync(join(dataDir, STATE_DB_FILE));
     expect(check.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get()).toEqual({
-      value: '5',
+      value: '6',
     });
-    check.exec(`UPDATE meta SET value = '6' WHERE key = 'schema_version';`);
+    check.exec(`UPDATE meta SET value = '7' WHERE key = 'schema_version';`);
     check.close();
-    expect(() => openExecutionStore({ dataDir })).toThrow(/Unsupported state schema version 6/);
+    expect(() => openExecutionStore({ dataDir })).toThrow(/Unsupported state schema version 7/);
   });
 
   it('migrates v4 model outcomes to v5: old rows get runner "unknown", new rows keep theirs', () => {
@@ -232,6 +232,87 @@ describe('execution store: attempt history (Milestone 4)', () => {
       ['r1', 'unknown'],
       ['r2', 'api'],
     ]);
+    store.close();
+  });
+
+  it('a v5 database from before run_planning gets run_planning and command_runs side by side at v6', () => {
+    const dataDir = tempDir();
+    const before = openExecutionStore({ dataDir });
+    const runId = before.createRun({ intake, graph: buildTaskGraph([task('a')]) });
+    before.close();
+    const db = new DatabaseSync(join(dataDir, STATE_DB_FILE));
+    db.exec(
+      `DROP TABLE run_planning; DROP TABLE command_runs; UPDATE meta SET value = '5' WHERE key = 'schema_version';`,
+    );
+    db.close();
+    const store = openExecutionStore({ dataDir });
+    store.savePlanningCost(runId, {
+      model: 'p/m',
+      inputTokens: 10,
+      outputTokens: 2,
+      usd: 0.001,
+      priced: true,
+    });
+    store.recordCommandRun({
+      runId,
+      taskId: 'a',
+      attempt: 1,
+      stage: 'task-check',
+      name: 'test',
+      status: 'passed',
+      exitCode: 0,
+      sandbox: 'bwrap',
+    });
+    expect(store.planningCost(runId)).toMatchObject({ model: 'p/m', usd: 0.001 });
+    expect(store.commandRuns(runId).map((c) => c.sandbox)).toEqual(['bwrap']);
+    store.close();
+    const check = new DatabaseSync(join(dataDir, STATE_DB_FILE));
+    expect(check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({
+      value: '6',
+    });
+    check.close();
+  });
+
+  it('records soot-run commands with their sandbox backend (ADR-051), and migrates v5 to v6', () => {
+    const dataDir = tempDir();
+    openExecutionStore({ dataDir }).close();
+    const db = new DatabaseSync(join(dataDir, STATE_DB_FILE));
+    db.exec(`DROP TABLE command_runs; UPDATE meta SET value = '5' WHERE key = 'schema_version';`);
+    db.close();
+    const store = openExecutionStore({ dataDir });
+    const base = { runId: 'r1', status: 'passed', exitCode: 0 };
+    store.recordCommandRun({
+      ...base,
+      taskId: 't',
+      attempt: 1,
+      stage: 'task-check',
+      name: 'test',
+      sandbox: 'bwrap',
+    });
+    store.recordCommandRun({
+      ...base,
+      taskId: null,
+      attempt: null,
+      stage: 'final-validation',
+      name: 'lint',
+      sandbox: 'none',
+    });
+    store.recordCommandRun({
+      ...base,
+      taskId: 't',
+      attempt: 2,
+      stage: 'task-check',
+      name: 'x',
+      status: 'refused',
+      exitCode: null,
+      sandbox: null,
+    });
+    expect(store.commandRuns('r1').map((c) => [c.taskId, c.stage, c.name, c.sandbox])).toEqual([
+      ['t', 'task-check', 'test', 'bwrap'],
+      [null, 'final-validation', 'lint', 'none'],
+      ['t', 'task-check', 'x', null],
+    ]);
+    expect(store.commandRuns('other')).toEqual([]);
     store.close();
   });
 });

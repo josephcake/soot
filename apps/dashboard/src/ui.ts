@@ -841,9 +841,12 @@ function validationBlock(r) {
   s.append(el('pre', '', 'report: ' + (r.validation.reportStatus || 'no report yet')));
   s.append(statusBar('task checks (soot-run)', r.tasks.flatMap((t) => t.checks)));
   s.append(statusBar('final validation', r.validation.final));
+  const sb = (c) => ' [sandbox: ' + (c.sandbox === null ? 'unknown' : c.sandbox === 'none' ? 'none, not isolation' : c.sandbox) + ']';
+  const runSandbox = r.sandbox.backend === null ? 'unknown' : r.sandbox.backend + (r.sandbox.isolation === true ? ' (OS isolation)' : r.sandbox.isolation === false ? ' (NOT isolation)' : '');
   const lines = [
-    ...r.tasks.flatMap((t) => t.checks.map((c) => t.id + ' · ' + c.kind + ' ' + c.name + ': ' + c.status + (c.exitCode === null ? '' : ' (exit ' + c.exitCode + ')'))),
-    ...(r.validation.final === null ? ['final validation: none recorded'] : r.validation.final.map((c) => 'final · ' + c.kind + ' ' + c.name + ': ' + c.status + (c.required ? ' (required)' : ''))),
+    'sandbox: ' + runSandbox,
+    ...r.tasks.flatMap((t) => t.checks.map((c) => t.id + ' · ' + c.kind + ' ' + c.name + ': ' + c.status + (c.exitCode === null ? '' : ' (exit ' + c.exitCode + ')') + sb(c))),
+    ...(r.validation.final === null ? ['final validation: none recorded'] : r.validation.final.map((c) => 'final · ' + c.kind + ' ' + c.name + ': ' + c.status + (c.required ? ' (required)' : '') + sb(c))),
     ...r.validation.problems.map((p) => 'problem: ' + p),
   ];
   s.append(el('pre', 'note', lines.join('\n')));

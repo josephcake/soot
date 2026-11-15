@@ -41,6 +41,7 @@ export {
   describeCommand,
   spawnAcpAgent,
   type AcpAgentCommand,
+  type SpawnAcpOptions,
 } from './acp/spawn.js';
 export {
   HARNESS_IDS,

@@ -692,7 +692,14 @@ describe('Milestone 5: untrusted output and prompt injection (M5-09)', () => {
       const inv = hostileRun.report.tasks.find((t) => t.taskId === 'investigate');
       expect(inv?.verdict).toBe('failed-validation');
       expect(inv?.checks).toEqual([
-        { name: 'hostile-test', kind: 'acceptance', status: 'failed', exitCode: 1 },
+        // No sandbox passed to the workflow: the fallback ran it (ADR-051), and says so.
+        {
+          name: 'hostile-test',
+          kind: 'acceptance',
+          status: 'failed',
+          exitCode: 1,
+          sandbox: 'none',
+        },
       ]);
       expect(auditLines(f).filter((e) => e.type.startsWith('approval'))).toEqual([]);
 

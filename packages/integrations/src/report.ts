@@ -30,7 +30,10 @@ export interface TaskReport {
   readonly conflicts: readonly string[];
   readonly branch: string | null;
   readonly files: readonly FileChange[];
-  readonly checks: readonly Pick<CheckEvidence, 'name' | 'kind' | 'status' | 'exitCode'>[];
+  readonly checks: readonly Pick<
+    CheckEvidence,
+    'name' | 'kind' | 'status' | 'exitCode' | 'sandbox'
+  >[];
   readonly attempts: number;
   readonly modelPath: readonly string[];
   readonly complete: boolean;
@@ -85,6 +88,16 @@ export interface ReportInput {
   readonly planning?: PlanningCostInput | null;
 }
 
+/**
+ * How a check's sandbox is shown (ADR-051): the OS backend, "no OS sandbox" for the fallback,
+ * "not started" when it never ran, "sandbox unknown" when the record predates ADR-051.
+ */
+export function sandboxLabel(backend: CheckEvidence['sandbox'] | undefined): string {
+  if (backend === undefined) return 'sandbox unknown';
+  if (backend === null) return 'not started';
+  return backend === 'none' ? 'no OS sandbox' : `sandbox ${backend}`;
+}
+
 export function buildConsolidatedReport(input: ReportInput): ConsolidatedReport {
   const steps = new Map((input.integration?.steps ?? []).map((s) => [s.taskId, s]));
   const tasks: TaskReport[] = input.graph.tasks.map((task) => {
@@ -137,6 +150,7 @@ export function buildConsolidatedReport(input: ReportInput): ConsolidatedReport 
         kind: c.kind,
         status: c.status,
         exitCode: c.exitCode,
+        sandbox: c.sandbox,
       })),
       attempts: outcome?.attempts.length ?? 0,
       modelPath: models.filter((m, i) => models[i - 1] !== m),
@@ -218,7 +232,7 @@ export function renderConsolidatedReport(r: ConsolidatedReport): string {
       lines.push(`    files: ${t.files.map((f) => `${f.status} ${f.path}`).join(', ')}`);
     for (const c of t.checks)
       lines.push(
-        `    check ${c.name} (${c.kind}): ${c.status}${c.exitCode === null ? '' : ` exit ${String(c.exitCode)}`}`,
+        `    check ${c.name} (${c.kind}): ${c.status}${c.exitCode === null ? '' : ` exit ${String(c.exitCode)}`} [${sandboxLabel(c.sandbox)}]`,
       );
     if (t.agentClaimedEvidence > 0)
       lines.push(
@@ -245,7 +259,8 @@ export function renderConsolidatedReport(r: ConsolidatedReport): string {
   }
   if (r.finalValidation !== null) {
     lines.push('', 'Final validation of the integrated result:');
-    for (const c of r.finalValidation) lines.push(`- ${c.name}: ${c.status}`);
+    for (const c of r.finalValidation)
+      lines.push(`- ${c.name}: ${c.status} [${sandboxLabel(c.sandbox)}]`);
   }
   lines.push(
     '',

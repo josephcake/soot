@@ -6,6 +6,7 @@ import {
   type AttemptSupervisor,
   type ExecutionJournal,
   type RunReport,
+  type Sandbox,
 } from '@soot/agent-runtime';
 import type { ModelOutcome } from '@soot/context-manager';
 import { AuditLog, type PlanningCostInput } from '@soot/observability';
@@ -69,6 +70,17 @@ export interface CodebaseWorkflowOptions {
    * new log at `<dataDir>/audit/<runId>.jsonl`.
    */
   readonly audit?: AuditLog;
+  /** Process sandbox for every soot-run check (ADR-051). Default: the `none` fallback. */
+  readonly sandbox?: Sandbox;
+  /**
+   * Called after every soot-run check: `taskId`/`attempt` are null for final validation.
+   * The CLI persists these (with the sandbox backend) in soot.sqlite.
+   */
+  readonly onCheck?: (
+    taskId: string | null,
+    attempt: number | null,
+    evidence: CheckEvidence,
+  ) => void;
 }
 
 /** The audit log file of a run. */
@@ -154,6 +166,8 @@ export async function runCodebaseWorkflow(o: CodebaseWorkflowOptions): Promise<C
     policy: o.policy,
     approvals: o.approvals,
     audit,
+    ...(o.sandbox === undefined ? {} : { sandbox: o.sandbox }),
+    ...(o.onCheck === undefined ? {} : { onCheck: o.onCheck }),
   });
 
   let run: RunReport | undefined;
@@ -195,14 +209,17 @@ export async function runCodebaseWorkflow(o: CodebaseWorkflowOptions): Promise<C
             cwd: path,
             policy: o.policy,
             commit: integration.head,
+            ...(o.sandbox === undefined ? {} : { sandbox: o.sandbox }),
           });
           finalValidation.push(e);
+          o.onCheck?.(null, null, e);
           audit.record(e.status === 'refused' ? 'command-refused' : 'command-run', null, {
             check: e.name,
             argv: [...e.argv],
             status: e.status,
             exitCode: e.exitCode,
             stage: 'final-validation',
+            sandbox: e.sandbox,
           });
         }
         workingTree = await applyToWorkingTree(repo, o, audit, integration, finalValidation);

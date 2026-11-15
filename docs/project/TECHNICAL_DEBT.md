@@ -146,9 +146,24 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 
 ## Codebase integration (Milestone 5)
 
-- **[Intentional] No OS sandbox.** Worktrees isolate git state, not processes. A runner that
-  writes outside its worktree is not visible in the diff. Real runners must be confined by the
-  host harness's permissions or a sandbox (M6+). Check commands also run unsandboxed.
+- **[Partial] Process sandbox (ADR-051).** Checks and the ACP agent process run under `bwrap`
+  (Linux) or `sandbox-exec` (macOS) when available. Still missing or limited:
+  - **Windows:** no backend; the `none` fallback is used (not isolation).
+  - **macOS `sandbox-exec`:** generated profile unit-tested only, never run on a Mac; it allows
+    `mach-lookup` broadly, and Apple marks `sandbox-exec` deprecated.
+  - **Fallback `none`:** no OS isolation; writes outside the worktree and network are not
+    stopped. Use `required: true` to refuse it.
+  - **Network is all or nothing** per project (`network`), shared by checks and the agent; no
+    per-host allowlist or per-command setting.
+  - **Vendor harnesses:** not run under the sandbox. Their state lives in home dotfiles,
+    which soot will not make writable, so a real Claude Code or Codex adapter will likely need
+    `readPaths`/`writePaths` outside home or a harness-side setting. The ACP adapters' own
+    internal tools are sandboxed only as part of the agent process; soot cannot see or limit
+    them individually.
+  - soot's own `git`, `soot dashboard --open` and the VS Code extension's CLI calls are not
+    sandboxed (not agent work).
+  - Under bwrap, home is empty and read-only: tools that cache there fail.
+  - A process-group kill after the leader exits could, in theory, hit a reused PID group.
 - **[Intentional] The command allowlist is per executable.** Allowing `node` allows any script
   and arguments from configuration; only configuration (never agents) supplies commands.
 - **[Intentional] Injection detection is heuristic** (regex rules). It flags and audits; it does
@@ -184,8 +199,9 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   reuse; a retry starts fresh with soot's findings in the prompt.
 - **[Intentional] ACP: soot offers only `fs/read_text_file` (worktree) and `fs/write_text_file`
   (write lease).** No terminal capability, no MCP servers. An agent that writes through its own
-  tools instead of ACP is still caught by soot's diff check, but there is no OS sandbox: a
-  spawned agent can touch anything its user can (see `docs/guides/security.md`).
+  tools instead of ACP is still caught by soot's diff check inside the worktree; outside it,
+  only the process sandbox (ADR-051) stops it, and under the `none` fallback a spawned agent
+  can touch anything its user can (see `docs/guides/security.md`).
 - **[Intentional] ACP permission details are agent-provided text,** cleaned and truncated before
   they are shown to the person approving. soot never selects "allow always"; when only that
   option is offered, approval becomes a cancel.
@@ -259,7 +275,7 @@ orchestration` wrote `.vscode/settings.json`; where that file is tracked, soot t
   The `.vsix` is built locally and not published.
 - **[Intentional] Task cancellation is cooperative.** `soot stop --task` writes a control file
   that the run polls every 200 ms; a runner that ignores the abort is abandoned, not killed.
-- **[Intentional] No OS process sandbox** (unchanged): see Codebase integration and
+- **[Partial] Process sandbox** (ADR-051): see Codebase integration and
   `docs/guides/security.md`.
 
 ## UI

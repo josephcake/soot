@@ -46,6 +46,16 @@ yet seen in an editor). Cursor and Windsurf are prepared (ADR-044: VS Code API f
 Open VSX metadata, per-editor install steps) but not run; Kilo Code and Copilot are not run or
 claimed, so M7 stays In Progress.
 
+Process sandbox (ADR-051, TASKS SB-01 Implemented, no milestone status change): soot-run checks
+and the ACP agent process (`--agent acp` and the Claude Code/Codex runners) run under a sandbox picked per OS: `bwrap` on Linux,
+`sandbox-exec` on macOS, otherwise the `none` fallback, which is labelled as not isolation.
+Default policy: writes only in the task worktree and a private temp dir, home and soot's state
+hidden, git internals read-only, no network. `required: true` blocks tasks rather than run
+them unsandboxed. The backend is recorded per check (report, `soot status`, `soot.sqlite`
+schema v6) and shown by `soot config` and the dashboard. Exercised for real only with bwrap on
+Linux; `sandbox-exec` is unit-tested only; Windows has no backend; no vendor harness has run
+under it.
+
 Engine hardening (ADR-030, mocks only, no milestone status change): `SOOT_DATA_DIR` and
 `SOOT_LOG_LEVEL` are honoured by the real CLI and `soot mcp`; provider cooldowns and
 per-attempt run-budget spend persist in `soot.sqlite`, so a restarted process keeps skipping a
@@ -185,7 +195,9 @@ Node 26 (M0-11 Completed).
 
 - The CLI and MCP server decompose from fixtures unless `decomposer.model` is configured with a usable key (ADR-034); without it, prompts without a recorded fixture are refused. The model path is verified with mock model clients only: no real model has decomposed a prompt, and since ADR-046 the planning call is counted in the cost report and the run budget and honours provider cooldowns.
 - Agents are mocks. Since M5, "complete" means soot ran the checks on the task's real diff, but no real model has produced a diff yet.
-- No OS sandbox: worktrees isolate git state, not processes (`docs/project/TECHNICAL_DEBT.md`).
+- Process sandbox (ADR-051): real isolation only with working `bwrap` (Linux, exercised) or
+  `sandbox-exec` (macOS, unit-tested only). Elsewhere the `none` fallback runs commands with the
+  user's rights (`docs/project/TECHNICAL_DEBT.md`).
 - Provider adapters are verified against mocked HTTP only. Real wire behaviour is unverified until M2-07.
 - Escalation triggers still use agent signals, plus soot's own verification since M5. Provider cooldowns, run spend and model outcomes are persisted (ADR-030); the CLI has no resume command yet.
 - See `docs/project/TECHNICAL_DEBT.md`.

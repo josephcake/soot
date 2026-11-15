@@ -165,7 +165,15 @@ describe('toDashboardRun', () => {
     ]);
     expect(v.duration).toMatchObject({ endedAt: '2026-11-12T10:00:05.000Z', ms: 5000 });
     expect(v.validation.final).toEqual([
-      { name: 'test', kind: 'test', status: 'passed', exitCode: 0, required: true, durationMs: 12 },
+      {
+        name: 'test',
+        kind: 'test',
+        status: 'passed',
+        exitCode: 0,
+        required: true,
+        durationMs: 12,
+        sandbox: null, // not recorded in this status data: unknown, never guessed (ADR-051)
+      },
     ]);
     expect(v.validation.problems).toEqual(['working tree not updated']);
   });
@@ -257,6 +265,36 @@ describe('toDashboardRun', () => {
       },
     ]);
     expect(v.usage.byAgent.map((r) => r.label)).toEqual(['acp (example agent)']);
+  });
+
+  it('sandbox (ADR-051): unknown stays unknown; recorded backends are shown as recorded', () => {
+    const none = toDashboardRun(status, null);
+    expect(none.sandbox).toEqual({ backend: null, isolation: null });
+    const v = toDashboardRun(
+      {
+        ...status,
+        sandbox: { backend: 'none', isolation: false },
+        tasks: [
+          {
+            taskId: 'a',
+            checks: [
+              { name: 'old', kind: 'test', status: 'passed', exitCode: 0 },
+              { name: 'fb', kind: 'test', status: 'passed', exitCode: 0, sandbox: 'none' },
+              { name: 'bw', kind: 'test', status: 'failed', exitCode: 1, sandbox: 'bwrap' },
+              { name: 'no', kind: 'test', status: 'refused', exitCode: null, sandbox: null },
+            ],
+          },
+        ],
+      },
+      null,
+    );
+    expect(v.sandbox).toEqual({ backend: 'none', isolation: false });
+    expect(v.tasks[0]?.checks.map((c) => c.sandbox)).toEqual([
+      null,
+      'none',
+      'bwrap',
+      'not started',
+    ]);
   });
 
   it('without a saved report the runner is unknown and no runner row is drawn', () => {
