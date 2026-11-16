@@ -13,8 +13,10 @@ import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'no
  *     read-only tmpfs mounts, git internals re-mounted read-only, no network unless configured, its own
  *     PID namespace, killed with its parent.
  *   - `sandbox-exec` (macOS Seatbelt) with a generated deny-default profile: writes only to the
- *     worktree, a per-command temp dir and configured paths; home and state dir unreadable;
- *     network denied unless configured. Built and unit-tested only; never run by soot's CI.
+ *     worktree, a per-command temp dir and configured paths; home and state dir unreadable
+ *     (their directories on the way to a re-exposed path give metadata only, never a listing);
+ *     network denied unless configured. Run for real by the darwin-only tests in
+ *     `sandbox-process.test.ts`; soot's hosted CI is Linux-only and skips them.
  *   - `none`: the portable fallback. It is NOT isolation and never claims to be: the process
  *     runs with the user's rights. It keeps soot's own protections (allowlisted environment
  *     with credential-like variables stripped, cwd pinned to the task worktree, no shell,
@@ -212,10 +214,13 @@ export function buildSandboxPolicy(input: PolicyInput): SandboxPolicy {
     throw new Error(`sandbox cwd must be a task worktree, not soot's state directory ${cwd}`);
   }
   for (const p of input.settings.writePaths) {
-    const why = protectedWriteReason(p, {
+    const guard = {
       home: where.home,
       dataDir: input.dataDir === null ? null : real(input.dataDir),
-    });
+    };
+    // Check the path as written AND as resolved: the policy makes `real(p)` writable, so a
+    // symlink (or macOS's /var -> /private/var) must not carry a write into home or the state dir.
+    const why = protectedWriteReason(p, guard) ?? protectedWriteReason(real(p), guard);
     if (why !== null) throw new Error(`sandbox.writePaths: ${p} is not allowed: ${why}`);
   }
   // Hidden: home and the state dir (existing ones only; tmpfs needs a mount point).
@@ -276,15 +281,39 @@ export interface SeatbeltProfile {
   readonly params: readonly (readonly [string, string])[];
 }
 
+/**
+ * Directories between a hidden location and a path re-exposed inside it: the hidden root itself
+ * down to the path's parent (for `~/.soot/worktrees/r/t` under hidden `~/.soot`: `~/.soot`,
+ * `~/.soot/worktrees`, `~/.soot/worktrees/r`). Sorted by depth, no duplicates.
+ */
+export function hiddenAncestors(hidden: readonly string[], exposed: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const p of exposed) {
+    for (let d = dirname(p); d !== dirname(d); d = dirname(d)) {
+      if (hidden.some((h) => isWithin(d, h))) out.push(d);
+    }
+  }
+  return byDepth(out);
+}
+
 /** Deny-default Seatbelt profile for `policy`, with `tempDir` writable. */
 export function seatbeltProfile(policy: SandboxPolicy, tempDir: string): SeatbeltProfile {
   const params: [string, string][] = [];
-  const param = (prefix: string, value: string) => {
+  const param = (prefix: string, value: string, filter: 'subpath' | 'literal' = 'subpath') => {
     const name = `${prefix}_${String(params.filter(([n]) => n.startsWith(`${prefix}_`)).length)}`;
     params.push([name, value]);
-    return `(subpath (param "${name}"))`;
+    return `(${filter} (param "${name}"))`;
   };
   const hidden = policy.hidden.map((p) => param('HIDDEN', p));
+  // bwrap gets these for free (bind mount points inside the hidden tmpfs); Seatbelt does not.
+  // Without them, anything that lstat()s each parent of a path (Node's realpath, so every
+  // `node` check run from a worktree under ~/.soot) fails with EPERM. Metadata only: the
+  // directories stay unlistable and their other files unreadable.
+  const ancestors = hiddenAncestors(policy.hidden, [
+    ...policy.readable,
+    ...policy.writable,
+    tempDir,
+  ]).map((p) => param('ANCESTOR', p, 'literal'));
   const readable = policy.readable.map((p) => param('READ', p));
   const writable = [...policy.writable, tempDir].map((p) => param('WRITE', p));
   const readOnly = policy.readOnly.map((p) => param('READONLY', p));
@@ -302,6 +331,7 @@ export function seatbeltProfile(policy: SandboxPolicy, tempDir: string): Seatbel
     '(allow file-read*)',
     '(allow file-write-data (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty"))',
     ...(hidden.length > 0 ? [`(deny file-read* ${hidden.join(' ')})`] : []),
+    ...(ancestors.length > 0 ? [`(allow file-read-metadata ${ancestors.join(' ')})`] : []),
     ...(readable.length > 0 ? [`(allow file-read* ${readable.join(' ')})`] : []),
     `(allow file-read* file-write* ${writable.join(' ')})`,
     ...(readOnly.length > 0 ? [`(deny file-write* ${readOnly.join(' ')})`] : []),

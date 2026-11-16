@@ -1,9 +1,19 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { createServer, type AddressInfo } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_SANDBOX_SETTINGS,
+  SANDBOX_EXEC,
   findProgram,
   probeBackend,
   resolveSandbox,
@@ -15,7 +25,8 @@ import { runSandboxed } from './sandbox-process.js';
 /*
  * ADR-051 process tests. The fallback (`none`) tests run everywhere and pin down what it does
  * and does NOT do. The bwrap tests are real: they run only where `bwrap` is on PATH and works
- * (the probe passes), and are skipped otherwise.
+ * (the probe passes), and are skipped otherwise. The sandbox-exec tests are real too: they run
+ * only on macOS.
  */
 
 const NODE = process.execPath;
@@ -241,5 +252,147 @@ describe.skipIf(!bwrapWorks)('bwrap backend (real; runs only where bwrap works)'
     expect(r.kind).toBe('exited');
     // wt lives under /tmp here, so home is an empty tmpfs.
     if (!wt.startsWith(homedir())) expect(r.output.trim()).toBe('0');
+  });
+});
+
+// Real sandbox-exec: only on macOS, where /usr/bin/sandbox-exec exists and passes its probe.
+// Hosted CI is Linux-only, so these run on contributors' Macs (`pnpm run test`).
+const seatbeltWorks =
+  process.platform === 'darwin' &&
+  existsSync(SANDBOX_EXEC) &&
+  probeBackend('sandbox-exec', SANDBOX_EXEC) === null;
+
+describe.skipIf(!seatbeltWorks)('sandbox-exec backend (real; runs only on macOS)', () => {
+  // The default layout: the worktree lives inside soot's state dir, inside home, both hidden.
+  const setup = () => {
+    const base = realpathSync(temp('soot-sbx-mac-'));
+    const home = join(base, 'home');
+    const dataDir = join(home, '.soot');
+    const wt = join(dataDir, 'worktrees', 'r', 't');
+    const outside = join(base, 'outside');
+    for (const d of [join(wt, 'tests'), outside]) mkdirSync(d, { recursive: true });
+    writeFileSync(join(home, '.secret'), 'top secret');
+    writeFileSync(join(dataDir, 'soot.sqlite'), 'db');
+    mkdirSync(join(dataDir, 'worktrees', 'r', 'other-task'));
+    const sandbox = resolveSandbox(DEFAULT_SANDBOX_SETTINGS, {
+      platform: 'darwin',
+      home,
+      dataDir,
+      path: process.env.PATH ?? '',
+    });
+    expect(sandbox).toMatchObject({ backend: 'sandbox-exec', isolation: true, blocked: null });
+    return { base, home, dataDir, wt, outside, sandbox };
+  };
+
+  it('runs node scripts and node --test from a worktree inside the hidden state dir', async () => {
+    // Regression: Node's realpath lstat()s every parent of the script, including ~/.soot. With
+    // only `(deny file-read* home)` + `(allow ... worktree)`, every check failed with EPERM.
+    const { wt, sandbox } = setup();
+    writeFileSync(join(wt, 'lib.js'), 'module.exports = 41;\n');
+    writeFileSync(join(wt, 'main.js'), "console.log('answer', require('./lib.js') + 1);\n");
+    writeFileSync(
+      join(wt, 'tests', 'a.test.js'),
+      "const t = require('node:test'); t.test('ok', () => {});\n",
+    );
+    const script = await runSandboxed([NODE, 'main.js'], {
+      sandbox,
+      cwd: wt,
+      env,
+      timeoutMs: 10_000,
+    });
+    expect(script).toMatchObject({ kind: 'exited', exitCode: 0, backend: 'sandbox-exec' });
+    expect(script.output).toContain('answer 42');
+    const tests = await runSandboxed([NODE, '--test', 'tests/a.test.js'], {
+      sandbox,
+      cwd: wt,
+      env,
+      timeoutMs: 20_000,
+    });
+    expect(tests.output).toMatch(/pass 1/);
+    expect(tests).toMatchObject({ kind: 'exited', exitCode: 0 });
+  });
+
+  it('writes only inside the worktree and temp; home, the DB and other tasks stay closed', async () => {
+    const { wt, outside, home, dataDir, sandbox } = setup();
+    const code = `
+      const fs = require('fs');
+      const os = require('os');
+      const out = {};
+      const attempt = (k, f) => { try { f(); out[k] = 'ok'; } catch (e) { out[k] = e.code; } };
+      attempt('secret', () => fs.readFileSync(${JSON.stringify(join(home, '.secret'))}, 'utf8'));
+      attempt('listHome', () => fs.readdirSync(${JSON.stringify(home)}));
+      attempt('listState', () => fs.readdirSync(${JSON.stringify(dataDir)}));
+      attempt('listRun', () => fs.readdirSync(${JSON.stringify(join(dataDir, 'worktrees', 'r'))}));
+      attempt('readDb', () => fs.readFileSync(${JSON.stringify(join(dataDir, 'soot.sqlite'))}));
+      attempt('statState', () => fs.statSync(${JSON.stringify(dataDir)}));
+      attempt('worktree', () => fs.writeFileSync('inside.txt', 'x'));
+      attempt('tmp', () => fs.writeFileSync(require('path').join(os.tmpdir(), 't.txt'), 'x'));
+      attempt('outside', () => fs.writeFileSync(${JSON.stringify(join(outside, 'escaped'))}, 'x'));
+      attempt('db', () => fs.writeFileSync(${JSON.stringify(join(dataDir, 'soot.sqlite'))}, 'x'));
+      attempt('dotfile', () => fs.writeFileSync(${JSON.stringify(join(home, '.secret'))}, 'x'));
+      attempt('otherTask', () => fs.writeFileSync(${JSON.stringify(join(dataDir, 'worktrees', 'r', 'other-task', 'x'))}, 'x'));
+      console.log(JSON.stringify(out));`;
+    const r = await run(sandbox, wt, code);
+    expect(r).toMatchObject({ kind: 'exited', exitCode: 0, backend: 'sandbox-exec' });
+    const out = JSON.parse(r.output.trim()) as Record<string, string>;
+    expect(out).toEqual({
+      secret: 'EPERM',
+      listHome: 'EPERM',
+      listState: 'EPERM',
+      listRun: 'EPERM',
+      readDb: 'EPERM',
+      statState: 'ok', // metadata only: the fix for the EPERM regression above
+      worktree: 'ok',
+      tmp: 'ok',
+      outside: 'EPERM',
+      db: 'EPERM',
+      dotfile: 'EPERM',
+      otherTask: 'EPERM',
+    });
+    expect(existsSync(join(outside, 'escaped'))).toBe(false);
+    expect(readFileSync(join(dataDir, 'soot.sqlite'), 'utf8')).toBe('db');
+    expect(readFileSync(join(home, '.secret'), 'utf8')).toBe('top secret');
+    expect(readFileSync(join(wt, 'inside.txt'), 'utf8')).toBe('x');
+  });
+
+  it('blocks network by default, even to a server on 127.0.0.1', async () => {
+    const { wt, sandbox } = setup();
+    const server = createServer((s) => s.end('hi'));
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const code = `
+        const s = require('net').connect({ host: '127.0.0.1', port: ${String(port)}, timeout: 3000 });
+        s.on('connect', () => { console.log('connected'); process.exit(0); });
+        s.on('timeout', () => { console.log('timeout'); process.exit(0); });
+        s.on('error', (e) => { console.log(e.code); process.exit(0); });`;
+      const r = await run(sandbox, wt, code);
+      expect(r.kind).toBe('exited');
+      expect(r.output.trim()).not.toBe('connected');
+      expect(r.output.trim()).toBe('EPERM');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('git internals stay read-only from inside a real worktree', async () => {
+    const { wt, sandbox, base } = setup();
+    const common = join(base, 'repo', '.git');
+    const gitDir = join(common, 'worktrees', 't');
+    mkdirSync(gitDir, { recursive: true });
+    writeFileSync(join(gitDir, 'commondir'), '../..\n');
+    writeFileSync(join(common, 'config'), '[core]\n');
+    writeFileSync(join(wt, '.git'), `gitdir: ${gitDir}\n`);
+    const code = `
+      const fs = require('fs');
+      const out = {};
+      try { out.read = fs.readFileSync(${JSON.stringify(join(common, 'config'))}, 'utf8'); } catch (e) { out.read = e.code; }
+      try { fs.appendFileSync(${JSON.stringify(join(common, 'config'))}, 'x'); out.config = 'written'; } catch (e) { out.config = e.code; }
+      try { fs.writeFileSync('.git', 'gitdir: /elsewhere'); out.dotgit = 'written'; } catch (e) { out.dotgit = e.code; }
+      console.log(JSON.stringify(out));`;
+    const r = await run(sandbox, wt, code);
+    const out = JSON.parse(r.output.trim()) as Record<string, string>;
+    expect(out).toEqual({ read: '[core]\n', config: 'EPERM', dotgit: 'EPERM' });
+    expect(readFileSync(join(common, 'config'), 'utf8')).toBe('[core]\n');
   });
 });

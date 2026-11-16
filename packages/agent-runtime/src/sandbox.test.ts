@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -8,6 +8,7 @@ import {
   bwrapArgs,
   findProgram,
   gitPathsFor,
+  hiddenAncestors,
   protectedWriteReason,
   resolveSandbox,
   sandboxExecArgs,
@@ -25,7 +26,8 @@ import {
 
 const dirs: string[] = [];
 const temp = (prefix = 'soot-sbx-test-') => {
-  const d = mkdtempSync(join(tmpdir(), prefix));
+  // Resolved, as the policy resolves every path (macOS: /var/folders -> /private/var/folders).
+  const d = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
   dirs.push(d);
   return d;
 };
@@ -172,6 +174,22 @@ describe('policy', () => {
       }),
     ).toThrow(/dotfile/);
   });
+
+  it('refuses a write path that only reaches a protected location through a symlink', () => {
+    const l = layout();
+    const ssh = join(l.home, '.ssh');
+    mkdirSync(ssh);
+    const link = join(l.root, 'innocent');
+    symlinkSync(ssh, link);
+    const stateLink = join(l.root, 'state-link');
+    symlinkSync(l.dataDir, stateLink);
+    const base = { settings: settings(), home: l.home, dataDir: l.dataDir, cwd: l.worktree };
+    for (const p of [link, stateLink]) {
+      expect(() =>
+        buildSandboxPolicy({ ...base, settings: settings({ writePaths: [p] }) }),
+      ).toThrow(/is not allowed/);
+    }
+  });
 });
 
 describe('bwrap argv', () => {
@@ -234,7 +252,7 @@ describe('bwrap argv', () => {
   });
 });
 
-describe('sandbox-exec profile (unit-tested only; not run on macOS by soot CI)', () => {
+describe('sandbox-exec profile (run for real by the darwin-only tests in sandbox-process.test.ts)', () => {
   it('is deny-default with paths only as params, writes only to worktree and temp', () => {
     const l = layout();
     const p = buildSandboxPolicy({
@@ -258,6 +276,9 @@ describe('sandbox-exec profile (unit-tested only; not run on macOS by soot CI)',
     );
     expect(params).toEqual([
       ['HIDDEN_0', l.home],
+      ...hiddenAncestors([l.home], [l.repo, l.common, l.worktree]).map(
+        (p, i) => [`ANCESTOR_${String(i)}`, p] as const,
+      ),
       ['READ_0', l.repo],
       ['READ_1', l.common],
       ['WRITE_0', l.worktree],
@@ -267,6 +288,45 @@ describe('sandbox-exec profile (unit-tested only; not run on macOS by soot CI)',
     ]);
     const net = seatbeltProfile({ ...p, network: true }, '/t').profile;
     expect(net).toContain('(allow network*)');
+  });
+
+  it('gives metadata-only access to the hidden directories on the way to a re-exposed path', () => {
+    const l = layout();
+    const p = buildSandboxPolicy({
+      cwd: l.worktree,
+      settings: settings(),
+      home: l.home,
+      dataDir: l.dataDir,
+    });
+    const { profile, params } = seatbeltProfile(p, '/private/tmp/soot-sbx-1');
+    const ancestors = params.filter(([n]) => n.startsWith('ANCESTOR_')).map(([, v]) => v);
+    // Every parent of the worktree from the hidden home down, and of the re-exposed repo.
+    expect([...ancestors].sort()).toEqual(
+      [
+        l.home,
+        join(l.home, '.soot'),
+        join(l.home, '.soot', 'worktrees'),
+        join(l.home, '.soot', 'worktrees', 'run1'),
+        join(l.home, 'code'),
+        l.repo, // parent of the re-exposed .git dir
+      ].sort(),
+    );
+    // Nothing above the hidden root (already readable) and nothing outside it (the temp dir).
+    expect(ancestors.every((a) => a.startsWith(l.home))).toBe(true);
+    // Exact directories (literal), metadata only, and after the hidden deny so it wins.
+    const rule = profile.split('\n').find((x) => x.startsWith('(allow file-read-metadata'));
+    expect(rule).toMatch(/^\(allow file-read-metadata( \(literal \(param "ANCESTOR_\d+"\)\))+\)$/);
+    expect(profile.indexOf('(allow file-read-metadata')).toBeGreaterThan(
+      profile.indexOf('(deny file-read*'),
+    );
+    // Without hidden locations there is nothing to re-expose and no rule.
+    const open = buildSandboxPolicy({
+      cwd: l.worktree,
+      settings: settings(),
+      home: null,
+      dataDir: null,
+    });
+    expect(seatbeltProfile(open, '/t').profile).not.toContain('file-read-metadata');
   });
 
   it('builds the argv with -p, -D params and the command after --', () => {

@@ -5,6 +5,17 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Fixed (macOS sandbox, ADR-051 amendment)
+
+- On macOS every soot-run check failed under `sandbox-exec` with `EPERM`, so no task could be
+  verified and each escalated to its last model. The profile hid `~/.soot` and re-exposed only
+  the worktree, while Node `lstat`s each parent directory. Those parents are now readable as
+  metadata only (no listing, no contents). Found by the first run on a Mac. Darwin-only real
+  tests now cover it; hosted CI is Linux-only.
+- `sandbox.writePaths` is now checked after resolving symlinks as well, so a link (or macOS's
+  `/var` → `/private/var`) can no longer make a protected location writable, such as `~/.ssh`
+  or soot's state dir.
+
 ### Added (`soot init`, ADR-055)
 
 - `soot init` writes `soot.config.json` from package.json scripts (`test`, `lint`,
