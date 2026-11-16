@@ -62,7 +62,7 @@ harness-facing surface. Stack intent: ADR-007. UI constraint for M5–M7: ADR-00
 - **Dependencies:** M0; M1 task schema.
 - **Acceptance / exit criteria:** at least two independent providers work with real API credentials; multiple models can be invoked; provider failures are handled; models can be selected dynamically.
 - **Note:** Real-credential verification is blocked until a user supplies their own keys (ADR-011). Mocked-provider tests are required regardless.
-- **Status:** In Progress (partial). Mockable scope (M2-01, -02, -04, -05, -06, -08) verified with mocked HTTP; M2-03 live local test skipped (no local runtime); M2-09 (Gemini, OpenRouter) mocked HTTP only. M2-07 Verified on 2026-11-14 (ADR-050): xAI and DeepSeek ran tasks live with the user's keys, several models were invoked and selected per task, and a live outage and timeouts were handled by fallback and retries. Not Completed while M2-03 and M2-09 are unverified.
+- **Status:** In Progress (partial). Mockable scope (M2-01, -02, -04, -05, -06, -08) verified with mocked HTTP; M2-03 Verified on 2026-11-15 with LM Studio (keyless, local); M2-09 (Gemini, OpenRouter) mocked HTTP only. M2-07 Verified on 2026-11-14 (ADR-050): xAI and DeepSeek ran tasks live with the user's keys, several models were invoked and selected per task, and a live outage and timeouts were handled by fallback and retries. Not Completed while M2-09 is unverified.
 - **Evidence:** `packages/provider-adapters`, `packages/model-registry` tests; `tests/credential-boundary.test.ts`; ADR-022.
 - **Completion date:** —
 

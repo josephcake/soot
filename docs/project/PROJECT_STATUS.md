@@ -127,7 +127,8 @@ result landed with `--apply`. On 2026-11-14 both providers ran again in the spec
 runs and the savings benchmark, including a live provider outage and model timeouts handled by
 fallback and retries ([acceptance runs](../benchmarks/2026-11-14-acceptance.md)). ADR-050
 records M2-07 (two independent providers, real keys) as **Verified**. Milestone 2 stays In
-Progress because M2-03 (local endpoint) and M2-09 (Gemini, OpenRouter) are not verified live.
+Progress because M2-09 (Gemini, OpenRouter) is not verified live. M2-03 (local endpoint) was
+verified with LM Studio on 2026-11-15.
 Anthropic and OpenAI have not been called live. Project name `soot` (ADR-013).
 
 The repository is public at https://github.com/josephcake/soot under MIT (ADR-032, published
@@ -182,7 +183,7 @@ Node 26 (M0-11 Completed).
 
 ## In Progress
 
-- [ ] Milestone 2. M2-03 (local endpoint) is Implemented: covered by mocked HTTP, but the live test skipped because no Ollama or LM Studio was running. M2-09 (Gemini and OpenRouter, ADR-049) is Implemented against mocked HTTP and fake keys; neither is auto-detected and no live call has been made. M2-07 is Verified (xAI and DeepSeek live, ADR-050).
+- [ ] Milestone 2. M2-03 (local endpoint) is Verified live with LM Studio (2026-11-15). M2-09 (Gemini and OpenRouter, ADR-049) is Implemented against mocked HTTP and fake keys; neither is auto-detected and no live call has been made. M2-07 is Verified (xAI and DeepSeek live, ADR-050).
 - [ ] Milestone 6. M6-01, M6-03 and M6-09 (generic ACP driver, mock ACP agent only) Completed; M6-02 and M6-06 Implemented; M6-04 and M6-05 Implemented (simulated only, ADR-047; a real-product run is still needed); M6-07 (Tests 1, 2, 4 live) and M6-08 (savings benchmark) Verified (ADR-050). Exit criteria not met.
 
 - [ ] Cross-cutting R-01 `soot resume` (ADR-054, schema v7): Implemented on `feat/soot-resume`, tested with the scripted mock agent and built-binary subprocesses (SIGKILL mid-task, live and double-resume refusal, drift, held blocks, approval asked again, budget carry-over). Not Verified in a harness or editor. The schema v6 number collides with the sandbox branch (ADR-051); whichever merges second bumps to v7.
@@ -214,7 +215,6 @@ Node 26 (M0-11 Completed).
 1. Mochi: review the Claude Code and Codex runner profiles (ADR-047, simulated only). Verifying them with a real harness (M6-04/05, issues #1/#2) needs a machine where the user has installed and signed in to that harness's ACP adapter and agrees to a run; Mochi decides when and where.
 2. Mochi: arrange a run of the unpublished `.vsix` in a real VS Code (then Cursor) to verify M7-01/M7-02.
 3. Mochi: decide whether to pass failed-check output to retries (benchmark finding, ADR-050), and whether to grow the benchmark (more prompts, Anthropic/OpenAI keys) before quoting savings outside the repo.
-4. Optional: run `pnpm vitest run packages/provider-adapters/src/local-endpoint.test.ts` with Ollama or LM Studio running to verify M2-03 live.
 
 ## MVP Readiness
 
