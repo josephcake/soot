@@ -149,8 +149,11 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
 - **[Partial] Process sandbox (ADR-051).** Checks and the ACP agent process run under `bwrap`
   (Linux) or `sandbox-exec` (macOS) when available. Still missing or limited:
   - **Windows:** no backend; the `none` fallback is used (not isolation).
-  - **macOS `sandbox-exec`:** generated profile unit-tested only, never run on a Mac; it allows
-    `mach-lookup` broadly, and Apple marks `sandbox-exec` deprecated.
+  - **macOS `sandbox-exec`:** run for real on one Mac (macOS 26.6, 2026-11-15) by darwin-only
+    tests; hosted CI is Linux-only, so a regression shows only when someone runs the suite on
+    a Mac. The profile allows `mach-lookup` broadly, and lets processes read the metadata (not
+    the listing or contents) of the hidden directories on the way to the worktree. Apple marks
+    `sandbox-exec` deprecated.
   - **Fallback `none`:** no OS isolation; writes outside the worktree and network are not
     stopped. Use `required: true` to refuse it.
   - **Network is all or nothing** per project (`network`), shared by checks and the agent; no

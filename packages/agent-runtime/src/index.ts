@@ -77,6 +77,7 @@ export {
   bwrapArgs,
   findProgram,
   gitPathsFor,
+  hiddenAncestors,
   isWithin,
   probeBackend,
   protectedWriteReason,

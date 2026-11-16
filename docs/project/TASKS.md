@@ -349,7 +349,12 @@ Sandbox notes (2026-11-14):
   `EROFS`, a TCP connect fails with `ENETUNREACH`, the mock ACP agent runs end to end under it,
   and a configured check writing outside its worktree fails through the CLI. These tests skip
   where bwrap does not work (they are not faked).
-- **macOS `sandbox-exec`: unit-tested only** (profile and argv). It has never run on a Mac.
+- **macOS `sandbox-exec`: exercised for real** on macOS 26.6 (2026-11-15, Tim's Mac): the
+  first run showed every check failing with `EPERM` (Node `lstat`s each parent of a worktree
+  under the hidden state dir), fixed by metadata-only access to those parents (ADR-051
+  amendment). Darwin-only tests now cover node scripts and `node --test` from a worktree under
+  `~/.soot`, denied reads, listings and writes outside the worktree, read-only git internals and
+  a blocked connect to 127.0.0.1. Hosted CI does not run them (Linux only).
 - **Fallback `none`:** real tests pin down what it does (secret stripping, no shell, process
   group kill, output cap, `required` blocks) and that it does **not** stop writes outside the
   worktree.

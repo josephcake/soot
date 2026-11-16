@@ -48,7 +48,7 @@ from what your OS already has. soot installs nothing.
 | Backend        | Where                                     | Isolation | Tested                                     |
 | -------------- | ----------------------------------------- | --------- | ------------------------------------------ |
 | `bwrap`        | Linux, `bwrap` on PATH (or `bwrapPath`)   | Yes       | Real runs on Linux (bubblewrap 0.12.0)     |
-| `sandbox-exec` | macOS (`/usr/bin/sandbox-exec`)           | Yes       | Unit tests only; never run on a Mac        |
+| `sandbox-exec` | macOS (`/usr/bin/sandbox-exec`)           | Yes       | Real runs on macOS 26.6; not in hosted CI  |
 | `none`         | Anything else, or `bwrap` failing a probe | **No**    | Real runs; its limits have their own tests |
 
 With a real backend, by default:

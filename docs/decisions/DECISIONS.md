@@ -1400,8 +1400,8 @@ generativelanguage.googleapis.com`, so the existing Gemini catalog prices apply.
 - **Status:** Accepted (Mochi, holding Joseph's approval authority: "a process sandbox for
   agent commands", queued after the Claude Code and Codex runners). Implemented. The Linux
   `bwrap` backend was exercised for real on the development box (bubblewrap 0.12.0, Linux
-  6.12); the macOS `sandbox-exec` backend is built and unit-tested only and has never run on a
-  Mac; Windows has no backend. Amends the "no OS sandbox" consequences of ADR-025 and ADR-027.
+  6.12); the macOS `sandbox-exec` backend was first run on a Mac on 2026-11-15 (see the
+  amendment below); Windows has no backend. Amends the "no OS sandbox" consequences of ADR-025 and ADR-027.
   (Numbered 051 because ADR-050, the savings benchmark, was still being built; it merged
   after this ADR. Based on `main` dd6ff34, after ADR-044 to ADR-049.)
 - **Context:** Worktrees isolate git state, not processes (TECHNICAL_DEBT). Every process soot
@@ -1518,6 +1518,23 @@ file-write*` on git internals last; `(allow network*)` only when configured. Eve
   integration tests are skipped, not faked.
 - **Reversible:** Yes. `"sandbox": { "mode": "none" }` restores the old behavior per project
   (plus the new env strip, process-group kill and output cap). The schema-v6 table is additive.
+- **Amendment (2026-11-15, first run on a Mac; Tim, macOS 26.6, Node 26.10):** the keyless
+  quick start (`examples/demo-app`, `--agent mock`) failed every check under `sandbox-exec`, and
+  each task escalated through five attempts. Worktrees live in the state dir (by default
+  `~/.soot/worktrees/...`), and the profile denied `file-read*` on the whole hidden location and
+  re-allowed only the worktree's subpath. Node's `realpath` `lstat`s every parent of a script,
+  so it got `EPERM` on `~/.soot` before loading anything. bwrap never hit this, because the bind
+  mount points inside its hidden tmpfs exist. Fix: `(allow file-read-metadata (literal ...))`
+  for each directory from a hidden root down to the parent of a re-exposed path (worktree,
+  repository, git dirs, extra paths), placed after the hidden deny. These directories can be
+  `stat`ed but not listed, and their other entries stay unreadable. The same Mac run showed
+  that `writePaths` were checked against home and the state dir before symlinks were resolved,
+  but made writable after (`/var` → `/private/var` on macOS, or any link into `~/.ssh`), so a
+  write path is now refused when either spelling is protected (all OSes). Darwin-only real
+  tests in `sandbox-process.test.ts` cover the default layout. With the fix reverted, the
+  node-script and deny-matrix tests fail. The quick start then ran as documented: both tasks
+  verified on attempt 1 and merged. Hosted CI is still Linux-only, so these tests run only on
+  contributors' Macs.
 
 ## ADR-052: Retries and escalations see the failing check's output
 

@@ -52,9 +52,10 @@ and the ACP agent process (`--agent acp` and the Claude Code/Codex runners) run 
 Default policy: writes only in the task worktree and a private temp dir, home and soot's state
 hidden, git internals read-only, no network. `required: true` blocks tasks rather than run
 them unsandboxed. The backend is recorded per check (report, `soot status`, `soot.sqlite`
-schema v6) and shown by `soot config` and the dashboard. Exercised for real only with bwrap on
-Linux; `sandbox-exec` is unit-tested only; Windows has no backend; no vendor harness has run
-under it.
+schema v6) and shown by `soot config` and the dashboard. Exercised for real with bwrap on
+Linux and, since 2026-11-15, with `sandbox-exec` on macOS 26.6 (the first Mac run found every
+check failing with `EPERM`; fixed, ADR-051 amendment); Windows has no backend; no vendor harness
+has run under it.
 
 Engine hardening (ADR-030, mocks only, no milestone status change): `SOOT_DATA_DIR` and
 `SOOT_LOG_LEVEL` are honoured by the real CLI and `soot mcp`; provider cooldowns and
@@ -203,7 +204,7 @@ Node 26 (M0-11 Completed).
 - The CLI and MCP server decompose from fixtures unless `decomposer.model` is configured with a usable key (ADR-034); without it, prompts without a recorded fixture are refused. The model path is verified with mock model clients, plus live DeepSeek planning on 2026-11-13 (ADR-039); since ADR-046 the planning call is counted in the cost report and the run budget and honours provider cooldowns.
 - `--agent api` runs tasks on real models (ADR-039); the mock agent remains the keyless default for demos and tests. "Complete" means soot ran the checks on the task's real diff. A retry sees a bounded, redacted tail of the failing check's output and the rejected attempt's diff (ADR-052, ADR-053).
 - Process sandbox (ADR-051): real isolation only with working `bwrap` (Linux, exercised) or
-  `sandbox-exec` (macOS, unit-tested only). Elsewhere the `none` fallback runs commands with the
+  `sandbox-exec` (macOS, exercised on one Mac; hosted CI is Linux-only). Elsewhere the `none` fallback runs commands with the
   user's rights (`docs/project/TECHNICAL_DEBT.md`).
 - Only the OpenAI-compatible adapter has been verified live (xAI and DeepSeek). The Anthropic, OpenAI, Gemini and OpenRouter adapters are verified against mocked HTTP only.
 - Escalation triggers still use agent signals, plus soot's own verification since M5. Provider cooldowns, run spend and model outcomes are persisted (ADR-030). `soot resume` (ADR-054, R-01) continues interrupted runs. It is Implemented and tested with mock agents only, and has no MCP tool or dashboard button yet.
