@@ -88,9 +88,9 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
   must be priced conservatively by the user or left unpriced (unknown).
 - **[Intentional] Discovery results are not persisted** and discovery runs only when called.
   Discovered models stay unselectable until a user configures them.
-- **[Intentional] Local endpoint (M2-03) not verified live.** The generic OpenAI-compatible
-  adapter is covered by mocked HTTP. The live test skipped because no Ollama or LM Studio was
-  running.
+- **[Resolved 2026-11-15] Local endpoint (M2-03) not verified live.** The live test passed
+  against LM Studio (`qwen/qwen3.8-27b`) once its output cap went from 16 to 1024 tokens, since
+  reasoning models spend their first tokens on hidden reasoning. Ollama has not been run.
 - **[Intentional] Messages are text only.** Images, files and multi-turn tool results are not
   in the `ModelClient` interface yet. The agent loop (Milestone 4) will need them.
 - **[Intentional] Retry delays are capped at 30 s**, including `retry-after` values. Longer

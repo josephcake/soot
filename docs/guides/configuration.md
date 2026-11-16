@@ -324,6 +324,9 @@ runtimes at once) and adds what answers:
 - The listing does not say how much context a runtime loaded, and Ollama and LM Studio both
   default to 4096 tokens, so soot assumes **4096** and routes only tasks that fit. If you
   raised the runtime's context, set `"localModels": { "contextWindow": 32768 }` to match.
+- Local models can be slow. A 27B reasoning model on a 32 GB Mac (about 8 tokens/s) took 75 s
+  to 6 min per task, past the 120 s default, so raise `"modelCallTimeoutMs"` (for example
+  `600000`) for local runs.
 - **Other addresses:** `"localModels": { "urls": ["http://127.0.0.1:8080/v1"] }` in
   soot.config.json, or `SOOT_LOCAL_MODEL_URLS=http://127.0.0.1:8080/v1,...` (the variable
   wins). A URL with no path gets `/v1`. Runtimes on other ports get ids like

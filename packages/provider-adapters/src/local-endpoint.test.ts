@@ -49,7 +49,9 @@ describe.skipIf(local === null)('live local OpenAI-compatible endpoint', () => {
     expect(await discoverModelIds(provider, { env: {} })).toContain(local.model);
     const response = await createModelClient(provider, model, { env: {} }).generate({
       messages: [{ role: 'user', content: 'Reply with the single word: ok' }],
-      maxOutputTokens: 16,
+      // Room for reasoning models (Qwen3.8 in LM Studio spends its first tokens on hidden
+      // reasoning; with 16 the visible text was empty).
+      maxOutputTokens: 1024,
       timeoutMs: 120_000,
     });
     expect(response.text.length).toBeGreaterThan(0);

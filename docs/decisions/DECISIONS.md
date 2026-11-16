@@ -1042,8 +1042,10 @@ the old one.
   probe tests against fake servers (listing without an authorization header, closed port,
   HTTP 500, non-JSON, a server that never answers); CLI/engine tests where a fake runtime next
   to fake xAI and DeepSeek keys takes the spec Test 2 button task, while the dropdown and the
-  auth bug still go to `xai/grok-4.3` and `xai/grok-4.7`. Not yet run against a real Ollama
-  or LM Studio.
+  auth bug still go to `xai/grok-4.3` and `xai/grok-4.7`. On 2026-11-15, run against a real
+  LM Studio (`qwen/qwen3.8-27b`, macOS, no keys set): `soot config` and `soot models` listed it
+  as added ($0, tier low), and `soot run --agent api --apply` routed both spec Test 1 tasks to
+  it; the button task was verified and merged. Ollama has not been run.
 - **Alternatives:** an MCP bridge for local models (not needed: the runtimes already speak
   the OpenAI API soot uses); Ollama's native `/api/show` for context length (reports the
   model's trained maximum, not the loaded `num_ctx`, so it would overstate the window);

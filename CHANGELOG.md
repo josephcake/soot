@@ -5,6 +5,14 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Verified (local endpoint live with LM Studio, M2-03)
+
+- The live local-endpoint test passed against LM Studio (`qwen/qwen3.8-27b`) on macOS. Its
+  output cap went from 16 to 1024 tokens: reasoning models spend their first tokens on hidden
+  reasoning, so 16 returned empty text. With no keys set, soot found the runtime (ADR-045) and
+  `soot run --agent api --apply` verified and merged the spec Test 1 button task on it at $0.
+  Ollama has not been run.
+
 ### Added (`soot init`, ADR-055)
 
 - `soot init` writes `soot.config.json` from package.json scripts (`test`, `lint`,
