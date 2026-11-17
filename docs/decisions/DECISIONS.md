@@ -1971,3 +1971,33 @@ file-write*` on git internals last; `(allow network*)` only when configured. Eve
   read-only unverified reasons).
 - **Reversible:** Yes. Remove the `"*"` key from the schema and the fallback in
   `acceptanceForTask`. Existing configs without `"*"` need no change.
+
+## ADR-058: The universal skill is named `soot`, so hosts offer `/soot`
+
+- **Date:** 2026-11-16
+- **Status:** Proposed by Tim (PR); for Joseph to accept or reject in review. Implemented and
+  tested with temp directories; the new name has not yet been used inside Claude Code (the
+  recorded run used the old name, ADR-026 amendment). Departs from the build spec's layout
+  (`skills/universal-orchestrator/`) and amends ADR-026's skill path.
+- **Context:** Hosts that run Agent Skills by name turn the skill's `name` into a command:
+  Claude Code offered `/universal-orchestrator`, which is long and does not say "soot". In the
+  ADR-026 amendment run, a plain prompt did not make Claude Code use soot, and asking for it
+  by that name did. A user who has to name the skill should be able to type the product's name.
+- **Decision:**
+  - The skill's `name` and folder are `soot` (`skills/soot/SKILL.md`); `SKILL_NAME = 'soot'`.
+    Its text is unchanged apart from the `name:` line. `soot install-skill` writes
+    `<target>/{.agents,.claude,.grok}/skills/soot/`.
+  - **Old copies.** `LEGACY_SKILL_NAMES = ['universal-orchestrator']`. In each skills folder it
+    writes to, `install-skill` removes an old copy that is byte-for-byte what soot installed
+    (the current skill with the old `name:` line), so the host does not list two soot skills,
+    and keeps one that was changed locally, reporting it; `--force` removes that one too. It
+    touches no other folder.
+- **Alternatives:** keep the name and document `/universal-orchestrator` (works, but nobody
+  will guess it); add a separate Claude Code command file `soot.md` next to the skill
+  (Claude-only, and two entry points to keep in sync); also widen the skill's description so
+  hosts delegate unasked (a separate product question, left open in PROJECT_STATUS).
+- **Consequences:** `/soot <prompt>` in hosts that run skills by name. Copies installed from an
+  older SKILL.md text count as changed and stay, with a warning. Docs and ADRs that record past
+  runs keep the old name where they describe what was typed.
+- **Reversible:** Yes: rename the folder back and empty `LEGACY_SKILL_NAMES` (or list `soot` in
+  it).

@@ -114,7 +114,7 @@ the ADR-016 hold); it is not a default. See
 
 **Claude Code (runner only), verified once.** soot ran tasks through the real Claude Code ACP
 adapter in one recorded run on macOS (M6-04), and Claude Code called soot over MCP when asked
-with `/universal-orchestrator` (mock agent); that is not yet a support matrix. `soot mcp` serves soot over MCP (tested with the official MCP SDK client, not
+with `/soot` (then named `/universal-orchestrator`; mock agent); that is not yet a support matrix. `soot mcp` serves soot over MCP (tested with the official MCP SDK client, not
 inside any product) and `soot install-skill` installs the universal skill into `.agents`,
 `.claude` and `.grok` skill folders. `soot run --agent acp` runs tasks through an ACP agent
 command you configure (one generic driver, tested only with soot's own mock ACP agent). `--agent claude-code` and `--agent codex` (M6-04/05) are runner profiles over that driver for the ACP adapter you install and sign in to; the Claude Code runner has one recorded real run (macOS, 2026-11-16, see the [installation guide](docs/guides/installation.md#claude-code-on-macos-the-verified-setup)); Codex is tested against simulated adapters only.

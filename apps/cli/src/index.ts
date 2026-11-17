@@ -47,6 +47,7 @@ export {
 } from './init-config.js';
 export {
   DEFAULT_SKILL_SOURCE,
+  LEGACY_SKILL_NAMES,
   SKILL_NAME,
   SKILL_TARGETS,
   installSkill,

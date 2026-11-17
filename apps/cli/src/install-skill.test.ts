@@ -1,8 +1,16 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DEFAULT_SKILL_SOURCE, SKILL_NAME, installSkill } from './index.js';
+import { DEFAULT_SKILL_SOURCE, LEGACY_SKILL_NAMES, SKILL_NAME, installSkill } from './index.js';
 
 let dir = '';
 afterEach(() => {
@@ -23,6 +31,8 @@ describe('the universal skill', () => {
     const name = /^name: (.+)$/m.exec(front)?.[1];
     const description = /^description: (.+)$/m.exec(front)?.[1] ?? '';
     expect(name).toBe(SKILL_NAME);
+    expect(name).toBe('soot'); // hosts that run skills by name offer it as /soot (ADR-058)
+    expect(DEFAULT_SKILL_SOURCE.replace(/[\\/]+$/, '').endsWith('/soot')).toBe(true);
     expect(name).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
     expect(description.length).toBeGreaterThan(20);
     expect(description.length).toBeLessThanOrEqual(1024);
@@ -49,11 +59,12 @@ describe('installSkill (temp directories only)', () => {
       ['grok', 'installed'],
     ]);
     expect(walk(dir).sort()).toEqual([
-      '.agents/skills/universal-orchestrator/SKILL.md',
-      '.claude/skills/universal-orchestrator/SKILL.md',
-      '.grok/skills/universal-orchestrator/SKILL.md',
+      '.agents/skills/soot/SKILL.md',
+      '.claude/skills/soot/SKILL.md',
+      '.grok/skills/soot/SKILL.md',
     ]);
-    expect(readFileSync(join(dir, '.claude/skills/universal-orchestrator/SKILL.md'))).toEqual(
+    expect(results.every((r) => r.legacy.length === 0)).toBe(true);
+    expect(readFileSync(join(dir, '.claude/skills/soot/SKILL.md'))).toEqual(
       readFileSync(join(DEFAULT_SKILL_SOURCE, 'SKILL.md')),
     );
   });
@@ -63,7 +74,7 @@ describe('installSkill (temp directories only)', () => {
     installSkill({ target: dir, harnesses: ['claude'] });
     expect(existsSync(join(dir, '.agents'))).toBe(false);
     expect(installSkill({ target: dir, harnesses: ['claude'] })[0]?.action).toBe('unchanged');
-    const installed = join(dir, '.claude/skills/universal-orchestrator');
+    const installed = join(dir, '.claude/skills/soot');
     writeFileSync(join(installed, 'SKILL.md'), 'edited by the user\n');
     writeFileSync(join(installed, 'extra.md'), 'stale\n');
     expect(installSkill({ target: dir, harnesses: ['claude'] })[0]?.action).toBe(
@@ -74,6 +85,39 @@ describe('installSkill (temp directories only)', () => {
       'updated',
     );
     expect(walk(installed)).toEqual(['SKILL.md']);
+  });
+
+  it('removes an old universal-orchestrator copy soot installed, keeps a changed one unless forced', () => {
+    expect(LEGACY_SKILL_NAMES).toEqual(['universal-orchestrator']);
+    dir = mkdtempSync(join(tmpdir(), 'soot-skill-'));
+    // What the previous release installed: the same skill under its old name.
+    const oldCopy = (harnessDir: string) => {
+      const old = join(dir, harnessDir, 'universal-orchestrator');
+      cpSync(DEFAULT_SKILL_SOURCE, old, { recursive: true });
+      const md = join(old, 'SKILL.md');
+      writeFileSync(
+        md,
+        readFileSync(md, 'utf8').replace(/^name: soot$/m, 'name: universal-orchestrator'),
+      );
+      return old;
+    };
+    const untouched = oldCopy('.claude/skills');
+    const edited = oldCopy('.agents/skills');
+    writeFileSync(join(edited, 'notes.md'), 'my own notes\n');
+
+    const results = installSkill({ target: dir, harnesses: ['claude', 'agents'] });
+    expect(results.map((r) => [r.harness, r.action, r.legacy])).toEqual([
+      ['claude', 'installed', [{ path: untouched, action: 'removed' }]],
+      ['agents', 'installed', [{ path: edited, action: 'kept-different' }]],
+    ]);
+    expect(existsSync(untouched)).toBe(false);
+    expect(readFileSync(join(edited, 'notes.md'), 'utf8')).toBe('my own notes\n');
+    expect(existsSync(join(dir, '.claude/skills/soot/SKILL.md'))).toBe(true);
+
+    // --force removes the changed old copy too (only that folder).
+    const forced = installSkill({ target: dir, harnesses: ['agents'], force: true });
+    expect(forced[0]?.legacy).toEqual([{ path: edited, action: 'removed' }]);
+    expect(walk(join(dir, '.agents/skills'))).toEqual(['soot/SKILL.md']);
   });
 
   it('refuses a target that is not a directory, and a missing skill source', () => {

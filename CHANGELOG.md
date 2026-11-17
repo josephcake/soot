@@ -15,6 +15,15 @@ All notable changes are recorded here by milestone. Format loosely follows
   the exact macOS setup (pinned adapter, `permissions.defaultMode: "default"`, `network`, and
   `readPaths` for the Keychain).
 
+### Changed (the skill is named `soot`, ADR-058)
+
+- The universal skill is now `skills/soot/SKILL.md` (`name: soot`), so hosts that run skills by
+  name offer `/soot`. `soot install-skill` writes `.../skills/soot/` and removes an old
+  `universal-orchestrator` copy that is exactly what soot installed; a locally changed one is
+  kept and reported (removed with `--force`).
+- The installation guide has a "Use soot from Claude Code" recipe (`install-skill`,
+  `claude mcp add soot -s local ...`, then `/soot <prompt>`).
+
 ### Verified (soot invoked from inside Claude Code, skill + MCP, ADR-026 amendment)
 
 - With `soot install-skill --harness claude` and `claude mcp add soot ... mcp`, Claude Code

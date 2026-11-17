@@ -18,10 +18,10 @@ Index of every document in this tree. Start here, or at the root [`README.md`](.
 
 Skills (prompts) for AI agents working with soot. They live in [`skills/`](../skills).
 
-| Prompt                                                              | Description                                                                                                                            |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| [universal-orchestrator](../skills/universal-orchestrator/SKILL.md) | Hand a multi-part coding request to soot and relay its report.                                                                         |
-| [update-model-pricing](../skills/update-model-pricing/SKILL.md)     | Run when a provider, key, or new model id is added: look up the official price, record it with source and date, never guess (ADR-037). |
+| Prompt                                                          | Description                                                                                                                            |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| [soot](../skills/soot/SKILL.md) (`/soot`)                       | Hand a multi-part coding request to soot and relay its report.                                                                         |
+| [update-model-pricing](../skills/update-model-pricing/SKILL.md) | Run when a provider, key, or new model id is added: look up the official price, record it with source and date, never guess (ADR-037). |
 
 ## Benchmarks
 
