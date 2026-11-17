@@ -1,5 +1,5 @@
 ---
-name: universal-orchestrator
+name: soot
 description: Delegate multi-part coding requests to the soot orchestration engine instead of splitting and running the work yourself. Use when a request bundles several independent or dependent coding tasks (edits, investigations, reviews) in one git repository.
 ---
 

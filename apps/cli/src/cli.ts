@@ -373,14 +373,29 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
             force: values.force === true,
           });
           const skipped = results.some((r) => r.action === 'skipped-different');
+          const keptOld = results
+            .flatMap((r) => r.legacy)
+            .filter((l) => l.action === 'kept-different');
           print(
             io,
             {
               ok: !skipped,
               text: [
-                ...results.map((r) => `${r.action}: ${r.path}`),
+                ...results.flatMap((r) => [
+                  ...r.legacy.map((l) =>
+                    l.action === 'removed'
+                      ? `removed old copy (the skill is now named soot): ${l.path}`
+                      : `kept old copy (changed locally): ${l.path}`,
+                  ),
+                  `${r.action}: ${r.path}`,
+                ]),
                 ...(skipped
                   ? ['An existing different copy was kept; rerun with --force to replace it.']
+                  : []),
+                ...(keptOld.length > 0
+                  ? [
+                      'An old universal-orchestrator copy was changed locally, so it was kept; the host may now see two soot skills. Remove it, or rerun with --force.',
+                    ]
                   : []),
               ].join('\n'),
               data: { results: results.map((r) => ({ ...r })) },

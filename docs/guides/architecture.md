@@ -204,7 +204,7 @@ so the tree never implies support that does not exist:
 - `extensions/{cursor,windsurf,kilo}/` — per-editor work, only if an editor needs more than `apps/vscode-extension` (M7-02…M7-04).
 - `docs/guides/{task-decomposition,harness-integrations,examples}.md` — written alongside the features they describe.
 
-`skills/universal-orchestrator/` (installed by `soot install-skill`), `examples/demo-app/` (quick
+`skills/soot/` (installed by `soot install-skill`, offered by hosts as `/soot`), `examples/demo-app/` (quick
 start and M6 tests) and `docs/guides/{installation,providers,model-routing,security}.md` now exist.
 
 ## Package conventions

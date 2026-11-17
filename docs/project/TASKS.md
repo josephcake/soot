@@ -147,7 +147,7 @@ M1-05/M1-08 `packages/agent-runtime/src/{scheduler,mock-agent}.test.ts`; M1-07
 | ID    | Description                                                        | Priority | Milestone | Dependencies   | Status                       | Component                 | Acceptance criteria                                                     |
 | ----- | ------------------------------------------------------------------ | -------- | --------- | -------------- | ---------------------------- | ------------------------- | ----------------------------------------------------------------------- |
 | M6-01 | CLI: `soot` commands run, models, status, config, cost, stop       | P1       | M6        | M5             | Completed                    | apps/cli                  | Each command works against fixtures; `run` executes the full workflow.  |
-| M6-02 | Universal agent skill (`skills/universal-orchestrator/SKILL.md`)   | P1       | M6        | M6-01          | Implemented                  | skills/                   | Installable; host agent delegates to engine.                            |
+| M6-02 | Universal agent skill (`skills/soot/SKILL.md`, `/soot`)            | P1       | M6        | M6-01          | Implemented                  | skills/                   | Installable; host agent delegates to engine.                            |
 | M6-03 | MCP server exposing orchestration                                  | P1       | M6        | M6-01          | Completed                    | packages/harness-adapters | Works with at least one MCP client, tested.                             |
 | M6-04 | Claude Code integration                                            | P2       | M6        | M6-02 or M6-03 | Verified                     | packages/harness-adapters | Verified end to end in Claude Code before any claim.                    |
 | M6-05 | Codex integration                                                  | P2       | M6        | M6-02 or M6-03 | Implemented (simulated only) | packages/harness-adapters | Verified end to end in Codex before any claim.                          |
@@ -166,7 +166,7 @@ M6 notes (2026-11-12, ADR-026):
   and `.grok/skills` (tested in temp directories only). "Host agent delegates to engine" is not
   verified in any real host agent.
   2026-11-16 (ADR-026 amendment): installed into a demo repo and loaded by Claude Code. Asked
-  explicitly (`/universal-orchestrator <prompt>`), Claude Code passed the prompt verbatim to
+  explicitly (`/universal-orchestrator <prompt>`, now `/soot`, ADR-058), Claude Code passed the prompt verbatim to
   `soot_run`; with a plain prompt it did the work itself (one try). Stays Implemented until a
   host delegates without being asked.
 - **M6-03 Completed:** `soot mcp` (stdio) and `createSootMcpServer`, tested with the official MCP

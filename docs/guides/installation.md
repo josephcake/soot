@@ -148,23 +148,25 @@ verified result on a clean working tree; nothing else is approved for you.
 
 ## Install the agent skill
 
-The universal skill (`skills/universal-orchestrator/SKILL.md`, Agent Skills format) tells a host
-agent to hand multi-part requests to soot instead of splitting them itself.
+The universal skill (`skills/soot/SKILL.md`, Agent Skills format) tells a host agent to hand
+multi-part requests to soot instead of splitting them itself. Hosts that run skills by name offer
+it as **`/soot`** (it was named `universal-orchestrator` before ADR-058).
 
 ```sh
 soot install-skill --target /path/to/your/project              # .agents, .claude and .grok skill paths
 soot install-skill --target /path/to/your/project --harness claude
 ```
 
-It writes only `<target>/.agents/skills/universal-orchestrator/`,
-`<target>/.claude/skills/universal-orchestrator/` and
-`<target>/.grok/skills/universal-orchestrator/`, and never replaces a locally changed copy
-without `--force`. For a user-level install, pass your home directory as `--target`
+It writes only `<target>/.agents/skills/soot/`, `<target>/.claude/skills/soot/` and
+`<target>/.grok/skills/soot/`, and never replaces a locally changed copy without `--force`. An
+old `universal-orchestrator` copy in the same skills folder is removed when it is exactly what
+soot installed, so the host does not see two soot skills; one you changed is kept (soot says so)
+unless you pass `--force`. For a user-level install, pass your home directory as `--target`
 explicitly; soot never picks it for you.
 
-**Claude Code** loads the skill and, when you ask for soot explicitly
-(`/universal-orchestrator <prompt>`), hands the prompt to soot over MCP verbatim (one recorded
-run, 2026-11-16). With the skill installed, a plain two-part prompt was still done by Claude Code
+**Claude Code** loads the skill and, when you ask for soot explicitly (`/soot <prompt>`; the
+recorded run used the old name, `/universal-orchestrator`), hands the prompt to soot over MCP
+verbatim (one recorded run, 2026-11-16). With the skill installed, a plain two-part prompt was still done by Claude Code
 itself (one try), so ask for soot by name. Codex and Grok are not verified.
 
 ## MCP server
@@ -192,10 +194,47 @@ itself (one try), so ask for soot by name. Codex and Grok are not verified.
 ```
 
 Over MCP soot runs **unattended**: anything that needs approval is refused, and your working
-tree is left untouched (results wait on `soot/<run-id>/integration`). This is tested with the
-MCP SDK's own client, and it was used once inside Claude Code (2026-11-16): `soot_run` with the
-prompt verbatim, the run verified and merged on the integration branch, the working tree left
-alone.
+tree is left untouched (results wait on `soot/<run-id>/integration`).
+
+### Use soot from Claude Code
+
+This is the setup of the recorded run (2026-11-16, macOS, Claude Code 2.1), on the demo app so
+the prompt is a recorded one and no key is needed. You need Claude Code installed, and soot
+built as in [Build](#build) with `SOOT_HOME` set.
+
+```sh
+cp -r "$SOOT_HOME/examples/demo-app" ~/soot-mcp-demo && cd ~/soot-mcp-demo
+git init -q -b main && git add -A && git -c user.name=You -c user.email=you@example.invalid commit -qm "demo app"
+node "$SOOT_HOME/apps/cli/dist/bin.js" install-skill --target . --harness claude
+git add -A && git -c user.name=You -c user.email=you@example.invalid commit -qm "soot skill"
+claude mcp add soot -s local -- node "$SOOT_HOME/apps/cli/dist/bin.js" mcp --agent mock --mock-script "$PWD/mock-agent.json"
+claude mcp list   # soot: ... ✔ Connected
+```
+
+Start Claude Code in that folder (`claude` in a terminal, or open the folder as its own VS Code
+window and use the Claude Code panel) and type:
+
+```text
+/soot Change the page title to HELLO WORLD and update the primary button to purple.
+```
+
+Approve the `soot_run` tool when Claude Code asks. soot plans the recorded prompt, runs the
+tasks with the mock agent, checks and merges them onto `soot/<run-id>/integration`, and leaves
+`main` alone; Claude Code shows the report and asks before touching your branch.
+`claude mcp remove soot -s local` (in that folder) undoes the registration.
+
+- `-s local` registers the server for this folder only. Commit the skill: soot refuses to run
+  on a dirty working tree.
+- Ask for soot by name. With the skill installed, Claude Code still did a plain two-part request
+  itself in the recorded test.
+- On your own project, swap the mock for `--agent api` (models from a provider key, and a
+  planner from `soot init --decomposer auto`; see
+  [Start on your own repository](#start-on-your-own-repository)). That combination has not been
+  run from Claude Code yet. `--agent claude-code` over MCP does not help today: unattended, every
+  edit Claude Code asks to make is refused. This is tested with the
+  MCP SDK's own client, and it was used once inside Claude Code (2026-11-16): `soot_run` with the
+  prompt verbatim, the run verified and merged on the integration branch, the working tree left
+  alone.
 
 ## Run tasks through an ACP agent
 

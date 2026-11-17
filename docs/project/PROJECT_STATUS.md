@@ -29,7 +29,7 @@ ACP agent. Claude Code (M6-04) and Codex (M6-05) have runner profiles over that 
 Haiku, each edit approved by the person in soot, soot's checks passed under `sandbox-exec`,
 COMPLETE; M6-04 Verified, ADR-047 amendment). Codex is tested against simulated adapters only.
 **soot was also invoked from inside Claude Code** on 2026-11-16: with the skill and `soot mcp`
-installed, `/universal-orchestrator <prompt>` made Claude Code call `soot_run` with the prompt
+installed, `/universal-orchestrator <prompt>` (now `/soot`, ADR-058) made Claude Code call `soot_run` with the prompt
 verbatim; soot ran the demo prompt with the mock agent, verified and merged it on the
 integration branch, and Claude Code relayed the report (ADR-026 amendment). A plain prompt was
 done by Claude Code itself (the skill did not make it delegate). Not done: Codex has not been
