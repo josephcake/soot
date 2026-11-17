@@ -165,9 +165,16 @@ M6 notes (2026-11-12, ADR-026):
 - **M6-02 Implemented:** the skill exists and installs into `.agents/skills`, `.claude/skills`
   and `.grok/skills` (tested in temp directories only). "Host agent delegates to engine" is not
   verified in any real host agent.
+  2026-11-16 (ADR-026 amendment): installed into a demo repo and loaded by Claude Code. Asked
+  explicitly (`/universal-orchestrator <prompt>`), Claude Code passed the prompt verbatim to
+  `soot_run`; with a plain prompt it did the work itself (one try). Stays Implemented until a
+  host delegates without being asked.
 - **M6-03 Completed:** `soot mcp` (stdio) and `createSootMcpServer`, tested with the official MCP
-  SDK client in process and over stdio against the built binary. Not verified inside any
-  product. Runs over MCP are unattended (approvals refused).
+  SDK client in process and over stdio against the built binary. Runs over MCP are unattended
+  (approvals refused).
+  2026-11-16: used inside Claude Code (`claude mcp add`, local scope): `soot_run` ran the demo
+  prompt end to end with the mock agent and the result waited on the integration branch
+  (ADR-026 amendment).
 - **M6-04 / M6-05 Implemented (simulated only), 2026-11-14, ADR-047:** `--agent claude-code`
   and `--agent codex` are runner profiles over the generic ACP driver (M6-09) for the ACP
   adapter the user installs and signs in to (`harnesses.<id>` in soot.config.json, absolute

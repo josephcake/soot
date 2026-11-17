@@ -28,8 +28,12 @@ ACP agent. Claude Code (M6-04) and Codex (M6-05) have runner profiles over that 
 2026-11-16** (macOS, `claude-agent-acp` 0.107.0, spec Test 1: both tasks done by Claude Code on
 Haiku, each edit approved by the person in soot, soot's checks passed under `sandbox-exec`,
 COMPLETE; M6-04 Verified, ADR-047 amendment). Codex is tested against simulated adapters only.
-Not done: Codex has not been run, and the skill and MCP server have not been used from inside a
-harness. Real providers now run tasks: on 2026-11-14 spec Tests 1, 2 and 4 were run live with xAI and DeepSeek and recorded (M6-07 Verified), and the savings benchmark was run (M6-08 Verified; [docs/benchmarks/2026-11-14.md](../benchmarks/2026-11-14.md), ADR-050). M5
+**soot was also invoked from inside Claude Code** on 2026-11-16: with the skill and `soot mcp`
+installed, `/universal-orchestrator <prompt>` made Claude Code call `soot_run` with the prompt
+verbatim; soot ran the demo prompt with the mock agent, verified and merged it on the
+integration branch, and Claude Code relayed the report (ADR-026 amendment). A plain prompt was
+done by Claude Code itself (the skill did not make it delegate). Not done: Codex has not been
+run. Real providers now run tasks: on 2026-11-14 spec Tests 1, 2 and 4 were run live with xAI and DeepSeek and recorded (M6-07 Verified), and the savings benchmark was run (M6-08 Verified; [docs/benchmarks/2026-11-14.md](../benchmarks/2026-11-14.md), ADR-050). M5
 gained protected paths: a task that edits a protected file (such as its acceptance test) fails
 even inside its lease.
 
@@ -200,7 +204,7 @@ Node 26 (M0-11 Completed).
 
 ## Blockers
 
-- **Milestone 6 exit criteria** need a supported harness. The Claude Code runner has one recorded real run (M6-04 Verified, 2026-11-16, on Tim's Mac); Codex (M6-05) has none, and this box must not run either. Open for Mochi: whether the exit criterion ("invokes orchestration from a supported harness") also needs the skill or MCP server used from inside Claude Code, which has not been run. Real providers are no longer a blocker (M2-07 Verified).
+- **Milestone 6 exit criteria** need a supported harness. The Claude Code runner has one recorded real run (M6-04 Verified, 2026-11-16, on Tim's Mac); Codex (M6-05) has none, and this box must not run either. soot has also been invoked from inside Claude Code once (skill + MCP, explicit `/universal-orchestrator`, mock agent, recorded prompt; ADR-026 amendment). Open for Mochi: whether these two runs meet the exit criterion ("a user invokes orchestration from a supported harness"), given that the skill did not make Claude Code delegate unasked. Real providers are no longer a blocker (M2-07 Verified).
 - **Milestone 7 exit criteria** need the extension loaded and used in a real VS Code (and, separately, each other editor). This box has no editor; Mochi decides where and when.
 
 ## Known Issues
@@ -216,7 +220,7 @@ Node 26 (M0-11 Completed).
 
 ## Next Actions
 
-1. Mochi: the Claude Code runner is verified once (M6-04, ADR-047 amendment). Decide whether M6 also needs soot invoked from inside Claude Code (skill or MCP), and when to run Codex (M6-05, issue #2) on a machine where its ACP adapter is installed and signed in.
+1. Mochi: the Claude Code runner is verified once (M6-04, ADR-047 amendment), and soot was invoked from inside Claude Code once over MCP (ADR-026 amendment). Decide whether that meets M6's exit criterion, whether the skill should make hosts delegate unasked, and when to run Codex (M6-05, issue #2).
 2. Mochi: arrange a run of the unpublished `.vsix` in a real VS Code (then Cursor) to verify M7-01/M7-02.
 3. Mochi: decide whether to pass failed-check output to retries (benchmark finding, ADR-050), and whether to grow the benchmark (more prompts, Anthropic/OpenAI keys) before quoting savings outside the repo.
 4. Optional: run `pnpm vitest run packages/provider-adapters/src/local-endpoint.test.ts` with Ollama or LM Studio running to verify M2-03 live.

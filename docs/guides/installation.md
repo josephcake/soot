@@ -162,8 +162,10 @@ It writes only `<target>/.agents/skills/universal-orchestrator/`,
 without `--force`. For a user-level install, pass your home directory as `--target`
 explicitly; soot never picks it for you.
 
-Whether a given harness loads the skill is **not verified** yet (Claude Code: M6-04, Codex:
-M6-05).
+**Claude Code** loads the skill and, when you ask for soot explicitly
+(`/universal-orchestrator <prompt>`), hands the prompt to soot over MCP verbatim (one recorded
+run, 2026-11-16). With the skill installed, a plain two-part prompt was still done by Claude Code
+itself (one try), so ask for soot by name. Codex and Grok are not verified.
 
 ## MCP server
 
@@ -191,7 +193,9 @@ M6-05).
 
 Over MCP soot runs **unattended**: anything that needs approval is refused, and your working
 tree is left untouched (results wait on `soot/<run-id>/integration`). This is tested with the
-MCP SDK's own client; it is not verified inside any specific product.
+MCP SDK's own client, and it was used once inside Claude Code (2026-11-16): `soot_run` with the
+prompt verbatim, the run verified and merged on the integration branch, the working tree left
+alone.
 
 ## Run tasks through an ACP agent
 
@@ -294,63 +298,74 @@ soot run "<recorded prompt>" --agent codex --interactive
 ### Claude Code on macOS: the verified setup
 
 This is what the recorded run used (2026-11-16). Other versions and other OSes are untested.
+You need Claude Code installed and signed in (its own login), and soot built as in
+[Build](#build) with the `soot` shell function and `SOOT_HOME` set.
 
-1. Install the ACP adapter yourself, pinned, and note its absolute path:
+**Try it on the demo app first** (copy and paste; verified from a fresh folder on 2026-11-16):
 
-   ```sh
-   npm i -g @agentclientprotocol/claude-agent-acp@0.107.0
-   command -v claude-agent-acp   # e.g. /opt/homebrew/bin/claude-agent-acp
-   ```
+```sh
+# 1. The ACP adapter: yours to install; soot never installs anything or signs in.
+npm i -g @agentclientprotocol/claude-agent-acp@0.107.0
 
-   It runs the Claude Code binary bundled with the Claude Agent SDK and uses your existing
-   Claude Code login. soot does not install it and never signs in.
+# 2. A copy of the demo app, set up for Claude Code.
+cp -r "$SOOT_HOME/examples/demo-app" ~/soot-claude-demo && cd ~/soot-claude-demo
+mkdir -p .claude
+echo '{ "permissions": { "defaultMode": "default" } }' > .claude/settings.json
+node -e '
+  const fs = require("fs"), os = require("os");
+  const c = JSON.parse(fs.readFileSync("soot.config.json", "utf8"));
+  c.harnesses = { "claude-code": {
+    command: process.argv[1],
+    allowedModes: ["default"],
+    models: { "anthropic/claude-haiku-5-5": "haiku", "anthropic/claude-opus-5-5": "opus" } } };
+  c.sandbox = { network: true, readPaths: [os.homedir() + "/Library/Keychains"] };
+  fs.writeFileSync("soot.config.json", JSON.stringify(c, null, 2) + "\n");
+' "$(command -v claude-agent-acp)"
+git init -q -b main && git add -A && git -c user.name=You -c user.email=you@example.invalid commit -qm "demo app"
 
-2. In the repository, make Claude Code ask before acting. With no `permissions.defaultMode`,
-   the adapter starts in `auto` (it approves some actions itself), which `allowedModes` below
-   refuses. Add `.claude/settings.json` and commit it:
+# 3. Run it in a terminal and approve each edit yourself (y / n).
+soot run "Change the page title to HELLO WORLD and update the primary button to purple." --agent claude-code --interactive
+```
 
-   ```json
-   { "permissions": { "defaultMode": "default" } }
-   ```
+Each edit Claude Code wants to make is shown as `soot: approval needed (harness-permission)
+...`; answer `y` or `n`. A denial refuses that task. soot then diffs each worktree, runs the
+demo's checks in the sandbox, merges, and asks before moving `main`. In the recorded run two
+tasks ran on Haiku, Claude Code asked to edit three times, every check passed, and the run was
+COMPLETE. The cost line shows Claude Code's own figure (its API list price; tokens are not
+reported over ACP); on a claude.ai subscription that figure is not billed per token.
 
-3. In `soot.config.json`, name the adapter and open the sandbox just enough:
+**What each setting does:**
 
-   ```json
-   {
-     "harnesses": {
-       "claude-code": {
-         "command": "/opt/homebrew/bin/claude-agent-acp",
-         "allowedModes": ["default"],
-         "models": { "anthropic/claude-haiku-5-5": "haiku", "anthropic/claude-opus-5-5": "opus" }
-       }
-     },
-     "sandbox": { "network": true, "readPaths": ["/Users/you/Library/Keychains"] }
-   }
-   ```
+- `.claude/settings.json` with `permissions.defaultMode: "default"` (committed): with no
+  default mode, the adapter starts Claude Code in `auto`, where it approves some actions
+  itself, and `allowedModes: ["default"]` makes soot refuse that session.
+- `harnesses.claude-code.command`: the adapter's absolute path (soot does not search `PATH`).
+  It runs the Claude Code binary bundled with the Claude Agent SDK and uses your existing
+  Claude Code login.
+- `sandbox.network: true`: Claude Code has to reach Anthropic.
+- `sandbox.readPaths` with your `~/Library/Keychains` (absolute path): on macOS Claude Code
+  keeps its login in the Keychain, and the sandbox hides your home. Without it the adapter
+  reports "requires authentication" even though you are signed in. This lets the agent process
+  read the keychain files (items stay behind the Keychain's own access control). soot still
+  passes no credential variables and makes no home dotfile writable.
+- `models` maps soot's routed model to Claude Code's model aliases. A routed model with no
+  mapping (the demo's models file also lists an OpenAI model) is reported as "route not
+  applied", and Claude Code uses its own default model for that task.
 
-   - `network: true`: Claude Code has to reach Anthropic.
-   - `readPaths` with your `~/Library/Keychains` (absolute path): on macOS Claude Code keeps its
-     login in the Keychain, and the sandbox hides your home. Without it the adapter reports
-     "requires authentication" even though you are signed in. This lets the agent process read
-     the keychain files (items stay behind the Keychain's own access control). soot still
-     passes no credential variables and makes no home dotfile writable.
-   - `models` maps soot's routed model to Claude Code's model aliases. Routed models with no
-     mapping (for example a non-Anthropic model) are reported as "route not applied".
+**On your own repository** you need the same `.claude/settings.json`, `harnesses` and
+`sandbox` settings (after `soot init`), plus two things the demo app ships and a new project
+does not:
 
-4. Run it in a terminal and approve each action yourself:
-
-   ```sh
-   soot run "<prompt>" --agent claude-code --interactive
-   ```
-
-   Each edit Claude Code wants to make is shown as `soot: approval needed (harness-permission)
-...`; answer `y` or `n`. A denial refuses that task. soot then diffs the worktree, runs your
-   checks in the sandbox, merges, and asks before moving your branch.
-
-What to expect: in the recorded run, two tasks ran on Haiku, Claude Code asked to edit three
-times, every check passed, and the run was COMPLETE. The cost line shows Claude Code's own
-figure (its API list price; tokens are not reported over ACP). On a claude.ai subscription
-that figure is not billed per token.
+- **A models file.** soot routes every task to a model before Claude Code runs it. With no
+  models file and no provider key set, every task stops as `unroutable` (checked 2026-11-16).
+  Copy `examples/demo-app/models.json`, keep only the Anthropic models, set your own
+  `reliability` priors (the demo's are fictional), and point `"models"` in
+  `soot.config.json` at it.
+- **A planner, or recorded prompts.** soot cannot plan with your Claude Code login. Without a
+  `decomposer` model and that provider's API key, only recorded prompts run (the build spec
+  examples, plus your own under `fixtures`); any other prompt is refused with "No
+  decomposition fixture matches this prompt". See
+  [Start on your own repository](#start-on-your-own-repository).
 
 ## VS Code / Cursor extension (local build; run in VS Code, not in Cursor)
 

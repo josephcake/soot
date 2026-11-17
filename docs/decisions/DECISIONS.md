@@ -354,6 +354,28 @@ the old one.
 - **Consequences:** soot is invocable end to end, but only on recorded prompts with a scripted agent. Milestone 6's exit criteria (a supported harness, real execution) are not met. Every surface reports fixture/mock runs as such.
 - **Reversible:** Yes. The service interface, config schema and skill are small and versioned (`version: 1`).
 
+- **Amendment (2026-11-16, skill and MCP used from inside Claude Code; Tim, macOS, Claude Code
+  2.1 terminal):** in a fresh copy of `examples/demo-app`, the skill was installed with
+  `soot install-skill --harness claude` (committed) and the server added with
+  `claude mcp add soot -s local`, running `soot mcp --agent mock` with the demo's mock script
+  and `SOOT_DATA_DIR` set. `claude mcp list` reported it connected, and the session listed the
+  five `soot_*` tools and the `universal-orchestrator` skill.
+  - **Plain prompt (spec Test 1 text):** Claude Code did the work itself: read the files, edited
+    them with shell commands, and ran the tests. It called no soot tool (auto mode). soot never
+    ran. The skill does not reliably make the host delegate (M6-02 "host agent delegates to
+    engine" is not met on its own).
+  - **Explicit: `/universal-orchestrator <same prompt>`** (Claude Code's slash command for an
+    installed skill, which comes from the host, not from soot): Claude Code loaded the soot tools
+    and called `soot_run` with the prompt verbatim and `repo`. soot ran (`run-20261117-012456-4bf9`):
+    2 tasks from the recorded fixture, mock agent, test/lint/acceptance passed under
+    `sandbox-exec`, both merged on `soot/<run>/integration`, final validation passed; the
+    working-tree approval was unavailable (MCP is unattended), so `main` stayed put. Claude Code
+    relayed the report, said the mock wrote the code, and asked before fast-forwarding.
+  - **Status:** the MCP server works inside one real client (M6-03). The skill installs and
+    loads (M6-02 stays Implemented: delegation only when asked). For the M6 exit criterion this
+    is "a user invokes orchestration from a harness" with the mock agent and a recorded prompt;
+    whether that, plus the real-model runner run (ADR-047 amendment), meets it is for Mochi.
+
 ## ADR-027: One generic ACP driver for harness agents
 
 - **Date:** 2026-11-12

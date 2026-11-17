@@ -15,6 +15,16 @@ All notable changes are recorded here by milestone. Format loosely follows
   the exact macOS setup (pinned adapter, `permissions.defaultMode: "default"`, `network`, and
   `readPaths` for the Keychain).
 
+### Verified (soot invoked from inside Claude Code, skill + MCP, ADR-026 amendment)
+
+- With `soot install-skill --harness claude` and `claude mcp add soot ... mcp`, Claude Code
+  called `soot_run` with the prompt verbatim when asked (`/universal-orchestrator <prompt>`);
+  soot ran the demo prompt (mock agent), verified and merged it on the integration branch and
+  left the working tree alone. A plain prompt was handled by Claude Code itself.
+- The installation guide's Claude Code runner section is now a copy-and-paste recipe from the
+  demo app (verified from a fresh folder), with what each setting does and what a new project
+  also needs (a models file; a planner or recorded prompts).
+
 ### Fixed (from the Claude Code run)
 
 - A blocked task now says why: the report shows `agent reported blocked: <the agent's

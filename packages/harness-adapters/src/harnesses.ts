@@ -32,7 +32,7 @@ export const HARNESS_SUPPORT: readonly HarnessSupport[] = [
     runner: 'acp-profile-verified',
     verifiedEndToEnd: true,
     verifiedRun: 'macOS, claude-agent-acp 0.107.0, 2026-11-16',
-    note: 'Skill path .claude/skills, the MCP server and an ACP runner profile (--agent claude-code). The runner was verified in one recorded run with the real adapter (M6-04, ADR-047 amendment): two tasks done by Claude Code, every edit approved by the person in soot, soot checks passed under sandbox-exec. The skill and MCP paths are not verified inside Claude Code.',
+    note: 'Skill path .claude/skills, the MCP server and an ACP runner profile (--agent claude-code). The runner was verified in one recorded run with the real adapter (M6-04, ADR-047 amendment): two tasks done by Claude Code, every edit approved by the person in soot, soot checks passed under sandbox-exec. The skill and MCP server were used inside Claude Code once: asked explicitly, it called soot_run with the prompt verbatim (mock agent); unasked, it did the work itself.',
   },
   {
     id: 'codex',
