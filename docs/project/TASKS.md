@@ -149,7 +149,7 @@ M1-05/M1-08 `packages/agent-runtime/src/{scheduler,mock-agent}.test.ts`; M1-07
 | M6-01 | CLI: `soot` commands run, models, status, config, cost, stop       | P1       | M6        | M5             | Completed                    | apps/cli                  | Each command works against fixtures; `run` executes the full workflow.  |
 | M6-02 | Universal agent skill (`skills/universal-orchestrator/SKILL.md`)   | P1       | M6        | M6-01          | Implemented                  | skills/                   | Installable; host agent delegates to engine.                            |
 | M6-03 | MCP server exposing orchestration                                  | P1       | M6        | M6-01          | Completed                    | packages/harness-adapters | Works with at least one MCP client, tested.                             |
-| M6-04 | Claude Code integration                                            | P2       | M6        | M6-02 or M6-03 | Implemented (simulated only) | packages/harness-adapters | Verified end to end in Claude Code before any claim.                    |
+| M6-04 | Claude Code integration                                            | P2       | M6        | M6-02 or M6-03 | Verified                     | packages/harness-adapters | Verified end to end in Claude Code before any claim.                    |
 | M6-05 | Codex integration                                                  | P2       | M6        | M6-02 or M6-03 | Implemented (simulated only) | packages/harness-adapters | Verified end to end in Codex before any claim.                          |
 | M6-06 | Installation, provider, routing, and security docs                 | P1       | M6        | M6-01          | Implemented                  | docs/                     | Fresh-machine quick start reproduced.                                   |
 | M6-07 | Acceptance scenarios spec §17 Tests 1, 2, 4 end to end             | P0       | M6        | M6-01, M2-07   | Verified                     | tests/                    | Recorded runs; Test 4 needs ≥2 real providers (BYOK).                   |
@@ -176,9 +176,17 @@ M6 notes (2026-11-12, ADR-026):
   through the adapter's `model` option (optional `models` map), with a startup limit and
   cancel. Tested only against simulated adapters (soot's mock ACP agent scripted like each
   adapter: `harness-profiles.test.ts`, `tests/m6-harness-runners-end-to-end.test.ts`).
-  `HARNESS_SUPPORT` says `acp-profile-simulated`, `verifiedEndToEnd: false`. **Still needed:** a
-  recorded real run with each harness on a machine where the user installed and signed in to it
-  (GitHub issues #1, #2); until then neither is supported or Completed.
+  `HARNESS_SUPPORT` said `acp-profile-simulated`, `verifiedEndToEnd: false` for both.
+- **M6-04 Verified, 2026-11-16 (ADR-047 amendment):** one recorded run with the real Claude Code
+  adapter (`@agentclientprotocol/claude-agent-acp` 0.107.0, bundled Claude Code 2.1.323) on
+  macOS 26.6.2, spec Test 1 on a copy of the demo app: both tasks done by Claude Code on Haiku
+  (routed model applied as `model` = `haiku`), three edit requests approved by the person in
+  soot, test/lint/acceptance passed under `sandbox-exec`, merged, `main` fast-forwarded with
+  approval. Needed: a project `.claude/settings.json` with `permissions.defaultMode: "default"`
+  and `sandbox.readPaths` for `~/Library/Keychains` (Claude Code's login on macOS).
+  `HARNESS_SUPPORT` now says `acp-profile-verified`, `verifiedEndToEnd: true` for `claude-code`.
+  Not Completed: one run, one OS, one adapter version. **M6-05 still needs** a recorded real run
+  with Codex (issue #2).
 - **M6-06 Implemented:** `docs/guides/installation.md`, `docs/guides/providers.md`, `docs/guides/model-routing.md`,
   `docs/guides/security.md`. The keyless quick start was reproduced step by step from a fresh local clone
   in a temp directory on the build box, not on a separate fresh machine.

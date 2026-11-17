@@ -1209,6 +1209,54 @@ the old one.
   inside the worktree, and there is still no OS sandbox outside it.
 - **Reversible:** Yes. The profiles are one module and one optional config key; removing them
   leaves `--agent acp` as before (the mode guard, startup limit and argument guard can stay).
+- **Amendment (2026-11-16, first real run: Claude Code, M6-04 Verified; Tim, macOS 26.6.2,
+  Node 26.10.0, soot `main` aa2cc65):** `@agentclientprotocol/claude-agent-acp` 0.107.0
+  (bundled Claude Code 2.1.323, claude.ai login) was installed by the user (`npm i -g`, pinned)
+  and named as `harnesses.claude-code.command`. Repo: a copy of `examples/demo-app` at
+  `~/soot-m6/demo-app`, state in `~/soot-m6/state` (both under the hidden home, like the
+  default `~/.soot`). Prompt: spec §17 Test 1 (recorded fixture). `soot run ... --agent
+claude-code --interactive --run-id m6-04-cc`: both tasks routed to
+  `anthropic/claude-haiku-5-5` and applied as the adapter's `model` = `haiku`; Claude Code read
+  the files and asked three times over ACP to edit (`.btn-primary` in `button.css`, `<title>`
+  and `<h1>` in `index.html`); each request reached soot's gate and the person approved it in
+  the terminal; soot diffed each worktree, ran test, lint and the acceptance check under
+  `sandbox-exec` (all passed), merged both, re-ran final validation (passed), and fast-forwarded
+  `main` 3ab4265 → 49f67f5 after a fourth approval. COMPLETE, 2/2. The audit log holds the
+  three `harness-permission` approvals and the `integrate-into-working-tree` approval.
+  - **What the real adapter needed** (three unattended probes before the run, $0.005 in all):
+    (1) with no `permissions.defaultMode`, the adapter starts sessions in `auto`; soot refused it
+    under `allowedModes: ["default"]` as designed. A project `.claude/settings.json` with
+    `{"permissions": {"defaultMode": "default"}}` in the repo (a harness-side setting, as this
+    ADR asks) fixed it. (2) Then "requires authentication": on macOS Claude Code keeps its
+    login in the Keychain, under the hidden home. `claude auth status --json` inside soot's
+    sandbox reported `loggedIn: false` by default, still false with `~/.claude.json` and
+    `~/.claude` readable, and `true` with only `~/Library/Keychains` readable. So the
+    documented setup adds `"sandbox": {"network": true, "readPaths": ["<home>/Library/Keychains"]}`.
+    That is a deliberate widening: the agent process may read the keychain files (items stay
+    behind the Keychain's own access control); soot still never passes a credential variable
+    and never makes a home dotfile writable. The sandbox gives Claude Code no write access to
+    `~/.claude` or `~/.claude.json`; that did not stop the run. (3) With both, the unattended probe showed the edit
+    requests reaching soot and being refused, as designed.
+  - **Answers to this ADR's open questions, for this adapter version:** model values are the
+    aliases (`haiku`, `opus`, ...) via the `models` map; the adapter reports sign-in missing so
+    soot blocks the task (no login attempt); edits arrive as ACP permission requests for the
+    adapter's own `Edit` tool, so soot's gate, diff, write lease, protected paths and checks,
+    plus the OS sandbox, are what bound them.
+  - **Cost:** soot recorded $0.006117 "actual" from the adapter's `usage_update` (Claude Code's
+    own `total_cost_usd`, at API list prices); tokens are not reported over ACP. On a claude.ai
+    subscription that figure is not billed per token. Left as is; TECHNICAL_DEBT notes it.
+  - **Fixes from the run (same change):** the reason a harness task was blocked is now shown
+    (`agent reported blocked: <the agent's summary>` in the report, `agent is blocked: <summary>;
+another model would not help` in the decision log; one line, escapes and control characters
+    stripped, keys redacted, long text keeps its start and end), instead of only "blocked on
+    missing or ambiguous input"; and a log line printed while an approval question is open no
+    longer lands on the prompt line: it goes on its own line and the question is asked again.
+  - **Status:** `HARNESS_SUPPORT` marks `claude-code` `acp-profile-verified` /
+    `verifiedEndToEnd: true` with the run named; labels say "verified in one recorded real run".
+    One run, one OS, one adapter version, a recorded prompt: not a support matrix. Codex (M6-05)
+    is unchanged (simulated only). Whether M6's exit criterion ("invokes orchestration from a
+    supported harness") also needs the skill or MCP path used from inside Claude Code is left
+    to Mochi; neither has been run inside Claude Code.
 
 ## ADR-048: `--agent api` accepts targeted `replace` edits; whole-file replies still work
 

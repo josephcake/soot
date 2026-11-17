@@ -81,7 +81,8 @@ nothing runs.
   an absolute adapter path in `harnesses`, and refuse a session whose reported mode turns the
   harness's own approvals off (`bypassPermissions`, `agent-full-access`) or is outside your
   `allowedModes`. Config arguments that skip approvals or the sandbox are refused for every ACP
-  agent. Tested against simulated adapters only.
+  agent. Claude Code was run this way once for real (macOS, ADR-047 amendment); Codex is tested
+  against simulated adapters only.
 - Over ACP the agent can read the worktree and write inside the write lease only. It may still
   have its own tools. Under a real sandbox backend they are confined like the agent (worktree
   writes only, no network unless configured). Under the `none` fallback **a spawned agent runs
@@ -164,8 +165,11 @@ makes no outbound requests and never shows key values.
   `none` fallback is not isolation (set `required: true` to refuse it). Windows has no backend.
 - soot's own `git` commands, `soot dashboard --open` and the VS Code extension's CLI calls are
   not sandboxed (they are not agent work).
-- The sandbox has not been used with any vendor harness. Claude Code and Codex keep state in
-  home dotfiles, which soot will not make writable.
+- Claude Code is the only vendor harness run under the sandbox (macOS, `sandbox-exec`). On macOS
+  it needs `readPaths` with `~/Library/Keychains` to see its login, which lets the agent process
+  read the keychain files (items stay behind the Keychain's own access control). Its home
+  dotfile state (`~/.claude`) stays unwritable; that did not stop the recorded run. Codex is
+  untested.
 - Allowing an executable such as `node` allows whatever arguments the config gives it.
 - Injection detection is heuristic.
 - See [`TECHNICAL_DEBT.md`](../project/TECHNICAL_DEBT.md).

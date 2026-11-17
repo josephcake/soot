@@ -77,6 +77,29 @@ export function redactSecrets(text: string): string {
   return out;
 }
 
+// CSI / OSC escape sequences, then any other C0/C1 control character.
+// eslint-disable-next-line no-control-regex
+const ESCAPES = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g;
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]+/g;
+
+/**
+ * Agent-supplied text (a result summary) made safe to print in one terminal line: escape
+ * sequences and control characters removed, whitespace collapsed, key-like strings redacted,
+ * and cut to at most `max` characters. A long text keeps its start (who) and its end (the
+ * outcome, e.g. "approval unavailable, so the task is refused") around an ellipsis.
+ * Untrusted text, display only.
+ */
+export function displayLine(text: string, max = 240): string {
+  const flat = redactSecrets(text.replace(ESCAPES, '').replace(CONTROL, ' '))
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (flat.length <= max) return flat;
+  const tail = Math.floor((max - 1) * 0.45);
+  const head = max - 1 - tail;
+  return `${flat.slice(0, head).trimEnd()}…${flat.slice(flat.length - tail).trimStart()}`;
+}
+
 function redact(value: AuditValue): AuditValue {
   if (typeof value === 'string') return redactSecrets(value);
   if (Array.isArray(value)) return (value as readonly AuditValue[]).map(redact);

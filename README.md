@@ -20,7 +20,8 @@ _Named after the soot sprites, the black dust bunnies from Studio Ghibli. Former
 > with the project's own checks, integrate serially and report per-task cost. Tasks run on real
 > models with `--agent api` (live-tested with DeepSeek and xAI; Anthropic and OpenAI adapters are
 > not yet run live), on a scripted mock, or through a configured ACP agent. An MCP server and a
-> universal agent skill exist; **no harness (Claude Code, Codex, …) is supported yet**. See
+> universal agent skill exist; **soot has run tasks through Claude Code once, for real** (one
+> recorded run on macOS); Codex and other harnesses are not verified. See
 > [`docs/project/PROJECT_STATUS.md`](docs/project/PROJECT_STATUS.md).
 
 [![A real soot run in the dashboard: one prompt, three tasks on DeepSeek and Grok, all verified](docs/media/soot-real-run.gif)](docs/media/soot-real-run.mp4)
@@ -111,10 +112,11 @@ the ADR-016 hold); it is not a default. See
 
 ### Supported harnesses
 
-**None yet.** `soot mcp` serves soot over MCP (tested with the official MCP SDK client, not
+**Claude Code (runner only), verified once.** soot ran tasks through the real Claude Code ACP
+adapter in one recorded run on macOS (M6-04); that is not yet a support matrix. `soot mcp` serves soot over MCP (tested with the official MCP SDK client, not
 inside any product) and `soot install-skill` installs the universal skill into `.agents`,
 `.claude` and `.grok` skill folders. `soot run --agent acp` runs tasks through an ACP agent
-command you configure (one generic driver, tested only with soot's own mock ACP agent). `--agent claude-code` and `--agent codex` (M6-04/05) are runner profiles over that driver for the ACP adapter you install and sign in to; they are tested against simulated adapters only and have not been run with the real harnesses.
+command you configure (one generic driver, tested only with soot's own mock ACP agent). `--agent claude-code` and `--agent codex` (M6-04/05) are runner profiles over that driver for the ACP adapter you install and sign in to; the Claude Code runner has one recorded real run (macOS, 2026-11-16, see the [installation guide](docs/guides/installation.md#claude-code-on-macos-the-verified-setup)); Codex is tested against simulated adapters only.
 
 ### IDE extension (Milestone 7, partial)
 

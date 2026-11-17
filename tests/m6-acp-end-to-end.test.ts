@@ -144,7 +144,9 @@ describe('soot run --agent acp with the mock ACP agent (spec §17 Test 1 prompt)
       expect(title?.complete).toBe(false);
       // Refused, not retried or escalated: a refused approval is terminal (ADR-018).
       expect(title).toMatchObject({
-        reason: 'agent-not-succeeded: agent reported blocked',
+        reason: expect.stringMatching(
+          /^agent-not-succeeded: agent reported blocked: .*approval (was denied|unavailable)/,
+        ) as unknown,
         integration: 'not-integrated',
         attempts: 1,
       });

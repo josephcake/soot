@@ -22,6 +22,29 @@ describe('CLI approvals', () => {
     close();
   });
 
+  it('a log line while a question waits does not hide it: own line, then asked again', async () => {
+    const input = new PassThrough();
+    const out: string[] = [];
+    const { gate, close, write } = interactiveApprovals({ input, ask: (l) => out.push(l) });
+    write('soot: before\n');
+    const pending = gate.request(req('edit button.css'));
+    await new Promise((r) => setTimeout(r, 20));
+    // Another task finishes while the person is being asked (seen in the M6-04 run).
+    write('soot: update-button-color #1 accept: result accepted\n');
+    input.write('y\n');
+    expect(await pending).toBe('approved');
+    write('soot: after\n');
+    const text = out.join('');
+    expect(text).toContain(
+      'soot: approve? [y/N] \nsoot: update-button-color #1 accept: result accepted\n' +
+        'soot: still waiting: approve delete-files for t? [y/N] ',
+    );
+    // Before and after a question, output is passed through unchanged.
+    expect(out[0]).toBe('soot: before\n');
+    expect(out.at(-1)).toBe('soot: after\n');
+    close();
+  });
+
   it('end of input is a denial; unattended is always unavailable', async () => {
     const input = new PassThrough();
     const { gate, close } = interactiveApprovals({ input, ask: () => undefined });

@@ -4,7 +4,13 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { AuditLog, buildCostReport, redactSecrets, renderCostReport } from './index.js';
+import {
+  AuditLog,
+  buildCostReport,
+  displayLine,
+  redactSecrets,
+  renderCostReport,
+} from './index.js';
 
 const usage = (
   inputTokens: number,
@@ -49,6 +55,25 @@ describe('AuditLog', () => {
 
   it('leaves ordinary text alone', () => {
     expect(redactSecrets('ask-me later; task-123 passed')).toBe('ask-me later; task-123 passed');
+  });
+});
+
+describe('displayLine (agent text shown in one terminal line)', () => {
+  it('drops escape sequences and control characters, collapses whitespace, redacts keys', () => {
+    expect(
+      displayLine('needs sign-in\n\u001b[31mOPENAI_API_KEY=sk-abcdefghijkl\u001b[0m\t\u0007 now'),
+    ).toBe('needs sign-in OPENAI_API_KEY=[redacted] now');
+    expect(displayLine('  \n ')).toBe('');
+  });
+
+  it('cuts long text to the limit, keeping its start and its outcome at the end', () => {
+    const long = `runner (${'x'.repeat(400)}) asked for permission; approval unavailable, so refused.`;
+    const out = displayLine(long);
+    expect(out.length).toBeLessThanOrEqual(240);
+    expect(out.startsWith('runner (xxx')).toBe(true);
+    expect(out).toContain('…');
+    expect(out.endsWith('approval unavailable, so refused.')).toBe(true);
+    expect(displayLine('short', 10)).toBe('short');
   });
 });
 

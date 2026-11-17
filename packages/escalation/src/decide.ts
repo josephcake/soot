@@ -1,4 +1,5 @@
 import type { AttemptRecord } from '@soot/agent-runtime';
+import { displayLine } from '@soot/observability';
 import type { Task } from '@soot/task-graph';
 import type { EscalationConfig } from './config.js';
 
@@ -145,11 +146,19 @@ export function nextStep(
     };
   } else {
     switch (failure.kind) {
-      case 'blocked':
+      case 'blocked': {
+        // Say WHY when the agent did (e.g. "requires authentication", "approval unavailable");
+        // the generic wording alone hid the cause of every harness refusal.
+        const why =
+          record.result === null ? '' : displayLine(record.result.summary).replace(/[.\s]+$/, '');
         return {
           type: 'fail',
-          reason: 'agent is blocked on missing or ambiguous input; another model would not help',
+          reason:
+            why === ''
+              ? 'agent is blocked on missing or ambiguous input; another model would not help'
+              : `agent is blocked: ${why}; another model would not help`,
         };
+      }
       case 'cancelled':
       case 'rejected':
         return { type: 'fail', reason: failure.message };

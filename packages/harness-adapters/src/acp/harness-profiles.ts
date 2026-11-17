@@ -17,8 +17,9 @@ import { describeCommand, spawnAcpAgent, type AcpAgentCommand } from './spawn.js
  * mode, and refuses modes that turn the harness's own approvals off. Approvals go through
  * soot's gate exactly as for `--agent acp` (allow once; deny or unattended rejects).
  *
- * Status: implemented and tested against simulated agents only (scripted fakes in this repo).
- * No vendor binary has been run; nothing here claims real Claude Code or Codex support.
+ * Status: tested against simulated agents (scripted fakes in this repo). Claude Code also has
+ * one recorded real run (macOS, claude-agent-acp 0.107.0, 2026-11-16; ADR-047 amendment); Codex
+ * has none, so nothing here claims real Codex support.
  */
 
 export const HARNESS_IDS = ['claude-code', 'codex'] as const;

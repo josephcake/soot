@@ -19,7 +19,7 @@ export const PLANNED_MILESTONE = 6;
 
 export type { CommandOutput, JsonValue, OrchestrationService, RunRequest } from './service.js';
 export { MCP_TOOL_NAMES, createSootMcpServer, type SootMcpServerOptions } from './mcp-server.js';
-export { HARNESS_SUPPORT, type HarnessSupport } from './harnesses.js';
+export { HARNESS_SUPPORT, harnessRunnerStatus, type HarnessSupport } from './harnesses.js';
 export {
   ACP_CLIENT_INFO,
   AcpAbortError,

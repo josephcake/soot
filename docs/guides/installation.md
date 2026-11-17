@@ -226,12 +226,12 @@ soot run "<recorded prompt>" --agent acp --interactive
   (`packages/harness-adapters/dist/acp/mock-agent-bin.js <script.json>`). Whether any vendor
   harness works this way is untested.
 
-## Run tasks through Claude Code or Codex (simulated only, not yet run for real)
+## Run tasks through Claude Code or Codex
 
-> **Status:** implemented and tested against **simulated adapters only** (scripted fakes in this
-> repository, ADR-047). Nobody has run these runners with the real Claude Code or Codex yet,
-> so neither harness is listed as supported (M6-04 / M6-05 are "Implemented (simulated
-> only)"). Treat the setup below as untested until a recorded real run exists.
+> **Status:** **Claude Code: verified in one recorded real run** (macOS 26.6,
+> `@agentclientprotocol/claude-agent-acp` 0.107.0, 2026-11-16, M6-04, ADR-047 amendment). The
+> exact setup is [below](#claude-code-on-macos-the-verified-setup). **Codex: simulated adapters
+> only** (M6-05); treat its setup as untested until a recorded real run exists.
 
 `--agent claude-code` and `--agent codex` are small profiles over the generic ACP driver above.
 Each runs the ACP adapter for that harness that **you** installed and signed in to yourself
@@ -290,6 +290,67 @@ soot run "<recorded prompt>" --agent codex --interactive
 - The skill and MCP server are separate: they let the harness call soot. These runners let soot
   call the harness. Do not point a harness runner at a harness session that is itself running
   `soot mcp` for the same repository.
+
+### Claude Code on macOS: the verified setup
+
+This is what the recorded run used (2026-11-16). Other versions and other OSes are untested.
+
+1. Install the ACP adapter yourself, pinned, and note its absolute path:
+
+   ```sh
+   npm i -g @agentclientprotocol/claude-agent-acp@0.107.0
+   command -v claude-agent-acp   # e.g. /opt/homebrew/bin/claude-agent-acp
+   ```
+
+   It runs the Claude Code binary bundled with the Claude Agent SDK and uses your existing
+   Claude Code login. soot does not install it and never signs in.
+
+2. In the repository, make Claude Code ask before acting. With no `permissions.defaultMode`,
+   the adapter starts in `auto` (it approves some actions itself), which `allowedModes` below
+   refuses. Add `.claude/settings.json` and commit it:
+
+   ```json
+   { "permissions": { "defaultMode": "default" } }
+   ```
+
+3. In `soot.config.json`, name the adapter and open the sandbox just enough:
+
+   ```json
+   {
+     "harnesses": {
+       "claude-code": {
+         "command": "/opt/homebrew/bin/claude-agent-acp",
+         "allowedModes": ["default"],
+         "models": { "anthropic/claude-haiku-5-5": "haiku", "anthropic/claude-opus-5-5": "opus" }
+       }
+     },
+     "sandbox": { "network": true, "readPaths": ["/Users/you/Library/Keychains"] }
+   }
+   ```
+
+   - `network: true`: Claude Code has to reach Anthropic.
+   - `readPaths` with your `~/Library/Keychains` (absolute path): on macOS Claude Code keeps its
+     login in the Keychain, and the sandbox hides your home. Without it the adapter reports
+     "requires authentication" even though you are signed in. This lets the agent process read
+     the keychain files (items stay behind the Keychain's own access control). soot still
+     passes no credential variables and makes no home dotfile writable.
+   - `models` maps soot's routed model to Claude Code's model aliases. Routed models with no
+     mapping (for example a non-Anthropic model) are reported as "route not applied".
+
+4. Run it in a terminal and approve each action yourself:
+
+   ```sh
+   soot run "<prompt>" --agent claude-code --interactive
+   ```
+
+   Each edit Claude Code wants to make is shown as `soot: approval needed (harness-permission)
+...`; answer `y` or `n`. A denial refuses that task. soot then diffs the worktree, runs your
+   checks in the sandbox, merges, and asks before moving your branch.
+
+What to expect: in the recorded run, two tasks ran on Haiku, Claude Code asked to edit three
+times, every check passed, and the run was COMPLETE. The cost line shows Claude Code's own
+figure (its API list price; tokens are not reported over ACP). On a claude.ai subscription
+that figure is not billed per token.
 
 ## VS Code / Cursor extension (local build; run in VS Code, not in Cursor)
 

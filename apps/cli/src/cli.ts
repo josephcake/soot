@@ -63,8 +63,9 @@ nothing) in the task's worktree (keys come from the variables your models file n
 called). --agent acp runs each task through the ACP agent command configured as "acpAgent" in
 soot.config.json (generic ACP driver; no harness is verified). --agent claude-code and --agent
 codex run each task through the ACP adapter you installed and signed in to, named by absolute
-path in "harnesses" (runner profiles over the same driver, tested against simulated adapters
-only; soot never signs in and refuses bypass modes). soot never approves anything for
+path in "harnesses" (runner profiles over the same driver; claude-code verified in one recorded
+real run, codex tested against simulated adapters only; soot never signs in and refuses bypass
+modes). soot never approves anything for
 you: with --interactive (or a terminal) it asks; otherwise approval-needing work is refused.
 --apply pre-approves one thing only: fast-forwarding your branch to the result once every task
 is verified and final validation passed (refused if your working tree is dirty).
@@ -215,8 +216,10 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
     // stderr stay machine-readable; otherwise they go to stderr at SOOT_LOG_LEVEL.
     const runtime = runtimeFromEnv(io.env, io.cwd, values['data-dir']);
     const dataDir = runtime.dataDir;
+    // Replaced by the approval prompt's writer once it exists, so log lines never hide a question.
+    let writeLog: (text: string) => void = io.stderr;
     const log = createLogger(asJson ? 'silent' : runtime.logLevel, (line) => {
-      io.stderr(`${line}\n`);
+      writeLog(`${line}\n`);
     });
     log.debug(
       `soot: debug: state dir ${dataDir} (from ${runtime.dataDirSource}); log level ${runtime.logLevel}; command ${command}`,
@@ -241,7 +244,8 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
       throw new UsageError('--decomposer is only for soot init');
     const base = interactive
       ? interactiveApprovals({ input: io.stdin, ask: io.stderr })
-      : { gate: unattendedApprovals(), close: () => undefined };
+      : { gate: unattendedApprovals(), close: () => undefined, write: io.stderr };
+    writeLog = base.write;
     const approvals =
       values.apply === true ? { gate: withApply(base.gate), close: base.close } : base;
     const engine = new SootEngine({

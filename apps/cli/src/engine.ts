@@ -18,6 +18,7 @@ import {
   createHarnessRunner,
   describeCommand,
   harnessRunnerLabel,
+  harnessRunnerStatus,
   spawnAcpAgent,
   type AcpRouteRecord,
   type HarnessId,
@@ -155,7 +156,7 @@ export type AgentMode =
   /**
    * Spawn the `acpAgent` command from the project config (generic ACP driver, ADR-027), or with
    * `harness`, the `harnesses.<id>` adapter command through that harness's runner profile
-   * (ADR-047; tested against simulated adapters only).
+   * (ADR-047; see `harnessRunnerStatus` for how far each one is verified).
    */
   | { readonly kind: 'acp'; readonly harness?: HarnessId }
   /** Call each task's routed model directly through soot's provider adapters (ADR-039). */
@@ -684,7 +685,7 @@ export class SootEngine implements OrchestrationService {
     if (agent.kind === 'acp' && agent.harness !== undefined) {
       const spec = cfg.config.harnesses?.[agent.harness];
       if (spec !== undefined) {
-        return `${harnessRunnerLabel(agent.harness, spec)}; runner profile over the generic ACP driver, tested against simulated adapters only; routed models are applied only when the adapter offers a "model" option, see ACP model routing`;
+        return `${harnessRunnerLabel(agent.harness, spec)}; runner profile over the generic ACP driver, ${harnessRunnerStatus(agent.harness)}; routed models are applied only when the adapter offers a "model" option, see ACP model routing`;
       }
     }
     if (agent.kind === 'acp' && cfg.config.acpAgent !== undefined) {
@@ -2072,7 +2073,7 @@ export class SootEngine implements OrchestrationService {
       `Agent: ${this.#o.agent.kind === 'none' ? 'none (run refuses: pick --agent api, --agent mock, --agent acp, --agent claude-code or --agent codex)' : this.#agentLabel(cfg)}`,
       `API edit format: ${cfg.config.apiEditFormat}${cfg.config.apiEditFormat === 'auto' ? ' (targeted "replace" edits or whole files; set "apiEditFormat": "whole" for whole files only)' : ' (whole-file replies only, ADR-039)'}`,
       `ACP agent command: ${cfg.config.acpAgent === undefined ? 'not configured' : describeCommand(cfg.config.acpAgent)}`,
-      `Harness runners (simulated-only, ADR-047): claude-code ${cfg.config.harnesses?.['claude-code'] === undefined ? 'not configured' : describeCommand(cfg.config.harnesses['claude-code'])}; codex ${cfg.config.harnesses?.codex === undefined ? 'not configured' : describeCommand(cfg.config.harnesses.codex)}`,
+      `Harness runners (ADR-047): claude-code ${cfg.config.harnesses?.['claude-code'] === undefined ? 'not configured' : describeCommand(cfg.config.harnesses['claude-code'])} (${harnessRunnerStatus('claude-code')}); codex ${cfg.config.harnesses?.codex === undefined ? 'not configured' : describeCommand(cfg.config.harnesses.codex)} (${harnessRunnerStatus('codex')})`,
       `Decomposition: ${describeDecomposerModel(decomposer)}`,
       `Approvals: ${this.#o.approvals.mode} (soot never approves on your behalf)`,
       'Checks:',
