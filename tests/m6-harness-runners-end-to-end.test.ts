@@ -6,7 +6,12 @@
  * (`simulatedHarnessScript`). No vendor binary, model, login, key or network is involved, and
  * nothing here verifies Claude Code or Codex.
  */
-import { simulatedHarnessScript, type HarnessId, type MockAcpStep } from '@soot/harness-adapters';
+import {
+  harnessRunnerStatus,
+  simulatedHarnessScript,
+  type HarnessId,
+  type MockAcpStep,
+} from '@soot/harness-adapters';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -149,7 +154,7 @@ describe.each(['claude-code', 'codex'] as const)(
         const out = parse(run.stdout);
         expect(out.agent).toBe('acp');
         expect(out.agentLabel).toContain(`${id} (your ACP adapter command: ${process.execPath}`);
-        expect(out.agentLabel).toContain('tested against simulated adapters only');
+        expect(out.agentLabel).toContain(harnessRunnerStatus(id));
         // The adapter is spawned under the run's sandbox (ADR-051); never a claim it can't back.
         expect(out.sandbox.blocked).toBeNull();
         expect(out.sandbox.isolation).toBe(out.sandbox.backend !== 'none');
@@ -160,7 +165,10 @@ describe.each(['claude-code', 'codex'] as const)(
         });
         expect(taskOf(out, 'update-page-title')).toMatchObject({
           complete: false,
-          reason: 'agent-not-succeeded: agent reported blocked',
+          // The agent's own reason is shown, not just "blocked".
+          reason: expect.stringMatching(
+            /^agent-not-succeeded: agent reported blocked: .*approval (was denied|unavailable)/,
+          ) as unknown,
         });
         expect(r.git('show', `soot/h-${id}/integration:src/styles/button.css`)).toContain('purple');
 
@@ -261,12 +269,13 @@ describe('harness runners: explicit configuration only', () => {
     expect(run.stderr + run.stdout).toContain('would skip or bypass');
   });
 
-  it('soot config lists the harness runners as simulated-only', async () => {
+  it('soot config lists each harness runner with how far it is verified', async () => {
     const r = (repo = createDemoRepo());
     useSimulatedHarness(r, 'claude-code', {});
     const run = await cli(r, ['config']);
     expect(run.code).toBe(0);
-    expect(run.stdout).toContain('Harness runners (simulated-only, ADR-047): claude-code ');
-    expect(run.stdout).toContain('codex not configured');
+    expect(run.stdout).toContain('Harness runners (ADR-047): claude-code ');
+    expect(run.stdout).toContain(`(${harnessRunnerStatus('claude-code')})`);
+    expect(run.stdout).toContain(`codex not configured (${harnessRunnerStatus('codex')})`);
   });
 });

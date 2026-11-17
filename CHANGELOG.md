@@ -5,6 +5,34 @@ All notable changes are recorded here by milestone. Format loosely follows
 
 ## [Unreleased] — Milestone 6 (partial): CLI, MCP server, universal skill (2026-11-12, fixtures, mock agent)
 
+### Verified (Claude Code runner, first real run, M6-04, ADR-047 amendment)
+
+- `soot run --agent claude-code --interactive` ran spec Test 1 through the real Claude Code ACP
+  adapter (`@agentclientprotocol/claude-agent-acp` 0.107.0) on macOS: both tasks done by Claude
+  Code on Haiku, every edit approved by the person in soot, checks passed under `sandbox-exec`,
+  COMPLETE. `HARNESS_SUPPORT` marks `claude-code` verified; labels and `soot config` say
+  "verified in one recorded real run". Codex stays simulated only. The installation guide has
+  the exact macOS setup (pinned adapter, `permissions.defaultMode: "default"`, `network`, and
+  `readPaths` for the Keychain).
+
+### Verified (soot invoked from inside Claude Code, skill + MCP, ADR-026 amendment)
+
+- With `soot install-skill --harness claude` and `claude mcp add soot ... mcp`, Claude Code
+  called `soot_run` with the prompt verbatim when asked (`/universal-orchestrator <prompt>`);
+  soot ran the demo prompt (mock agent), verified and merged it on the integration branch and
+  left the working tree alone. A plain prompt was handled by Claude Code itself.
+- The installation guide's Claude Code runner section is now a copy-and-paste recipe from the
+  demo app (verified from a fresh folder), with what each setting does and what a new project
+  also needs (a models file; a planner or recorded prompts).
+
+### Fixed (from the Claude Code run)
+
+- A blocked task now says why: the report shows `agent reported blocked: <the agent's
+summary>` and the decision log `agent is blocked: <summary>`, instead of only "blocked on
+  missing or ambiguous input". The text is one line, escapes stripped, keys redacted.
+- With `--interactive`, a log line printed while an approval question waits no longer lands on
+  the prompt line; it goes on its own line and the question is asked again.
+
 ### Fixed (macOS sandbox, ADR-051 amendment)
 
 - On macOS every soot-run check failed under `sandbox-exec` with `EPERM`, so no task could be

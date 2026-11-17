@@ -45,6 +45,7 @@ export {
 export {
   AUDIT_EVENT_TYPES,
   AuditLog,
+  displayLine,
   redactSecrets,
   type AuditEntry,
   type AuditEventType,

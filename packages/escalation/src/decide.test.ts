@@ -170,7 +170,22 @@ describe('nextStep (M4-01, M4-03, M4-05)', () => {
     {
       const d = nextStep(task, record(1, { failure: 'blocked', status: 'blocked' }), [], config);
       expect(d).toMatchObject({ type: 'fail' });
-      expect(reasonOf(d)).toMatch(/another model would not help/);
+      expect(reasonOf(d)).toBe(
+        'agent is blocked on missing or ambiguous input; another model would not help',
+      );
+    }
+    {
+      // With a result, the agent's own reason is shown (one line, escapes stripped).
+      const base = record(1, { failure: 'blocked', status: 'blocked' });
+      const shaped = record(1, { failure: 'reported-failure', status: 'blocked' }).result;
+      if (shaped === null) throw new Error('expected a result');
+      const why =
+        'claude-code runner requires authentication.\n\u001b[1msign in\u001b[0m yourself.';
+      const d = nextStep(task, { ...base, result: { ...shaped, summary: why } }, [], config);
+      expect(d).toMatchObject({ type: 'fail' });
+      expect(reasonOf(d)).toBe(
+        'agent is blocked: claude-code runner requires authentication. sign in yourself; another model would not help',
+      );
     }
   });
 

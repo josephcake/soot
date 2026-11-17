@@ -8,7 +8,7 @@ import type {
   TaskPermissions,
 } from '@soot/agent-runtime';
 import { buildAgentContext } from '@soot/context-manager';
-import type { AuditLog } from '@soot/observability';
+import { displayLine, type AuditLog } from '@soot/observability';
 import {
   validateAgentResult,
   type AgentResult,
@@ -309,7 +309,12 @@ export class IsolatedTaskRunner implements AgentRunner {
     };
 
     if (result.status !== 'succeeded') {
-      record('agent-not-succeeded', `agent reported ${result.status}`);
+      // The agent's own summary says why (sign-in needed, approval unavailable, ...).
+      const why = displayLine(result.summary);
+      record(
+        'agent-not-succeeded',
+        `agent reported ${result.status}${why === '' ? '' : `: ${why}`}`,
+      );
       return result;
     }
     if (outOfScope.length > 0) {

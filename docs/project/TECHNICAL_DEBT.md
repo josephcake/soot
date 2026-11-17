@@ -158,15 +158,20 @@ Each item is tagged **[Intentional]** (a deliberate MVP/milestone shortcut) or *
     stopped. Use `required: true` to refuse it.
   - **Network is all or nothing** per project (`network`), shared by checks and the agent; no
     per-host allowlist or per-command setting.
-  - **Vendor harnesses:** not run under the sandbox. Their state lives in home dotfiles,
-    which soot will not make writable, so a real Claude Code or Codex adapter will likely need
-    `readPaths`/`writePaths` outside home or a harness-side setting. The ACP adapters' own
+  - **Vendor harnesses:** Claude Code ran under `sandbox-exec` once (2026-11-16, ADR-047
+    amendment) with `readPaths: ["~/Library/Keychains"]` for its login. Its writes to `~/.claude`
+    have nowhere to go (home dotfiles are never writable); that did not break one short run, but
+    longer sessions (history, compaction, todos) are untested. Codex is unrun. The ACP adapters' own
     internal tools are sandboxed only as part of the agent process; soot cannot see or limit
     them individually.
   - soot's own `git`, `soot dashboard --open` and the VS Code extension's CLI calls are not
     sandboxed (not agent work).
   - Under bwrap, home is empty and read-only: tools that cache there fail.
   - A process-group kill after the leader exits could, in theory, hit a reused PID group.
+- **Harness cost on a subscription (ADR-047 amendment).** For `--agent claude-code`, the
+  "actual" cost is the adapter's `usage_update` (Claude Code's own `total_cost_usd` at API list
+  prices; no tokens over ACP). With a claude.ai subscription nothing is billed per token, so the
+  report overstates real spend. A label such as "reported by the harness" is a possible fix.
 - **[Intentional] The command allowlist is per executable.** Allowing `node` allows any script
   and arguments from configuration; only configuration (never agents) supplies commands.
 - **[Intentional] Injection detection is heuristic** (regex rules). It flags and audits; it does

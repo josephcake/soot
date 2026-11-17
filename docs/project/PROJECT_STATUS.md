@@ -1,10 +1,10 @@
 # Project Status
 
-Last Updated: 2026-11-14
+Last Updated: 2026-11-16
 
 ## Current Phase
 
-Milestone 6 — Universal Skill and CLI (in progress, partial: CLI, MCP server, skill and docs against fixtures and a scripted mock agent; exit criteria not met); Milestone 7 — IDE Extensions (started, partial: a thin VS Code extension, run in a real VS Code with the mock agent (M7-01 Verified); Cursor and other editors not run); Milestone 2 In Progress (partial; M2-07 Verified live with xAI and DeepSeek, ADR-050)
+Milestone 6 — Universal Skill and CLI (in progress, partial: CLI, MCP server, skill and docs against fixtures and a scripted mock agent; the Claude Code runner verified in one real run (M6-04, 2026-11-16); exit criteria not met); Milestone 7 — IDE Extensions (started, partial: a thin VS Code extension, run in a real VS Code with the mock agent (M7-01 Verified); Cursor and other editors not run); Milestone 2 In Progress (partial; M2-07 Verified live with xAI and DeepSeek, ADR-050)
 
 ## Overall Progress
 
@@ -24,8 +24,16 @@ ACP agent command the user configures, with permission requests answered only by
 (unattended: rejected, the task refused, independent tasks continue). When the agent advertises a `model` session option, soot applies the routed model per attempt;
 otherwise it reports "route not applied" (ADR-028). It is tested only against soot's own mock
 ACP agent. Claude Code (M6-04) and Codex (M6-05) have runner profiles over that driver
-(`--agent claude-code`, `--agent codex`, ADR-047): Implemented, tested against simulated
-adapters only. Not done: no vendor harness has been run (neither is claimed or supported), but real providers now run tasks: on 2026-11-14 spec Tests 1, 2 and 4 were run live with xAI and DeepSeek and recorded (M6-07 Verified), and the savings benchmark was run (M6-08 Verified; [docs/benchmarks/2026-11-14.md](../benchmarks/2026-11-14.md), ADR-050). M5
+(`--agent claude-code`, `--agent codex`, ADR-047). **The Claude Code runner was run for real on
+2026-11-16** (macOS, `claude-agent-acp` 0.107.0, spec Test 1: both tasks done by Claude Code on
+Haiku, each edit approved by the person in soot, soot's checks passed under `sandbox-exec`,
+COMPLETE; M6-04 Verified, ADR-047 amendment). Codex is tested against simulated adapters only.
+**soot was also invoked from inside Claude Code** on 2026-11-16: with the skill and `soot mcp`
+installed, `/universal-orchestrator <prompt>` made Claude Code call `soot_run` with the prompt
+verbatim; soot ran the demo prompt with the mock agent, verified and merged it on the
+integration branch, and Claude Code relayed the report (ADR-026 amendment). A plain prompt was
+done by Claude Code itself (the skill did not make it delegate). Not done: Codex has not been
+run. Real providers now run tasks: on 2026-11-14 spec Tests 1, 2 and 4 were run live with xAI and DeepSeek and recorded (M6-07 Verified), and the savings benchmark was run (M6-08 Verified; [docs/benchmarks/2026-11-14.md](../benchmarks/2026-11-14.md), ADR-050). M5
 gained protected paths: a task that edits a protected file (such as its acceptance test) fails
 even inside its lease.
 
@@ -54,8 +62,8 @@ hidden, git internals read-only, no network. `required: true` blocks tasks rathe
 them unsandboxed. The backend is recorded per check (report, `soot status`, `soot.sqlite`
 schema v6) and shown by `soot config` and the dashboard. Exercised for real with bwrap on
 Linux and, since 2026-11-15, with `sandbox-exec` on macOS 26.6 (the first Mac run found every
-check failing with `EPERM`; fixed, ADR-051 amendment); Windows has no backend; no vendor harness
-has run under it.
+check failing with `EPERM`; fixed, ADR-051 amendment); Windows has no backend; one vendor harness
+has run under it (Claude Code on macOS, with `readPaths` for the Keychain, ADR-047 amendment).
 
 Engine hardening (ADR-030, mocks only, no milestone status change): `SOOT_DATA_DIR` and
 `SOOT_LOG_LEVEL` are honoured by the real CLI and `soot mcp`; provider cooldowns and
@@ -184,7 +192,7 @@ Node 26 (M0-11 Completed).
 ## In Progress
 
 - [ ] Milestone 2. M2-03 (local endpoint) is Implemented: covered by mocked HTTP, but the live test skipped because no Ollama or LM Studio was running. M2-09 (Gemini and OpenRouter, ADR-049) is Implemented against mocked HTTP and fake keys; neither is auto-detected and no live call has been made. M2-07 is Verified (xAI and DeepSeek live, ADR-050).
-- [ ] Milestone 6. M6-01, M6-03 and M6-09 (generic ACP driver, mock ACP agent only) Completed; M6-02 and M6-06 Implemented; M6-04 and M6-05 Implemented (simulated only, ADR-047; a real-product run is still needed); M6-07 (Tests 1, 2, 4 live) and M6-08 (savings benchmark) Verified (ADR-050). Exit criteria not met.
+- [ ] Milestone 6. M6-01, M6-03 and M6-09 (generic ACP driver, mock ACP agent only) Completed; M6-02 and M6-06 Implemented; M6-04 Verified (one recorded run with the real Claude Code adapter, 2026-11-16, ADR-047 amendment); M6-05 Implemented (simulated only, ADR-047; a real-product run is still needed); M6-07 (Tests 1, 2, 4 live) and M6-08 (savings benchmark) Verified (ADR-050). Exit criteria not met.
 
 - [ ] Cross-cutting R-01 `soot resume` (ADR-054, schema v7): Implemented on `feat/soot-resume`, tested with the scripted mock agent and built-binary subprocesses (SIGKILL mid-task, live and double-resume refusal, drift, held blocks, approval asked again, budget carry-over). Not Verified in a harness or editor. The schema v6 number collides with the sandbox branch (ADR-051); whichever merges second bumps to v7.
 
@@ -196,7 +204,7 @@ Node 26 (M0-11 Completed).
 
 ## Blockers
 
-- **Milestone 6 exit criteria** need a supported harness: running the Claude Code / Codex runner profiles (ADR-047) against a real harness adapter the user already installed and signed in to (M6-04/05), which this box must not do. Real providers are no longer a blocker (M2-07 Verified). Mochi decides next steps.
+- **Milestone 6 exit criteria** need a supported harness. The Claude Code runner has one recorded real run (M6-04 Verified, 2026-11-16, on Tim's Mac); Codex (M6-05) has none, and this box must not run either. soot has also been invoked from inside Claude Code once (skill + MCP, explicit `/universal-orchestrator`, mock agent, recorded prompt; ADR-026 amendment). Open for Mochi: whether these two runs meet the exit criterion ("a user invokes orchestration from a supported harness"), given that the skill did not make Claude Code delegate unasked. Real providers are no longer a blocker (M2-07 Verified).
 - **Milestone 7 exit criteria** need the extension loaded and used in a real VS Code (and, separately, each other editor). This box has no editor; Mochi decides where and when.
 
 ## Known Issues
@@ -212,7 +220,7 @@ Node 26 (M0-11 Completed).
 
 ## Next Actions
 
-1. Mochi: review the Claude Code and Codex runner profiles (ADR-047, simulated only). Verifying them with a real harness (M6-04/05, issues #1/#2) needs a machine where the user has installed and signed in to that harness's ACP adapter and agrees to a run; Mochi decides when and where.
+1. Mochi: the Claude Code runner is verified once (M6-04, ADR-047 amendment), and soot was invoked from inside Claude Code once over MCP (ADR-026 amendment). Decide whether that meets M6's exit criterion, whether the skill should make hosts delegate unasked, and when to run Codex (M6-05, issue #2).
 2. Mochi: arrange a run of the unpublished `.vsix` in a real VS Code (then Cursor) to verify M7-01/M7-02.
 3. Mochi: decide whether to pass failed-check output to retries (benchmark finding, ADR-050), and whether to grow the benchmark (more prompts, Anthropic/OpenAI keys) before quoting savings outside the repo.
 4. Optional: run `pnpm vitest run packages/provider-adapters/src/local-endpoint.test.ts` with Ollama or LM Studio running to verify M2-03 live.

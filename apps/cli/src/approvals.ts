@@ -18,8 +18,19 @@ export interface ApprovalIo {
   readonly ask: (line: string) => void;
 }
 
-export function interactiveApprovals(io: ApprovalIo): { gate: ApprovalGate; close: () => void } {
+export function interactiveApprovals(io: ApprovalIo): {
+  gate: ApprovalGate;
+  close: () => void;
+  /**
+   * Write other output (log lines) without hiding an open question: while a question waits,
+   * the text goes on its own line and the question is asked again below it. Tasks keep running
+   * while one waits for approval, so their log lines would otherwise land on the prompt line.
+   */
+  write: (text: string) => void;
+} {
   const gate = new InteractiveApprovalGate();
+  /** The short re-ask line while a question is open, else null. */
+  let open: string | null = null;
   const rl = createInterface({ input: io.input, terminal: false });
   const lines: string[] = [];
   let ended = false;
@@ -43,10 +54,11 @@ export function interactiveApprovals(io: ApprovalIo): { gate: ApprovalGate; clos
   gate.onRequest((pending) => {
     queue = queue.then(async () => {
       const r = pending.request;
-      io.ask(
-        `soot: approval needed (${r.action}) for ${r.taskId ?? 'the run'}: ${r.detail}\nsoot: approve? [y/N] `,
-      );
+      const who = r.taskId ?? 'the run';
+      io.ask(`soot: approval needed (${r.action}) for ${who}: ${r.detail}\nsoot: approve? [y/N] `);
+      open = `soot: still waiting: approve ${r.action} for ${who}? [y/N] `;
       const answer = (await nextLine())?.trim().toLowerCase();
+      open = null;
       if (!gate.pending().some((p) => p.id === pending.id)) return; // cancelled meanwhile
       gate.answer(pending.id, answer === 'y' || answer === 'yes' ? 'approved' : 'denied');
     });
@@ -55,6 +67,9 @@ export function interactiveApprovals(io: ApprovalIo): { gate: ApprovalGate; clos
     gate,
     close: () => {
       rl.close();
+    },
+    write: (text) => {
+      io.ask(open === null ? text : `\n${text}${open}`);
     },
   };
 }

@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
 import type { Logger } from '@soot/core';
+import { harnessRunnerStatus } from '@soot/harness-adapters';
 import { unattendedApprovals, withApply } from './approvals.js';
 import { CONFIG_FILE } from './config.js';
 import { projectId, readAllowlist, resolveProject } from './dashboard-allowlist.js';
@@ -47,7 +48,7 @@ const asRecord = (v: unknown): Record<string, unknown> =>
 
 const harnessLabel = (id: string, command: unknown): string =>
   typeof command === 'string'
-    ? `${id} (${command}; simulated-only runner)`
+    ? `${id} (${command}; ${harnessRunnerStatus(id)})`
     : `${id}: no "harnesses.${id}" in ${CONFIG_FILE}`;
 
 function planErrorCode(data: Record<string, unknown>): string {
@@ -74,7 +75,7 @@ export function createComposerAgent(o: ComposerAgentOptions) {
             label:
               o.agent.harness === undefined
                 ? `acp (agent command from each project config)${landing}`
-                : `${o.agent.harness} (harnesses.${o.agent.harness} adapter from each project config; tested against simulated adapters only)${landing}`,
+                : `${o.agent.harness} (harnesses.${o.agent.harness} adapter from each project config; ${harnessRunnerStatus(o.agent.harness)})${landing}`,
             lands: o.apply === true,
           };
 
